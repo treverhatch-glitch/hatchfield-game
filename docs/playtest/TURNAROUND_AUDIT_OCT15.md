@@ -4,7 +4,7 @@ Read-only look at `main` (`e06b38be`) after Trever's playtest. No game code chan
 
 The ramp the player watches is two clocks and three pictures of the same truck. The logistics module (`src/logistics/engine.ts`) runs a minute-scale turnaround, but it does not start until a vehicle depot and a fuel farm both exist (`src/game/logisticsBridge.ts:79-92`). The starter kit has a farm and no depot, and stamping a depot is refused until Airside Ops T3 (`Requires research: GSE depot`). So the first hour, which is what this playtest watched, is the flight phase machine in `src/game/sim.ts` plus legacy trucks. On top of those trucks, `LiveTurnaround` draws a second fuel tanker and a second belt loader whenever the real one is more than 36 m from the stand.
 
-Recommendation up front: one service actor per vehicle, one mesh per actor, and only the gates Trever named. Keep the dock poses, the crew step shares, the metre-scale vehicle models, and the depot fleet. Stop clearing unfinished fuel, bags, and catering on a timer, and stop spawning a stand-in truck because the real one is busy at the farm.
+Recommendation up front: one service actor per vehicle, one mesh per actor, and only the gates Trever named. Keep the dock poses, the crew step shares, the metre-scale vehicle models, and the depot fleet. Stop clearing unfinished fuel, bags, and catering on a timer, and stop spawning a stand-in truck because the real one is busy at the farm. No two vehicles occupy the same space: aircraft first, then a pushback tug, then traffic already on the apron road, with a gap behind the vehicle ahead and a reserved slot at the stand.
 
 Watched on `?playtest=1` with `window.__hatch`, headless, two full passenger turns (an E175, then a CRJ700) after buying a jet bridge on stand `11,6`. A Citation was on approach during the CRJ's board. The logistics minute-times below are from `LogisticsSim` on the module's own default graph, which is not the starter apron. Stills in `docs/devlog/media/turnaround-audit/` are those frames with the shadows lifted so the SwiftShader image reads. The mesh names in the log are the evidence for the swaps.
 
@@ -138,7 +138,69 @@ Two graphs. Both have to change, or the player clock will keep skipping the logi
 
 Chocks and a live GPU are not gates on either clock. Chocks are a picture on `STAND_TIMELINE`. The GPU is a timer (logistics) or a prop (legacy).
 
-## 6. The state machine to build
+## 6. Collisions and right of way
+
+Trever's rule: no two vehicles ever overlap. An aircraft has priority over every vehicle. A pushback tug has priority, and a vehicle already on the main apron road has priority over one entering it. Merges and intersections yield. A vehicle follows and brakes to keep a gap. The stand reserves slots so trucks do not converge on one point. A deadlock has a way out that does not drive through anyone.
+
+### What exists
+
+Three systems, and they do not share a body list.
+
+| System | Where | What it actually does |
+|---|---|---|
+| Legacy `followPath` | Every starter truck, city cargo, the aircraft once it is taxiing or pushing (`sim.ts:24849-24895`, truck call at `27511`) | Each entity lerps its own polyline. Nothing reads another body's length. `congestionAt` (`24533-24570`) counts jets, trucks, and some people inside 1.15 cells and divides speed by `1 + n * 0.65`. A crowd slows. It never stops, yields, or reserves a cell |
+| `ApronTraffic` | Logistics vehicles, and only after a depot and a farm exist (`logisticsBridge.ts:177-179`, `traffic.ts:1-18`) | Capsules, a 1.2 m gap, keep-right, follow by refusing a step that would overlap, parking slots, yield, and a deadlock hop (`traffic.ts:33`, `199-241`, `309-338`, `375-471`). Tests lock "no overlap" for that set alone (`traffic.test.ts:30-66`) |
+| `LandsideTraffic` | Curb cars, taxis, buses (`landside/engine.ts:292-296`) | One polyline. Cars in `drive` or `queue` stop `queueGapM` (8 m) behind the vehicle ahead (`config.ts:49-53`, `engine.ts:446`). The header says this is a capacity model, not a street sim (`config.ts:4-8`) |
+| `GroundControl` | Aircraft on taxi and runway cells (`atc/groundControl.ts:116-150`) | A cell queue and a runway lock for aircraft. `atcRoleOf` (`sim.ts:24577-24591`) returns null for deboard, servicing, board, and parked, so a jet on stand is not holding its cells. Trucks are not entries |
+
+`ApronTraffic` priority is "whoever set off first, then id" (`traffic.ts:397-399`). It is not aircraft, not pushback, not "already on the apron road." `mustYield` (`309-338`) only fires for a crossing heading. Following and oncoming traffic rely on the capsule test. The deadlock break, after 1.5 min, hops up to 60 m along the route to the next clear sample, and after 3 min teleports into a newly reserved slot (`433-459`). That hop is a disappear-and-reappear, which reads as driving through the queue even though the landing spot is clear.
+
+`reserveSlot` searches rings and, if none fit, parks on the node centre anyway (`traffic.ts:239`). That fallback is an allowed overlap. The clearance test also never sees the mesh the player sees: `poses()` asks traffic for a road body, then `withDock` (`engine.ts:713-720`) and `placeServicePose` (`sim.ts:12222-12240`) slide the draw position onto the hose, door, or hold. Bag unload, bag load, cargo, and the belt loader all share `stand:{id}:hold` (`serviceFlow.ts:254-275`). Two clear road capsules can still draw on top of each other and on top of the fuselage.
+
+Buildings, crew, landside cars, and legacy trucks are outside `ApronTraffic.overlaps()`. The starter save never constructs that object, because the depot stamp is refused until Airside Ops T3. Every overlap below was on the legacy clock.
+
+### Logged on the two watched turns
+
+Distances are in cells. One cell is 22 m (`specs.ts`). A bowser is 10 m long and a city truck about 8.5 m, so anything under about half a cell is one vehicle inside another.
+
+| When (sim clock) | Where | What overlapped | Cause |
+|---|---|---|---|
+| E175 deboard 45.5; CRJ deboard 46.6 | Fuel tile `(7,5)` | Bowser spawned on the farm cell and held there (`fuel/fuel@7,5`) | `walkableFor('truck')` includes `'fuel'` (`path.ts:41-47`). `ensureLegacyFuel` paths from that cell (`sim.ts:12775-12783`). `preDwell` freezes the truck inside the station (`25629`, `27426-27428`). The farm mesh occupies the same cell |
+| Same frames | Stand `11,6`, on the fuselage | `rig:fuel_tanker` and `rig:belt_loader` while the real bowser is still at the farm | `ensureFuel` / `ensureBelt` park the stand-in on `plane_fuel_port` and `plane_cargo_door_fwd` (`liveTurnaround.ts:279-326`). No test against the aircraft body or against each other |
+| 20.8–22.1, again 31.8, 41.4–42.1, 63.2–63.7 | Guard road, column 17 around row 2 | Two `citycargo` trucks. Closest was 0.1 cells (~2 m) at clock 21.6: `city_depart@17,1.9` and `city_guard@17,2`. Same pair again at 31.8 with `city_shed` | Each truck calls `followPath` on its own path (`27511-27514`). A truck that has arrived dwells on the guard cell for ~1.4 s (`27519-27521`) and does not reserve it. The next truck's path ends on that cell (`9530-9558`). `congestionAt` only slows them. A departure then reverses the same polyline (`27500-27505`) and meets the arrival head-on |
+| CRJ servicing 50.3 through pushback 96.0 | Stand cell `(11,6)` | `bags/load` sits on `(11,6)` while the CRJ is on that stand, including the pushback frame that also draws `fleet:towbarless_tug` | The bags path ends on the stand tile. Pushback is `followPath` on the aircraft (`27303-27307`) plus a tug prop. `GroundControl` is not holding the stand, and the truck is not an aircraft entry, so the jet rolls through the tug's cell |
+| Whole deboard and board | Stand sockets | Ghost belt stays after the real tug arrives, because `isBelt` only matches `belt_loader` and the legacy kind is `bags` (`liveTurnaround.ts:77-78`) | The ghost and the real tug are two meshes for one job, and the ghost is pinned to the cargo door |
+| Not a separate frame; the same fuel park | Fuel farm props | Bowser footprint vs tank and canopy meshes | No building volume is subtracted from the truck path. The decorative canopy tankers are a second pair of trucks that never move |
+
+Crew are not in any of those body tests. `congestionAt` counts a few passenger jobs so an aircraft slows down. It does not steer the crew, and a truck never brakes for a marshaller. At 5× the crew are dots (`world.ts:2199-2200`) walking the stand timeline through whatever mesh is parked there.
+
+### Landside, from the code
+
+The curb watch was not a separate camera pass. The cars are a second simulator on the same road tiles the city trucks use.
+
+- A car or taxi keeps an 8 m centre gap (`LANDSIDE.queueGapM`). A bus is a longer body and uses that same gap (`engine.ts:398`, dwell 40 s at `config.ts:31`). Two buses, or a bus and the car behind it, overlap by the difference between 8 m and the bus length.
+- `carsPerLaneCell: 2` (`config.ts:12`) is the capacity count for one 22 m cell. The drawn agents are not capped by vehicle length.
+- A vehicle in `leave` adds speed and does not look at `ahead` (`engine.ts:422-425`). A car dwells 28 s and a bus 40 s, so the car behind a bus finishes first, switches to `leave`, and drives through the bus that is still stopped.
+- Those cars never appear in `followPath` or `ApronTraffic`. A city truck and a curb car on the public road (`starterLayout.ts` road column and the row 4 / row 14 bypasses) can occupy one cell. Neither sim knows the other exists.
+
+### The rule to build
+
+One body list. Apron trucks, pushback tugs, aircraft, landside cars on shared roads, and crew footprints are all on it. A building footprint (farm, hall, shed, guard) is a static body. The draw position is the body position. `withDock` may slide onto a slot only when that slot was reserved for this vehicle.
+
+Priority, highest first:
+
+1. Aircraft, including one parked, pushing, or taxiing. Every vehicle yields. A vehicle already inside the clearance box finishes leaving; it does not cross the nose.
+2. Pushback tug while it is attached or pushing. Other vehicles yield and stay out of the shove path.
+3. A vehicle already on the main apron road, over a vehicle entering from a stand, a farm, or a depot spur. At a merge or a crossing, the vehicle that is not yet on the road stops at a yield line.
+4. Same road, same direction: follow. Brake so the gap behind the vehicle ahead stays at least the sum of the two half-lengths plus the gap (the 1.2 m in `DEFAULT_TRAFFIC` is the right kind of number; 8 m centres are not, once a bus is in the queue).
+5. Stand and bay slots. Reserving a slot is what `reserveSlot` and `standAnchors` are each half of. One table: fuel, catering, hold, gpu, lav, water, pushback, bus. A second vehicle for that socket waits on the spur. The hold is not a shared point for the tug and the belt loader.
+6. Deadlock. If the highest waiter has been stopped longer than `deadlockMinutes`, the lowest-priority vehicle in the knot reverses to the previous yield line, or its dispatch is delayed. It does not hop 60 m through the queue, and it does not teleport into the destination. `stats.unjams` should count a reverse or a re-dispatch, and a test should fail if any body clearance goes negative, including against the aircraft and the farm.
+
+`GroundControl` stays the runway and taxi lock for aircraft. It should treat a truck body on a taxi cell as a blocker the same way it treats another aircraft, and a truck should see an aircraft reservation as a body it cannot enter.
+
+Service clocks still overlap in time. That is the rule in §7. Two services overlapping means two actors working at once, in two reserved slots, with a gap between the trucks.
+
+## 7. The state machine to build
 
 One actor per service. Each actor is `dispatch → approach → dock → work → clear → done`, on its own clock. Pushback is the only join.
 
@@ -156,14 +218,14 @@ Delete from the player machine: the servicing timeout that zeros `waitingOn`, th
 
 `turnaround.test.ts` will have to change with the predicates. The README line about catering waiting for an empty cabin should be rewritten to the rule above so the next agent does not "fix" the code back.
 
-## 7. What to keep
+## 8. What to keep
 
 - Dock phases and `poseFor` (`serviceFlow.ts`). Approach, align, service, depart are the right shape. Stop mapping all of them onto a single `servicing` pose that deploys the hose at the farm.
 - `CREW_SHARES`. Pictures fill the service window. They do not add minutes.
 - Metre-scale vehicle models and `DEPOT_GRANT`. The fleet list is the right set of actors, including lav, water, and the bus. Stairs stay a prop until a vehicle exists.
 - The fuel-with-passengers flag, once door-close stops ignoring fuel and the attendant check is real.
 - The empty-farm hold in `rampCall`. That one is a player-choice bottleneck.
-- Overlap as the default. The comment at `engine.ts:1063-1064` already says Boeing and Airbus charts overlap. The predicates underneath it do not.
+- Service clocks overlapping in time. The comment at `engine.ts:1063-1064` already says Boeing and Airbus charts overlap. The predicates underneath it do not. Vehicle bodies do not overlap. That is §6, and it is a different rule from two services running at once.
 
 Throw out of the picture:
 
@@ -174,16 +236,17 @@ Throw out of the picture:
 - `LiveTurnaround`'s `unitsPerMeter: 1` people, and the legacy capsules on a stand that already has crew.
 - Both timeout skips (`min(36, 22 * pace)` and `boardLimit + 80`).
 
-## 8. Work packages
+## 9. Work packages
 
-Five agent runs. Each one is one module and should leave `npm run gate` green before the next. The player clock and the logistics clock are package 4. Doing the pictures first (1–3) does not depend on it, and the ghosts are visible on the starter kit today.
+Six agent runs. Each one is one module and should leave `npm run gate` green before the next. The player clock and the logistics clock are package 4. Right of way is package 5, and it has to apply to the legacy trucks as well as `ApronTraffic`, because the starter apron is where the overlaps were watched. Doing the pictures first (1–3) does not depend on it, and the ghosts are visible on a new game today.
 
 | Run | What it touches | Done when |
 |---|---|---|
 | 1 | Fuel station and vehicle LOD. Path the bowser to a socket beside the farm, not the fuel cell (`path.ts` truck walk, `retargetFuelTruck`, `placeServicePose`). Stop `shownPhase` deploying the hose on a farm load. Fix `vehicleIsFar` so the default `dist = 88` keeps the tanker mesh. Delete `ensureFuel` / `ensureBelt` | At dist 88 the bowser at the farm is still a tanker, outside the tanks, and no second tanker sits at the stand |
 | 2 | Belt cubes and crew dots. Build one polyline per connected belt run. No wrap across the gap. Sit the cubes on the belt. Dots only for crew inside `CREW_LOD`, never as a substitute for a bag | The eight amber cubes stay on the two starter runs. None cross the apron between `(13,8)` and `(13,10)` |
 | 3 | Jet bridge seal. Move or hide the cab with `applyBridge`. Keep the bridge inside the same fade as the fuselage, or keep the fuselage opaque while a bridge intersects it. Hold `extend` at 1 for the whole board span, not only the extend span | On a bought bridge, the cab is not inside the skin at extend 0 or during board, and the tunnel meets the door |
-| 4 | One service actor. Replace the false gates in `advancePhases` and the timeouts in the flight machine with the seven gates in §6. One clock. `turnaround.test.ts` and the README updated to that order | A bowser that docks during deplane starts pumping when the safety rule passes. Boarding does not wait for it. Nothing is marked done by a timer. Pushback waits for doors, bags, and a clear box |
-| 5 | Crew and docking polish, after 1 and 4. One people renderer at `WORLD_PER_METER`. Blend poses, smooth the walk, face along the segment. Drive the existing dock phases (approach, align, service, depart) from the actor instead of a linear share that snaps at the next step | At 1× and at 5× a helper walks onto the stand without popping to a dot or a second body, and a truck arrives on a curve into its socket |
+| 4 | One service actor. Replace the false gates in `advancePhases` and the timeouts in the flight machine with the seven gates in §7. One clock. `turnaround.test.ts` and the README updated to that order | A bowser that docks during deplane starts pumping when the safety rule passes. Boarding does not wait for it. Nothing is marked done by a timer. Pushback waits for doors, bags, and a clear box |
+| 5 | Right of way, after 1 and 4. One body list for legacy trucks, logistics vehicles, aircraft, crew, buildings, and landside cars on shared roads. Priority in §6: aircraft, then the pushback tug, then whoever is already on the apron road. Yield at merges. Follow and brake to a real gap. One slot table per stand socket, and the hold is not shared by the tug and the belt. Deadlock reverses or re-dispatches the lowest-priority vehicle. Delete the 60 m hop and the on-node slot fallback. `followPath` and the landside `leave` state both consult the list | A headless starter turn reports no city-truck pair under half a cell, the bowser never enters the farm mesh, a bags truck is off the stand before pushback, and a car does not drive through a stopped bus. `ApronTraffic` overlaps stay empty with the aircraft and the farm included |
+| 6 | Crew and docking polish, after 4 and 5. One people renderer at `WORLD_PER_METER`. Blend poses, smooth the walk, face along the segment. Drive the existing dock phases (approach, align, service, depart) into the reserved slot instead of a linear share that snaps at the next step | At 1× and at 5× a helper walks onto the stand without popping to a dot or a second body, and a truck arrives on a curve into its own socket without crossing another body |
 
-Runs 1 and 2 are the two bugs Trever can see on a new game without a depot: the bowser at the farm, and the orange cubes between the stands. Run 3 is the bridge, which needs a fitting before it shows. Run 4 is the sequencing rule. Run 5 is the motion, and it should not start until the actor clocks exist or it will animate the wrong waits.
+Runs 1 and 2 are the two bugs Trever can see on a new game without a depot: the bowser at the farm, and the orange cubes between the stands. Run 3 is the bridge, which needs a fitting before it shows. Run 4 is the sequencing rule. Run 5 is the collision rule, including the city trucks and the curb. Run 6 is the motion, and it should not start until the slots exist or it will animate the wrong waits.
