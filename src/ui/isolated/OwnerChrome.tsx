@@ -137,6 +137,27 @@ export function OwnerChrome({ game }: { game: Game }) {
           {game.infoLines(game.infoOpen).map((line) => (
             <div key={line}>{line}</div>
           ))}
+          {game.infoOpen.startsWith('tower:') && game.towerIIIUpgradeOffer() ? (
+            <button
+              type="button"
+              data-testid="upgrade-tower-iii"
+              disabled={!game.towerIIIUpgradeOffer()!.ok}
+              onClick={() => game.buyTowerIII()}
+              style={{
+                marginTop: 8,
+                background: '#f0c14a',
+                color: '#1a2a32',
+                border: 0,
+                borderRadius: 6,
+                padding: '4px 8px',
+                font: '700 12px sans-serif',
+              }}
+            >
+              {game.towerIIIUpgradeOffer()!.ok
+                ? `Build Tower III $${game.towerIIIUpgradeOffer()!.cost.toLocaleString('en-US')}`
+                : 'Tower III unavailable'}
+            </button>
+          ) : null}
           {game.infoOpen === 'links' && game.linkRepairOffer() ? (
             <button
               type="button"

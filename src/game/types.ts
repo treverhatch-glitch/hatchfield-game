@@ -908,6 +908,8 @@ export interface GameSnapshot {
   specNodes?: string[]
   /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
   progressionBuilt?: string[]
+  /** Control-tower cell keys fitted with the late-game Tower III add-on. */
+  towerIII?: string[]
   parcels: number
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]

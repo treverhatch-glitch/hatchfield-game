@@ -22,6 +22,18 @@ export const TOWER_TIER_MAP: Record<string, number> = {
   'III': 3,
 };
 
+/** Late-game cab/approach-control fit bought from a placed control tower. */
+export const TOWER_III_UPGRADE = {
+  name: 'Tower III',
+  minFieldLevel: 9,
+  prerequisite: 'atc_approach',
+  cost: 900_000,
+  upkeepPerDay: 12_000,
+  movementsPerHour: TOWER_BASE_CAPACITY[3],
+  maxInboundBonus: 1,
+  spawnIntervalSeconds: 7,
+} as const;
+
 export const DUAL_RUNWAY_MULTIPLIERS: Record<DualRunwayMode, number> = {
   segregated: 1.6,
   mixed: 1.85,
