@@ -3,6 +3,7 @@
  * when there is no document) until a PNG from public/textures/ loads.
  */
 import * as THREE from 'three'
+import { INTERIOR_FLOOR_FILES } from '../terminalProps/interiorTex'
 import { PACK1_DIR, PACK1_REPEAT_M, pack1Edge, pack1Url, packWorldRepeat, tileByPosition, type Pack1File } from './pack1'
 import { AIRLINE_LOGOS, BRAND_LOGO, PACK4_DIR, PACK4_FILES, PACK4_REPEAT_M, pack4Edge, pack4Url, type Pack4File } from './pack4'
 import { paintSurface, surfacePngUrl, type SurfaceKind } from './paint'
@@ -26,6 +27,8 @@ export type LibraryMap =
   | 'ceiling'
   | 'granite'
   | 'rubber'
+  | 'lane'
+  | 'plank'
 
 const PROCEDURAL: SurfaceKind[] = ['floor', 'wall', 'wood']
 
@@ -54,6 +57,8 @@ const REPEAT_M: Record<LibraryMap, number> = {
   ceiling: PACK4_REPEAT_M.ceiling,
   granite: PACK4_REPEAT_M.granite,
   rubber: PACK1_REPEAT_M.rubber,
+  lane: PACK1_REPEAT_M.rubber,
+  plank: PACK1_REPEAT_M.shopWood,
 }
 
 const PACK4_ONTO: Record<Pack4File, LibraryMap> = {
@@ -74,6 +79,8 @@ const FLAT: Record<Exclude<LibraryMap, SurfaceKind>, [number, number, number]> =
   ceiling: [232, 232, 228],
   granite: [36, 38, 40],
   rubber: [21, 23, 26],
+  lane: [214, 198, 170],
+  plank: [226, 208, 182],
 }
 
 export interface TextureLoad {
@@ -163,6 +170,8 @@ export class SurfaceLibrary {
       ceiling: flatTexture(FLAT.ceiling),
       granite: flatTexture(FLAT.granite),
       rubber: flatTexture(FLAT.rubber),
+      lane: flatTexture(FLAT.lane),
+      plank: flatTexture(FLAT.plank),
     }
     const blank = () => flatTexture([255, 255, 255])
     this.airline = AIRLINE_LOGOS.map(() => blank())
@@ -353,6 +362,25 @@ export class SurfaceLibrary {
       this.loadScaled(load, pack4Url(file, root), edge, anisotropy, (tex) => this.useLogo(index, tex, anisotropy))
     })
     this.loadScaled(load, pack4Url(BRAND_LOGO, root), edge, anisotropy, (tex) => this.useLogo(-1, tex, anisotropy))
+  }
+
+  /**
+   * Security rubber and shop planks. These stay off the pack-1 rubber and shop
+   * slots so belts and shelves keep their own maps. High keeps 2048 and the
+   * GPU builds the mip chain.
+   */
+  loadInteriorFloors(level: QualityLevel = 'high', loader?: TextureLoad) {
+    const load = loader ?? (typeof document === 'undefined' ? null : new THREE.TextureLoader())
+    if (!load) return
+    const edge = pack1Edge(level)
+    const anisotropy = QUALITY[level].anisotropy
+    const floors: [LibraryMap, string][] = [
+      ['lane', INTERIOR_FLOOR_FILES.lane],
+      ['plank', INTERIOR_FLOOR_FILES.plank],
+    ]
+    for (const [kind, file] of floors) {
+      this.loadScaled(load, `/${file}`, edge, anisotropy, (tex) => this.useMap(kind, tex, anisotropy))
+    }
   }
 
   private loadScaled(

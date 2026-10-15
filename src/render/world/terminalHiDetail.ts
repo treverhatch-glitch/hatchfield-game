@@ -168,6 +168,29 @@ export function buildInteriorDressing(plan: RoomPlan, worldPerMeter: number, flo
     const d = (s.maxZ - s.minZ) / worldPerMeter
     push('staff_office', office.x, office.z, 0, Math.min(1, fitScale('staff_office', w * 0.7, d * 0.7)), 'office')
   }
+  const shops = biggestRoom(plan, 'shops')
+  if (shops) {
+    const s = roomSpan(plan, shops)
+    const alongX = s.maxX - s.minX >= s.maxZ - s.minZ
+    const span = (alongX ? s.maxX - s.minX : s.maxZ - s.minZ) / worldPerMeter
+    const across = (alongX ? s.maxZ - s.minZ : s.maxX - s.minX) / worldPerMeter
+    const cx = (s.minX + s.maxX) / 2
+    const cz = (s.minZ + s.maxZ) / 2
+    const yaw = alongX ? Math.PI / 2 : 0
+    const at = (t: number) => {
+      const d = (t - 0.5) * span * worldPerMeter * 0.46
+      return alongX ? { x: cx + d, z: cz } : { x: cx, z: cz + d }
+    }
+    const fit = (type: TerminalPropType, portion: number) => {
+      const slotA = span * portion
+      const slotB = across * 0.82
+      return Math.min(1, fitScale(type, slotA, slotB), fitScale(type, slotB, slotA))
+    }
+    const gadget = at(0.24)
+    const food = at(0.76)
+    push('shop_gadget', gadget.x, gadget.z, yaw, fit('shop_gadget', 0.42), 'gadget')
+    push('food_court', food.x, food.z, yaw + Math.PI, fit('food_court', 0.46), 'food')
+  }
   const g = buildTerminalProps(placements, { shadows: false })
   g.scale.setScalar(worldPerMeter)
   g.name = 'interior-dressing'

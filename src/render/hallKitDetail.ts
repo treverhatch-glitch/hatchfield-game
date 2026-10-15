@@ -27,7 +27,7 @@ export const HALL_ITEM_PROP: Readonly<Record<string, TerminalPropType>> = {
   cafe: 'shop_coffee',
   fast_food: 'shop_fastfood',
   restaurant: 'food_court',
-  newsagent: 'shop_news',
+  newsagent: 'shop_gadget',
   wayfinding: 'wayfinding_sign',
   info_screen: 'departures_board',
   departures_wall: 'departures_wall',

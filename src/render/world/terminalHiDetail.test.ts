@@ -47,6 +47,8 @@ describe('terminal hi-detail props', () => {
     expect(anchors.claim).toBeTruthy()
     expect(anchors.lounge).toBeTruthy()
     expect(anchors.office).toBeTruthy()
+    expect(anchors.gadget).toBeTruthy()
+    expect(anchors.food).toBeTruthy()
     setNearPropDetail(g, false)
     expect(g.visible).toBe(false)
     expect(plan.rooms.rooms.map((r) => r.squares.join(','))).toEqual(squares)
