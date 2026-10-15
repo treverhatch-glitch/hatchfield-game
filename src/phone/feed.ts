@@ -72,7 +72,15 @@ export interface PhoneWorld {
     standing: number
     happy: string | null
   } | null
-  hubOffer: { airlineName: string; feeText: string; secondsLeft: number } | null
+  hubOffer: {
+    airlineName: string
+    tierLabel: string
+    feeText: string
+    secondsLeft: number
+    body: string
+    lines: PhoneLine[]
+    acceptDisabled: boolean
+  } | null
   mxOffer: { airlineName: string; payoutText: string; secondsLeft: number } | null
   parking: {
     callsign: string
@@ -350,21 +358,22 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
 
   const hub = world.hubOffer
   if (hub) {
-    const title = `${hub.airlineName} Hub plaque`
+    const title = `${hub.airlineName} · ${hub.tierLabel} offer`
     const built = card({
       id: 'hub',
-      key: `hub:${hub.airlineName}`,
+      key: `hub:${hub.airlineName}:${hub.tierLabel}`,
       tab: 'messages',
       kind: 'hub',
       from: hub.airlineName,
       title,
       preview: phonePreview(title),
-      body: `${hub.feeText} · denser slots, brand lounge, persona reward.`,
+      body: `${hub.feeText}. ${hub.body}`,
       tone: 'good',
       arrives: true,
       secondsLeft: hub.secondsLeft,
+      lines: hub.lines,
       actions: [
-        btn('sign', 'Take Hub', { type: 'accept-hub' }, { primary: true }),
+        btn('sign', 'Accept', { type: 'accept-hub' }, { primary: true, disabled: hub.acceptDisabled }),
         btn('decline', 'Decline', { type: 'decline-hub' }),
       ],
     })

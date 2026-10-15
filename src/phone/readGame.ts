@@ -15,7 +15,27 @@ import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
 import { contractById } from '../scale/logic.ts'
 import { buildPhoneFeed } from './feed.ts'
 import type { PhoneCard } from './types.ts'
+import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import type { PhoneWorld } from './feed.ts'
+
+function hubPhoneOffer(game: Game, airlineName: string): NonNullable<PhoneWorld['hubOffer']> | null {
+  const offer = game.hubOffer
+  if (!offer) return null
+  const tier = offer.tier ?? 'hub'
+  const list = game.hubChecklistFor(offer.airline)
+  return {
+    airlineName,
+    tierLabel: HUB_TIER_LABEL[tier],
+    feeText: money(offer.fee),
+    secondsLeft: Math.ceil(offer.deadline),
+    body: list.rewards[0] ?? 'The next step on their ladder.',
+    lines: list.lines.map((line) => ({
+      label: line.detail && line.detail !== line.label ? `${line.label} · ${line.detail}` : line.label,
+      met: line.status === 'ok',
+    })),
+    acceptDisabled: !(list.eligible && list.next === tier),
+  }
+}
 
 function signedRow(game: Game, id: string) {
   return { id, name: game.airline(id).name, standing: Math.round(game.standingOf(id)) }
@@ -108,11 +128,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
         : null,
     hubOffer:
       game.hubOffer && hubAirline
-        ? {
-            airlineName: hubAirline.name,
-            feeText: money(game.hubOffer.fee),
-            secondsLeft: Math.ceil(game.hubOffer.deadline),
-          }
+        ? hubPhoneOffer(game, hubAirline.name)
         : null,
     mxOffer:
       game.mxOffer && mxAirline

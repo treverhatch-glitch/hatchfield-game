@@ -31,7 +31,17 @@ export interface HubFieldFacts {
   /** Pass undefined when diplomacy has no record. An empty list is a clear record. */
   hubBlockers?: readonly string[]
   stands: number
+  /** Helipad tiles, used when no dedicated pad count is stored. */
   pads: number
+  /** Dedicated counts. Desk and lane counts are not here. */
+  overnight: number
+  lounges: number
+  hangars: number
+  fuel: number
+  pier: number
+  ramp: number
+  /** When set, replaces the airport pad count. */
+  dedicatedPads: number | null
   connectionMin: number | null
   primaryHolderId: string | null
   primaryHolderName: string | null
@@ -39,6 +49,49 @@ export interface HubFieldFacts {
 
 export function isHubTier(value: unknown): value is HubTier {
   return typeof value === 'string' && (HUB_TIERS as readonly string[]).includes(value)
+}
+
+export interface HubDedicatedCounts {
+  overnight?: number
+  lounges?: number
+  hangars?: number
+  fuel?: number
+  pier?: number
+  ramp?: number
+  pads?: number
+}
+
+function whole(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined
+}
+
+export function readHubDedicated(raw: unknown): Record<string, HubDedicatedCounts> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, HubDedicatedCounts> = {}
+  for (const [id, row] of Object.entries(raw as Record<string, unknown>)) {
+    if (!row || typeof row !== 'object') continue
+    const src = row as Record<string, unknown>
+    const counts: HubDedicatedCounts = {}
+    for (const key of ['overnight', 'lounges', 'hangars', 'fuel', 'pier', 'ramp', 'pads'] as const) {
+      const value = whole(src[key])
+      if (value != null) counts[key] = value
+    }
+    if (Object.keys(counts).length) out[id] = counts
+  }
+  return out
+}
+
+const OFFER_TIERS = ['focus', 'base', 'hub', 'primary'] as const
+
+export function readHubOffered(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string[]> = {}
+  for (const [id, row] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(row)) continue
+    const tiers = row.filter((tier): tier is string => typeof tier === 'string' && (OFFER_TIERS as readonly string[]).includes(tier))
+    if (tiers.length) out[id] = tiers
+  }
+  return out
 }
 
 export function readHubTiers(raw: unknown): Record<string, HubTier> {
@@ -68,7 +121,13 @@ export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; 
   const turns = facts.onTime + facts.delay + facts.cancel
   const facilities = emptyHubFacilities()
   facilities.stands = Math.max(0, facts.stands)
-  facilities.pads = Math.max(0, facts.pads)
+  facilities.pads = Math.max(0, facts.dedicatedPads ?? facts.pads)
+  facilities.overnight = Math.max(0, facts.overnight)
+  facilities.lounges = Math.max(0, facts.lounges)
+  facilities.hangars = Math.max(0, facts.hangars)
+  facilities.fuel = Math.max(0, facts.fuel)
+  facilities.pier = Math.max(0, facts.pier)
+  facilities.ramp = Math.max(0, facts.ramp)
   facilities.connectionMin = facts.connectionMin
   facilities.primaryHolderId = facts.primaryHolderId
   facilities.primaryHolderName = facts.primaryHolderName

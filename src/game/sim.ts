@@ -83,8 +83,6 @@ import {
   GA_PARK_STAY_MAX,
   GA_PARK_STAY_MIN,
   HUB_BAN_THRESHOLD,
-  HUB_FEE_MAX,
-  HUB_FEE_MIN,
   HUB_HEAT_NEED,
   HUB_LAYOVER_WINS,
   RESEARCH_NODES,
@@ -648,8 +646,8 @@ import { rosterAirline } from '../airlines/roster.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
 import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
 import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines, rosterType } from './rosterAirlines.ts'
-import { checklistFromFacts, readHubTiers } from './hubProgress.ts'
-import type { HubTier } from '../hubprogress/config.ts'
+import { checklistFromFacts, readHubDedicated, readHubOffered, readHubTiers, type HubDedicatedCounts } from './hubProgress.ts'
+import { HUB_OFFER_FEE, HUB_TIER_LABEL, type HubOfferTier, type HubTier } from '../hubprogress/config.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
 import {
   airframeGap,
@@ -1367,6 +1365,10 @@ export class Game {
   hubAirlines: AirlineId[] = []
   /** Accepted hub tier per carrier. Unsigned and untouched carriers stay at Station. */
   hubTiers: Record<string, HubTier> = {}
+  /** Lounge, gate, hangar, fuel, pad, and ramp counts dedicated to a carrier. Not desks. */
+  hubDedicated: Record<string, HubDedicatedCounts> = {}
+  /** Tiers a letter has already been sent for. A decline does not clear the leases. */
+  hubOffered: Record<string, HubOfferTier[]> = {}
   parkingOffer: ParkingOffer | null = null
   parkingCool = 65
   /** Day-rate cool for independent parked GA. */
@@ -1760,6 +1762,8 @@ export class Game {
     this.hubOfferCool = 80
     this.hubAirlines = []
     this.hubTiers = {}
+    this.hubDedicated = {}
+    this.hubOffered = {}
     this.parkingOffer = null
     this.parkingCool = 65
     this.parkRateCool = 0
@@ -3186,7 +3190,9 @@ export class Game {
     const card = this.diplomacyCards().find((row) => row.id === id)
     const engine = this.diplomacy?.adapter.engine
     const recorded = Boolean(engine?.relation(id))
-    const holder = engine?.state.hubAirlineId ?? null
+    const storedPrimary = Object.entries(this.hubTiers).find(([, tier]) => tier === 'primary')?.[0] ?? null
+    const holder = engine?.state.hubAirlineId ?? storedPrimary
+    const dedicated = this.hubDedicated[id] ?? {}
     const view = checklistFromFacts({
       id,
       name: airline.name,
@@ -3204,6 +3210,13 @@ export class Game {
       hubBlockers: recorded && engine ? engine.hubBlockers(id) : undefined,
       stands: tilesOf(this.tiles, 'stand').length,
       pads: tilesOf(this.tiles, 'helipad').length,
+      overnight: dedicated.overnight ?? 0,
+      lounges: dedicated.lounges ?? 0,
+      hangars: dedicated.hangars ?? 0,
+      fuel: dedicated.fuel ?? 0,
+      pier: dedicated.pier ?? 0,
+      ramp: dedicated.ramp ?? 0,
+      dedicatedPads: dedicated.pads ?? null,
       connectionMin: minimumConnectionTime(this.hubFacilities()),
       primaryHolderId: holder,
       primaryHolderName: holder ? (engine?.relation(holder)?.name ?? this.airline(holder).name) : null,
@@ -5815,6 +5828,8 @@ export class Game {
       hubLinksBuilt: this.hubLinksBuilt,
       hubAirlines: this.hubAirlines,
       hubTiers: this.hubTiers,
+      hubDedicated: this.hubDedicated,
+      hubOffered: this.hubOffered,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
@@ -6041,6 +6056,8 @@ export class Game {
       this.powerPlantTier = s.powerPlantTier === 2 || s.powerPlantTier === 3 ? s.powerPlantTier : 1
       this.hubAirlines = s.hubAirlines ?? []
       this.hubTiers = readHubTiers(s.hubTiers)
+      this.hubDedicated = readHubDedicated(s.hubDedicated)
+      this.hubOffered = readHubOffered(s.hubOffered) as Record<string, HubOfferTier[]>
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
       // The save wins; older saves fall back to the settings mirror, then to defaults.
@@ -15043,40 +15060,57 @@ export class Game {
     if ((this.layoverWins[airlineId] ?? 0) < HUB_LAYOVER_WINS) return
     if (this.heatOf(airlineId) < this.hubHeatNeed()) return
     if (!this.signed.includes(airlineId)) return
-    const a = this.airline(airlineId)
-    if (a.kind === 'cargo' || a.persona === 'military_gov') return
-    const fee =
-      HUB_FEE_MIN + Math.floor(Math.random() * (HUB_FEE_MAX - HUB_FEE_MIN))
-    this.hubOffer = { airline: airlineId, age: 0, fee, deadline: 45 }
-    this.pushNews(
-      `${a.name} sent a Hub plaque letter — denser slots + brand lounge for ${moneyLeft(fee)}.`,
-      'good',
-    )
+    if (this.hubChecklistFor(airlineId).next !== 'hub') return
+    this.offerNextHubTier(airlineId, false)
   }
 
   acceptHub() {
     if (!this.hubOffer) return
     const o = this.hubOffer
+    const tier = o.tier ?? 'hub'
     const a = this.airline(o.airline)
-    if (!this.spend(o.fee, `${a.name} Hub plaque`)) {
+    const list = this.hubChecklistFor(o.airline)
+    if (list.next !== tier || !list.eligible) {
+      const blocked = list.lines.find((line) => line.status !== 'ok')
+      this.pushNews(blocked?.detail || blocked?.label || `${a.name} is not ready.`, 'bad')
       this.emit()
       return
     }
-    this.hubAirlines.push(o.airline)
+    if (tier === 'primary') {
+      const engine = this.diplomacy?.adapter.engine
+      const blockers = engine?.relation(o.airline) ? engine.hubBlockers(o.airline) : []
+      if (blockers.length > 0) {
+        this.pushNews(blockers[0], 'bad')
+        this.emit()
+        return
+      }
+    }
+    const label = HUB_TIER_LABEL[tier]
+    if (!this.spend(o.fee, `${a.name} ${label} offer`)) {
+      this.emit()
+      return
+    }
+    this.hubTiers[o.airline] = tier
     this.hubOffer = null
     this.hubOfferCool = 90
-    // Brand lounge room on the active hall.
-    const fit = this.activeHall() ?? this.fits[0]
-    if (fit) {
-      fit.rooms.lounge = (fit.rooms.lounge ?? 0) + 1
+    if ((tier === 'hub' || tier === 'primary') && !this.hubAirlines.includes(o.airline)) {
+      this.hubAirlines.push(o.airline)
     }
-    this.seedScheduleForAirline(o.airline, 4)
-    this.grantReward(o.airline)
-    this.reputation = Math.min(100, this.reputation + 5)
-    this.pushNews(
-      `${a.name} is a Hub carrier — denser bank, brand lounge live. Don't blow the next layover.`,
-      'good',
-    )
+    if (tier === 'hub') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit) fit.rooms.lounge = (fit.rooms.lounge ?? 0) + 1
+      this.seedScheduleForAirline(o.airline, 4)
+      this.grantReward(o.airline)
+      this.reputation = Math.min(100, this.reputation + 5)
+    }
+    if (tier === 'primary') {
+      const engine = this.diplomacy?.adapter.engine
+      if (engine?.relation(o.airline)) {
+        const result = engine.requestHub(o.airline)
+        if (!result.ok) this.pushNews(result.message, 'bad')
+      }
+    }
+    this.pushNews(`${a.name} accepted ${label}.`, 'good')
     this.emit()
   }
 
@@ -15087,7 +15121,7 @@ export class Game {
     this.hubOffer = null
     this.hubOfferCool = 70
     this.adjustHeat(id, -2)
-    this.pushNews(`${a.name} Hub talk cooled off.`, 'ok')
+    this.pushNews(`${a.name} declined the offer. Their leases stay.`, 'ok')
     this.emit()
   }
 
@@ -16527,8 +16561,8 @@ export class Game {
           )
         }
       }
+      this.offerNextHubTier(id, false)
       const rel = this.wave3.relation(id)
-      if (rel.tier >= 3 && !rel.hubAsked) this.offerRelationHub(id, false)
       if (rel.tier >= 5 && !rel.exclusiveNoted) {
         this.wave3.noteExclusive(id)
         this.pushNews(`${this.airline(id).name} asked for exclusivity on the pier.`, 'good')
@@ -16536,26 +16570,29 @@ export class Game {
     }
   }
 
-  /** Hub letter at Trusted and above. The plaque fee stays the published minimum. */
+  /** Send the next hub-tier letter once the relationship gate is met. */
   openRelationHub(airlineId: string) {
-    this.offerRelationHub(airlineId, true)
+    this.offerNextHubTier(airlineId, true)
   }
 
-  private offerRelationHub(airlineId: string, announce: boolean) {
-    if (!this.signed.includes(airlineId)) return
-    const rel = this.wave3.relation(airlineId)
-    if (rel.tier < 3 || rel.hubAsked || this.isHub(airlineId) || this.hubOffer || this.isBanned(airlineId)) return
+  private offerNextHubTier(airlineId: string, announce: boolean) {
+    if (!this.signed.includes(airlineId) || this.hubOffer || this.isBanned(airlineId)) return
     const a = this.airline(airlineId)
-    if (a.kind === 'cargo' || a.persona === 'military_gov') {
-      this.wave3.noteHubAsked(airlineId)
-      return
-    }
-    this.hubOffer = { airline: airlineId, age: 0, fee: HUB_FEE_MIN, deadline: 45 }
-    this.wave3.noteHubAsked(airlineId)
-    this.pushNews(
-      `${a.name} sent a Hub plaque letter — denser slots + brand lounge for ${moneyLeft(HUB_FEE_MIN)}.`,
-      'good',
-    )
+    if (a.persona === 'military_gov') return
+    const list = this.hubChecklistFor(airlineId)
+    const tier = list.next
+    if (!tier) return
+    const relation = list.lines.find((line) => line.id === 'relation')
+    const band = list.lines.find((line) => line.id === 'band')
+    if (relation?.status !== 'ok') return
+    if (band && band.status !== 'ok') return
+    const offered = this.hubOffered[airlineId] ?? []
+    if (!announce && offered.includes(tier)) return
+    const fee = HUB_OFFER_FEE[tier]
+    this.hubOffer = { airline: airlineId, age: 0, fee, deadline: 45, tier }
+    this.hubOffered[airlineId] = [...offered.filter((row) => row !== tier), tier]
+    if (tier === 'hub') this.wave3.noteHubAsked(airlineId)
+    this.pushNews(`${a.name} sent a ${HUB_TIER_LABEL[tier]} offer — ${moneyLeft(fee)}.`, 'good')
     if (announce) this.emit()
   }
 

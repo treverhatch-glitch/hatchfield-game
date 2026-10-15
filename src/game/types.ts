@@ -352,13 +352,14 @@ export interface LayoverContract {
   fee: number
 }
 
-/** Hub-tier deal — denser slots + brand lounge, harsher failure. */
+/** Hub-ladder letter. Older saves omit `tier` and mean Hub. */
 export interface HubOffer {
   airline: AirlineId
   age: number
   fee: number
   /** Sim-seconds left before the letter expires. */
   deadline: number
+  tier?: 'focus' | 'base' | 'hub' | 'primary'
 }
 
 export interface HubContract {
@@ -990,6 +991,21 @@ export interface GameSnapshot {
   hubAirlines?: AirlineId[]
   /** Accepted hub tier per carrier. Missing on older saves. */
   hubTiers?: Record<string, string>
+  /** Dedicated lounge, gate, hangar, fuel, pad, and ramp counts. Missing on older saves. */
+  hubDedicated?: Record<
+    string,
+    {
+      overnight?: number
+      lounges?: number
+      hangars?: number
+      fuel?: number
+      pier?: number
+      ramp?: number
+      pads?: number
+    }
+  >
+  /** Hub-tier letters already sent. Missing on older saves. */
+  hubOffered?: Record<string, string[]>
   layoverWins?: Record<string, number>
   hotelLevel?: number
   carParkShort?: boolean

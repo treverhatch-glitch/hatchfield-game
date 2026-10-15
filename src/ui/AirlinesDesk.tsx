@@ -4,6 +4,7 @@ import type { Game } from '../game/sim.ts'
 import { RELATION_MIN, RELATION_MAX } from '../wave3/config.ts'
 import { RELATION_PART_LABELS } from '../wave3/relations.ts'
 import type { RelationParts } from '../wave3/types.ts'
+import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { HubSection } from './hub/HubPanels.tsx'
 import { AirlineMark } from './AirlineMark.tsx'
 import { PortraitFace } from './PortraitFace.tsx'
@@ -77,6 +78,8 @@ export function AirlinesDesk({ game }: { game: Game }) {
                 const lines = (Object.keys(RELATION_PART_LABELS) as (keyof RelationParts)[]).filter(
                   (key) => rel.parts[key] !== 0,
                 )
+                const hub = game.hubChecklistFor(id)
+                const hubGate = hub.lines.find((line) => line.id === 'relation')?.status === 'ok'
                 return (
                   <li key={id}>
                     <button type="button" className="dip-card" onClick={() => setRelationId(open ? null : id)}>
@@ -117,9 +120,9 @@ export function AirlinesDesk({ game }: { game: Game }) {
                         {rel.tier >= 4 ? (
                           <p className="muted">Bigger aircraft · the largest type already in the fleet.</p>
                         ) : null}
-                        {rel.tier >= 3 && !rel.hubAsked && game.airline(id).kind !== 'cargo' && !game.isHub(id) ? (
-                          <button type="button" className="on" onClick={() => game.openRelationHub(id)}>
-                            Hub request
+                        {hub.next && hubGate && !game.hubOffer ? (
+                          <button type="button" className="on" data-testid={`hub-offer-${id}`} onClick={() => game.openRelationHub(id)}>
+                            {HUB_TIER_LABEL[hub.next]} offer
                           </button>
                         ) : null}
                         {rel.tier >= 5 ? <p>Exclusivity · they want the pier to themselves.</p> : null}
