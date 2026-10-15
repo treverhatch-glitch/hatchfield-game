@@ -223,10 +223,12 @@ import {
   furnishRoom,
   interiorCost,
   paintEdges,
+  paintFoundation,
   paintTiles,
   paintWallRun,
   resizeRoom,
   roomReport,
+  roomsReport,
   tilesInRect,
   toggleDoor,
   wallRun,
@@ -14852,6 +14854,12 @@ export class Game {
     return true
   }
 
+  dragInteriorFoundation(tiles: { x: number; y: number }[]): boolean {
+    const fit = this.activeHall()
+    if (!fit || !tiles.length) return false
+    return this.commitInterior(fit, paintFoundation(fit.interior ?? emptyInterior(), tiles))
+  }
+
   dragInteriorWall(a: { x: number; y: number }, b: { x: number; y: number }, erase: boolean): boolean {
     const fit = this.activeHall()
     if (!fit) return false
@@ -14931,6 +14939,16 @@ export class Game {
     const fit = this.activeHall()
     const layout = fit ? hallNavLayout(fit) : null
     return layout ? roomReport(layout, roomId) : []
+  }
+
+  /** One pass over the player's interior rooms. Empty means the painted rooms meet their requirements. */
+  interiorChecks() {
+    const fit = this.activeHall()
+    const layout = fit ? hallNavLayout(fit) : null
+    if (!layout) return []
+    const ids = (fit?.interior?.rooms ?? []).map((room) => room.id)
+    if (!ids.length) return []
+    return roomsReport(layout, ids)
   }
 
   interiorTiles(rect: { x: number; y: number; w: number; h: number }) {

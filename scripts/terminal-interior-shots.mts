@@ -34,6 +34,7 @@ await page.waitForFunction(call(`return Boolean(window.__world && window.__hatch
 await page.evaluate(call(`window.__hatch.speed = 0; window.__hatch.camGoal = null; window.__hatch.setView('hall')`))
 await page.waitForSelector('[data-testid="interior-bar"]', { timeout: 15000 })
 await page.waitForTimeout(800)
+await page.getByTestId('interior-foundation').click()
 await page.getByTestId('interior-wall').click()
 await page.waitForTimeout(200)
 await page.screenshot({ path: `${OUT}/interior-tools.png` })

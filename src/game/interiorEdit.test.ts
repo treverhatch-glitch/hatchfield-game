@@ -36,6 +36,7 @@ describe('terminal interior edit', () => {
     expect(room?.floor).toBe(0)
     const missing = game.interiorFindings(room!.id)
     expect(missing.some((f) => f.title.toLowerCase().includes('shop'))).toBe(true)
+    expect(game.interiorChecks().some((f) => f.id.includes('shop_counter'))).toBe(true)
     expect(game.furnishInteriorRoom(room!.id)).toBe(true)
     expect(game.interiorFindings(room!.id).some((f) => f.id.includes('shop_counter'))).toBe(false)
     expect(game.resizeInteriorRoom(room!.id, { x: 0, y: 0, w: 3, h: 2 })).toBe(true)
@@ -45,5 +46,10 @@ describe('terminal interior edit', () => {
 
     expect(game.paintInteriorFloor([{ x: 1, y: 1 }], 'floor_carpet')).toBe(true)
     expect(hallNavLayout(game.activeHall()!)?.floorPaint?.[1]?.[1]).toBe('floor_carpet')
+
+    expect(game.dragInteriorFoundation([{ x: 1, y: 1 }, { x: 2, y: 1 }])).toBe(true)
+    expect(game.activeHall()?.interior?.foundation).toHaveLength(2)
+    expect(hallNavLayout(game.activeHall()!)?.floor[1]?.[1]).toBe(true)
+    expect(game.interiorChecks()).toEqual([])
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { FLOOR_COST } from './config.ts'
 import { blankLayout, placeFloor } from './layout.ts'
 import { edgeKey } from './grid.ts'
 import {
@@ -11,10 +12,12 @@ import {
   interiorCost,
   nearestEdge,
   paintEdges,
+  paintFoundation,
   paintTiles,
   paintWallRun,
   resizeRoom,
   roomReport,
+  roomsReport,
   tileAtPoint,
   toggleDoor,
   wallRun,
@@ -70,6 +73,7 @@ describe('interior edit', () => {
     expect(merged.zones[0][0]).toBe('retail')
     const report = roomReport(merged, id)
     expect(report.some((f) => f.id.includes('shop_counter'))).toBe(true)
+    expect(roomsReport(merged, [id]).some((f) => f.id.includes('shop_counter'))).toBe(true)
     const furnished = furnishRoom(grown.edit, merged, id)
     expect(furnished.error).toBeUndefined()
     const ready = applyInterior(base, furnished.edit)
@@ -81,5 +85,22 @@ describe('interior edit', () => {
     const cost = interiorCost(base, ready)
     expect(cost).toBeGreaterThan(0)
     expect(interiorCost(ready, base)).toBeLessThan(0)
+  })
+
+  it('lays foundation on bare tiles and charges only new floor', () => {
+    const base = blankLayout(4, 3)
+    const tiles = [{ x: 1, y: 1, floor: 0 }, { x: 2, y: 1, floor: 0 }]
+    const edit = paintFoundation(emptyInterior(), tiles)
+    const again = paintFoundation(edit, tiles)
+    expect(again.foundation).toHaveLength(2)
+    const laid = applyInterior(base, edit)
+    expect(laid.floor[1][1]).toBe(true)
+    expect(laid.floor[1][2]).toBe(true)
+    expect(laid.floor[0][0]).toBe(false)
+    expect(interiorCost(base, laid)).toBe(FLOOR_COST.build * 2)
+    expect(interiorCost(laid, applyInterior(laid, edit))).toBe(0)
+    const old = { ...emptyInterior() }
+    delete old.foundation
+    expect(applyInterior(base, old).floor[0][0]).toBe(false)
   })
 })

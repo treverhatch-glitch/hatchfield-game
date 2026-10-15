@@ -129,6 +129,11 @@ export interface InteriorEdit {
   zones: { x: number; y: number; zone: BuildZone | null; floor?: number }[]
   rooms: Room[]
   equipment: Equip[]
+  /**
+   * Indoor floor the player dragged (Prison Architect foundations).
+   * Omitted on saves from before the foundation tool. Floor 0 only.
+   */
+  foundation?: { x: number; y: number; floor?: number }[]
 }
 
 export interface Tile {

@@ -2711,6 +2711,32 @@ html[data-gfx='low'] .view-layer.dim {
   margin: 0;
 }
 
+.interior-check {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: rgba(10, 20, 16, 0.85);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: #e8eef4;
+  font-size: 12px;
+  max-width: 520px;
+}
+
+.interior-check .good {
+  color: #86efac;
+}
+
+.interior-check .bad,
+.interior-check p {
+  margin: 0;
+}
+
+.interior-check .bad {
+  color: #f0a0a0;
+}
+
 .kit-cards {
   display: flex;
   gap: 6px;

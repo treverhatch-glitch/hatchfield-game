@@ -133,7 +133,7 @@ function KitBar({
 
 function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover | null }) {
   if (!build || !hover) return null
-  if (build.kind === 'wall' || build.kind === 'door' || build.kind === 'floor' || build.kind === 'wallpaper' || build.kind === 'room') {
+  if (build.kind === 'foundation' || build.kind === 'wall' || build.kind === 'door' || build.kind === 'floor' || build.kind === 'wallpaper' || build.kind === 'room') {
     return null
   }
   const style = { left: hover.sx + 16, top: hover.sy + 16 }

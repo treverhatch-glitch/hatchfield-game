@@ -101,6 +101,7 @@ export type HallBuildMode =
   | { kind: 'place'; def: ItemId; rot: number }
   | { kind: 'bulldoze' }
   | { kind: 'move'; itemId: string | null; def: ItemId | null; rot: number }
+  | { kind: 'foundation' }
   | { kind: 'wall'; erase: boolean }
   | { kind: 'door' }
   | { kind: 'floor'; paint: string }
@@ -794,6 +795,7 @@ export class HallWorld {
     const hover = this.hover
     if (!hover) return
     if (
+      this.build.kind === 'foundation' ||
       this.build.kind === 'wall' ||
       this.build.kind === 'door' ||
       this.build.kind === 'floor' ||
@@ -2151,9 +2153,9 @@ export class HallWorld {
     this.renderer.toneMappingExposure = grade ? HALL_LIGHT.exposure : 1
   }
 
-  private interiorKind(): 'wall' | 'door' | 'floor' | 'wallpaper' | 'room' | null {
+  private interiorKind(): 'foundation' | 'wall' | 'door' | 'floor' | 'wallpaper' | 'room' | null {
     const kind = this.build?.kind
-    if (kind === 'wall' || kind === 'door' || kind === 'floor' || kind === 'wallpaper' || kind === 'room') return kind
+    if (kind === 'foundation' || kind === 'wall' || kind === 'door' || kind === 'floor' || kind === 'wallpaper' || kind === 'room') return kind
     return null
   }
 
@@ -2183,7 +2185,8 @@ export class HallWorld {
     this.refreshInteriorGhost()
     if (!game || !mode || !a || !b) return
     const tileM = BUILD_TUNING.tileMetres
-    if (mode.kind === 'wall') game.dragInteriorWall(a, b, mode.erase)
+    if (mode.kind === 'foundation') game.dragInteriorFoundation(tilesInRect(dragRect(a, b)))
+    else if (mode.kind === 'wall') game.dragInteriorWall(a, b, mode.erase)
     else if (mode.kind === 'door') game.placeInteriorDoor(nearestEdge(this.drawHit.x, this.drawHit.z, a, tileM, HALL_W, HALL_D))
     else if (mode.kind === 'floor') game.paintInteriorFloor(tilesInRect(dragRect(a, b)), mode.paint)
     else if (mode.kind === 'wallpaper') game.paintInteriorWalls(wallRun(a, b), mode.paint)

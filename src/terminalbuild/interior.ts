@@ -1,11 +1,13 @@
 /**
- * Interior edits inside a shell: drag walls, doors, paint, rooms.
+ * Interior edits inside a shell, Prison Architect order:
+ * foundation, walls, room zones, required items.
  * Pure. The walk merges an InteriorEdit onto the hall layout. Rendering only draws the edit.
  */
 import {
   BUILD_TUNING,
   DOOR_COST,
   EQUIP_SPEC,
+  FLOOR_COST,
   PAINT_COST,
   ROOM_SPEC,
   WALL_COST,
@@ -19,7 +21,17 @@ import { validateLayout } from './validate.ts'
 const refund = (price: number) => -Math.round(price * BUILD_TUNING.refundShare)
 
 export function emptyInterior(): InteriorEdit {
-  return { walls: [], doors: [], removed: [], floorPaint: [], wallPaint: [], zones: [], rooms: [], equipment: [] }
+  return { walls: [], doors: [], removed: [], floorPaint: [], wallPaint: [], zones: [], rooms: [], equipment: [], foundation: [] }
+}
+
+/** Lay indoor floor. Tiles already in the list are left as they are. */
+export function paintFoundation(edit: InteriorEdit, tiles: Tile[]): InteriorEdit {
+  const have = new Set((edit.foundation ?? []).map((t) => tileKey(t.x, t.y, floorOf(t))))
+  const add = tiles
+    .filter((t) => !have.has(tileKey(t.x, t.y, floorOf(t))))
+    .map((t) => ({ x: t.x, y: t.y, floor: floorOf(t) }))
+  if (!add.length) return edit
+  return { ...edit, foundation: [...(edit.foundation ?? []), ...add] }
 }
 
 /** A straight wall run. Horizontal drags lay south edges; vertical drags lay east edges. */
@@ -241,6 +253,16 @@ export function roomReport(layout: BuildLayout, roomId: string) {
   return validateLayout(layout).findings.filter((f) => f.id.endsWith(tail) || f.id.includes(`${tail}:`))
 }
 
+const ROOM_FINDING = /^(room_empty|room_floor|room_zone):/
+
+/** One validation pass. Findings for every listed room, or every room when ids are omitted. */
+export function roomsReport(layout: BuildLayout, roomIds?: readonly string[]) {
+  const findings = validateLayout(layout).findings.filter((f) => ROOM_FINDING.test(f.id))
+  if (!roomIds) return findings
+  const ids = new Set(roomIds)
+  return findings.filter((f) => ids.has(f.id.split(':')[1] ?? ''))
+}
+
 function copyLayout(base: BuildLayout): BuildLayout {
   return {
     ...base,
@@ -258,6 +280,10 @@ function copyLayout(base: BuildLayout): BuildLayout {
 /** Merge a player's interior edit onto the hall layout the walkers already use. */
 export function applyInterior(base: BuildLayout, edit: InteriorEdit): BuildLayout {
   const next = copyLayout(base)
+  for (const t of edit.foundation ?? []) {
+    if (floorOf(t) !== 0 || !inBounds(next, t.x, t.y)) continue
+    next.floor[t.y][t.x] = true
+  }
   const removed = new Set(edit.removed)
   const doorKeys = new Set(edit.doors.map(edgeKey))
   next.walls = next.walls.filter((w) => !removed.has(edgeKey(w)) && !doorKeys.has(edgeKey(w)))
@@ -333,6 +359,9 @@ export function interiorCost(before: BuildLayout, after: BuildLayout): number {
   const w = Math.max(before.w, after.w)
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
+      const wasFloor = Boolean(before.floor[y]?.[x])
+      const nowFloor = Boolean(after.floor[y]?.[x])
+      if (wasFloor !== nowFloor) cost += nowFloor ? FLOOR_COST.build : refund(FLOOR_COST.build)
       const was = paintCell(before, x, y)
       const now = paintCell(after, x, y)
       if (was !== now) {

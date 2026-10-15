@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { Game } from '../game/sim'
 import type { HallBuildMode } from '../render/hallWorld'
-import { FLOOR_PAINTS, ROOM_SPEC, WALL_PAINTS } from '../terminalbuild/config.ts'
+import { EQUIP_SPEC, FLOOR_PAINTS, ROOM_SPEC, WALL_PAINTS } from '../terminalbuild/config.ts'
 import type { RoomKind } from '../terminalbuild/types.ts'
 
 const ROOM_KINDS: RoomKind[] = ['checkin', 'security', 'gate', 'retail', 'lounge', 'toilets', 'office', 'bagmakeup']
 
-/** Sims-style interior tools. A strip, not a modal: the hall stays visible. */
+/** Prison Architect order: foundation, walls, zone, then materials. A strip, not a modal. */
 export function InteriorBar({
   game,
   build,
@@ -21,6 +21,7 @@ export function InteriorBar({
   const rooms = fit?.interior?.rooms ?? []
   const selected = build?.kind === 'room' ? rooms.find((r) => r.id === build.selected) : undefined
   const findings = selected ? game.interiorFindings(selected.id) : []
+  const checks = game.interiorChecks()
   const tool = (mode: Exclude<HallBuildMode, null>) => {
     setOpen(null)
     const same =
@@ -32,6 +33,9 @@ export function InteriorBar({
   return (
     <div className="interior-bar" data-testid="interior-bar">
       <div className="kit-tabs">
+        <button type="button" data-testid="interior-foundation" className={build?.kind === 'foundation' ? 'on' : ''} onClick={() => tool({ kind: 'foundation' })}>
+          Foundation
+        </button>
         <button type="button" data-testid="interior-wall" className={build?.kind === 'wall' && !build.erase ? 'on' : ''} onClick={() => tool({ kind: 'wall', erase: false })}>
           Walls
         </button>
@@ -41,14 +45,14 @@ export function InteriorBar({
         <button type="button" data-testid="interior-door" className={build?.kind === 'door' ? 'on' : ''} onClick={() => tool({ kind: 'door' })}>
           Door
         </button>
+        <button type="button" data-testid="interior-room" className={build?.kind === 'room' ? 'on' : ''} onClick={() => setOpen(open === 'room' ? null : 'room')}>
+          Zone
+        </button>
         <button type="button" data-testid="interior-floor" className={build?.kind === 'floor' ? 'on' : ''} onClick={() => setOpen(open === 'floor' ? null : 'floor')}>
           Floor
         </button>
         <button type="button" data-testid="interior-wallpaper" className={build?.kind === 'wallpaper' ? 'on' : ''} onClick={() => setOpen(open === 'wall' ? null : 'wall')}>
           Wallpaper
-        </button>
-        <button type="button" data-testid="interior-room" className={build?.kind === 'room' ? 'on' : ''} onClick={() => setOpen(open === 'room' ? null : 'room')}>
-          Room
         </button>
         {rooms.map((room) => (
           <button
@@ -61,16 +65,26 @@ export function InteriorBar({
             {ROOM_SPEC[room.kind].label}
           </button>
         ))}
-        {build?.kind === 'wall' || build?.kind === 'door' || build?.kind === 'floor' || build?.kind === 'wallpaper' || build?.kind === 'room' ? (
+        {build?.kind === 'foundation' || build?.kind === 'wall' || build?.kind === 'door' || build?.kind === 'floor' || build?.kind === 'wallpaper' || build?.kind === 'room' ? (
           <span className="kit-status" data-testid="interior-status">
+            {build.kind === 'foundation' ? 'Foundation · drag indoor floor' : null}
             {build.kind === 'wall' ? (build.erase ? 'Erase · drag a wall' : 'Walls · drag') : null}
             {build.kind === 'door' ? 'Door · click a wall' : null}
             {build.kind === 'floor' ? `Floor · ${FLOOR_PAINTS.find((p) => p.id === build.paint)?.label ?? 'paint'}` : null}
             {build.kind === 'wallpaper' ? `Wallpaper · ${WALL_PAINTS.find((p) => p.id === build.paint)?.label ?? 'paint'}` : null}
-            {build.kind === 'room' ? `${ROOM_SPEC[build.room].label} · drag a rectangle` : null}
+            {build.kind === 'room' ? `${ROOM_SPEC[build.room].label} · drag across the tiles to designate` : null}
             {' · Esc cancel'}
           </span>
         ) : null}
+      </div>
+      <div className="interior-check" data-testid="interior-check">
+        {checks.length === 0 ? (
+          <span className="good">Requirements met.</span>
+        ) : (
+          checks.map((f) => (
+            <p key={f.id} className="bad">{f.title}. {f.fix}</p>
+          ))
+        )}
       </div>
       {open === 'floor' ? (
         <div className="kit-cards" data-testid="floor-paints">
@@ -95,6 +109,7 @@ export function InteriorBar({
           {ROOM_KINDS.map((kind) => (
             <button key={kind} type="button" data-testid={`room-${kind}`} className={build?.kind === 'room' && build.room === kind ? 'on' : ''} onClick={() => { setOpen(null); setBuild({ kind: 'room', room: kind, selected: null }) }}>
               <strong>{ROOM_SPEC[kind].label}</strong>
+              <span>Needs {ROOM_SPEC[kind].needs.map((need) => EQUIP_SPEC[need].label.toLowerCase()).join(', ')}</span>
             </button>
           ))}
         </div>

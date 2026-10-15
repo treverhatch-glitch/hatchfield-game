@@ -74,12 +74,23 @@ function paintOf(edit: InteriorEdit, edge: Edge): string | undefined {
   return edit.wallPaint.find((w) => `${w.x},${w.y},${w.dir}` === key)?.paint
 }
 
-/** Draw the player's walls, doors, floor paint, and room slabs. */
+/** Draw the player's foundation, walls, doors, floor paint, and room slabs. */
 export function syncInteriorEdit(group: THREE.Group, edit: InteriorEdit | undefined, sig: string, last: { sig: string }): void {
   if (sig === last.sig) return
   last.sig = sig
   disposeGroup(group)
   if (!edit) return
+  for (const t of edit.foundation ?? []) {
+    if ((t.floor ?? 0) !== 0) continue
+    const c = tileCenter(t.x, t.y, TILE, HALL_W, HALL_D)
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(TILE - 0.04, TILE - 0.04),
+      new THREE.MeshLambertMaterial({ color: '#9a958c' }),
+    )
+    mesh.rotation.x = -Math.PI / 2
+    mesh.position.set(c.x, 0.03, c.z)
+    group.add(mesh)
+  }
   for (const p of edit.floorPaint) {
     if ((p.floor ?? 0) !== 0) continue
     const c = tileCenter(p.x, p.y, TILE, HALL_W, HALL_D)
@@ -124,13 +135,14 @@ export function syncInteriorEdit(group: THREE.Group, edit: InteriorEdit | undefi
 
 export function interiorEditSig(edit: InteriorEdit | undefined): string {
   if (!edit) return ''
-  return `${edit.walls.length}|${edit.doors.length}|${edit.removed.length}|${edit.floorPaint.length}|${edit.wallPaint.length}|${edit.rooms.map((r) => `${r.id}:${r.x},${r.y},${r.w}x${r.h}`).join(';')}|${edit.equipment.length}|${edit.floorPaint.map((p) => p.paint).join(',')}|${edit.wallPaint.map((p) => p.paint).join(',')}`
+  const foundation = (edit.foundation ?? []).map((t) => `${t.x},${t.y}`).join('.')
+  return `${edit.walls.length}|${edit.doors.length}|${edit.removed.length}|${edit.floorPaint.length}|${edit.wallPaint.length}|${foundation}|${edit.rooms.map((r) => `${r.id}:${r.x},${r.y},${r.w}x${r.h}`).join(';')}|${edit.equipment.length}|${edit.floorPaint.map((p) => p.paint).join(',')}|${edit.wallPaint.map((p) => p.paint).join(',')}`
 }
 
 /** Ghost for a drag that has not been paid for yet. */
 export function syncInteriorGhost(
   group: THREE.Group,
-  tool: 'wall' | 'floor' | 'wallpaper' | 'room' | 'door' | null,
+  tool: 'wall' | 'floor' | 'wallpaper' | 'room' | 'door' | 'foundation' | null,
   a: { x: number; y: number } | null,
   b: { x: number; y: number } | null,
 ): void {
@@ -149,7 +161,7 @@ export function syncInteriorGhost(
     return
   }
   const rect: Rect = tool === 'room' ? dragRect(a, b) : dragRect(a, b)
-  const tiles = tool === 'floor' || tool === 'room' ? tilesInRect(rect) : []
+  const tiles = tool === 'floor' || tool === 'room' || tool === 'foundation' ? tilesInRect(rect) : []
   for (const t of tiles) {
     const c = tileCenter(t.x, t.y, TILE, HALL_W, HALL_D)
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(TILE - 0.1, TILE - 0.1), mat)
