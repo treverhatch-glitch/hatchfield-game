@@ -6,6 +6,7 @@
 import type { StandClass, Tile, Vec } from '../../game/types'
 import { aircraftWorldPerMeter, getAircraftSpec } from '../aircraft/specs'
 import { bridgeDoorsMeters, envelopeLetter, envelopeWorld, standPreviewId, type IcaoCode } from '../aircraft/stands'
+import { LANDSIDE } from '../../landside/config'
 import { CELL, cellX, cellZ, tileAt, type BridgeCraft, type WorldView } from './view'
 
 export type Dir = 'n' | 's' | 'e' | 'w'
@@ -929,6 +930,19 @@ export function standHatch(list: StandInfo[]): { x: number; z: number; w: number
   return out
 }
 
+/** Lane-line offsets from the road centre, world units. */
+const ROAD_LINES = (() => {
+  const toWorld = CELL / LANDSIDE.cellM
+  const half = LANDSIDE.medianM / 2
+  const dividers: number[] = []
+  for (let k = 1; k < LANDSIDE.lanesEachWay; k++) dividers.push((half + LANDSIDE.laneWidthM * k) * toWorld)
+  return {
+    median: half * toWorld,
+    dividers,
+    edge: (half + LANDSIDE.laneWidthM * LANDSIDE.lanesEachWay) * toWorld,
+  }
+})()
+
 export function roadPaint(view: WorldView): Paint[] {
   const out: Paint[] = []
   for (let r = 0; r < view.tiles.length; r++) {
@@ -940,23 +954,25 @@ export function roadPaint(view: WorldView): Paint[] {
         const t = tileAt(view, c + DIR_VEC[d].dc, r + DIR_VEC[d].dr)
         const v = DIR_VEC[d]
         if (t === 'road') {
-          // Yellow centre dash, plus a white lane line each side of a 22 m carriageway.
-          out.push({
-            x: x + v.dc * CELL * 0.28,
-            z: z + v.dr * CELL * 0.28,
-            w: v.dc ? 1.15 : 0.14,
-            d: v.dr ? 1.15 : 0.14,
-            color: 'yellow',
-          })
-          const lane = CELL * 0.16
-          for (const side of [1, -1]) {
-            out.push({
-              x: x + v.dc * CELL * 0.28 + (v.dc === 0 ? side * lane : 0),
-              z: z + v.dr * CELL * 0.28 + (v.dr === 0 ? side * lane : 0),
-              w: v.dc ? 0.7 : 0.1,
-              d: v.dr ? 0.7 : 0.1,
-              color: 'white',
-            })
+          // Double yellow median, dashed white between through lanes, and a solid
+          // white edge where the drop-off layby starts. Offsets come from the landside lanes.
+          const lines: { off: number; color: 'yellow' | 'white'; solid: boolean }[] = [
+            { off: ROAD_LINES.median, color: 'yellow', solid: true },
+            ...ROAD_LINES.dividers.map((off) => ({ off, color: 'white' as const, solid: false })),
+            { off: ROAD_LINES.edge, color: 'white', solid: true },
+          ]
+          for (const line of lines) {
+            const len = line.solid ? CELL * 0.5 : 1.15
+            const at = line.solid ? 0.25 : 0.28
+            for (const side of [1, -1]) {
+              out.push({
+                x: x + v.dc * CELL * at + (v.dc === 0 ? side * line.off : 0),
+                z: z + v.dr * CELL * at + (v.dr === 0 ? side * line.off : 0),
+                w: v.dc ? len : 0.1,
+                d: v.dr ? len : 0.1,
+                color: line.color,
+              })
+            }
           }
         } else {
           out.push({

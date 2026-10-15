@@ -1,7 +1,18 @@
 export { LANDSIDE, type ParkKind } from './config.ts'
 export { openCurbFlow } from './open.ts'
 export { LandsideTraffic, arrivalRate, measure, pressureColor } from './engine.ts'
-export { approachLanes, buildNetwork, cellId, curbFrontage, exitPath } from './network.ts'
+export { approachLanes, buildNetwork, cellId, curbFrontage, exitPath, exitsAtEdge } from './network.ts'
+export {
+  buildLanes,
+  headingAt,
+  indexAt,
+  indexAtMetres,
+  laneMetres,
+  laneOffsets,
+  laneOpenAt,
+  pointAt,
+  type LaneGeometry,
+} from './lanes.ts'
 export type {
   Cell,
   LandsideField,

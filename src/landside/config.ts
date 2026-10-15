@@ -47,6 +47,22 @@ export const LANDSIDE = {
   /** Minutes a parked car keeps its stall. Turnover is spaces / this. */
   parkDwellMin: 20,
   cellM: 22,
+  /**
+   * Which side of the carriageway traffic keeps. The lane offsets, the
+   * drop-off layby, and the U-turn direction all read this one value.
+   */
+  drivingSide: 'right' as 'left' | 'right',
+  /** Through lanes in each direction on one 22 m road cell. */
+  lanesEachWay: 2,
+  /** Width of one through lane, metres. */
+  laneWidthM: 3.5,
+  /** Painted median between the two directions, metres. */
+  medianM: 1,
+  /**
+   * Drop-off layby outside the curb-side lane, metres. Stalls sit in it,
+   * so a stopped car leaves both through lanes open.
+   */
+  laybyWidthM: 2.5,
   /** Approach speed, metres per second. */
   speedMps: 6,
   /** Gap between queued cars along the approach, metres. */

@@ -128,9 +128,11 @@ export interface Network {
   /** Nearest terminal cell, for people walking off a car. */
   door: Cell | null
   /**
-   * Forward road from the curb to the way out.
-   * The first cell is the curb. The last cells leave the pavement
-   * so a car can drive off instead of turning around.
+   * Road from the curb to the far end of the route, paved cells only.
+   * The first cell is the curb. Traffic U-turns in the last cell unless
+   * that cell is on the map edge, in which case it drives off there.
    */
   exit: Cell[]
+  /** True when the far end is a second way off the map rather than a U-turn. */
+  edgeExit: boolean
 }

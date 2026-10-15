@@ -40,6 +40,10 @@ export function pickEntry(roads: Cell[]): Cell | null {
   return ranked.find(onBorder) ?? ranked[0]
 }
 
+export function onMapBorder(cell: Cell): boolean {
+  return onBorder(cell)
+}
+
 function manhattan(a: Cell, b: Cell): number {
   return Math.abs(a.c - b.c) + Math.abs(a.r - b.r)
 }
@@ -100,62 +104,43 @@ export function approachPath(roads: Cell[], entry: Cell | null, frontage: Cell[]
   return []
 }
 
-function rebuild(prev: Map<string, string | null>, goal: Cell): Cell[] {
-  const path: Cell[] = [goal]
-  let walk: string | null = prev.get(cellId(goal)) ?? null
-  while (walk) {
-    const [c, r] = walk.split(',').map(Number)
-    path.push({ c, r })
-    walk = prev.get(walk) ?? null
-  }
-  path.reverse()
-  return path
-}
-
 /**
- * Road from the curb onward, never back down the approach.
- * Cars leave forward and drop off the far end. A dead-end curb still
- * gets two cells of departure so they do not turn around on the way in.
+ * Road from the curb onward, never back down the approach, on paved cells only.
+ * It keeps straight where it can and stops at a dead end or at the map edge.
+ * The first cell is the curb. A dead end is where traffic U-turns.
  */
 export function exitPath(drive: Cell[], approach: Cell[]): Cell[] {
   if (approach.length < 2) return []
   const curb = approach[approach.length - 1]
   const driveSet = new Set(drive.map(cellId))
-  const inbound = new Set(approach.slice(0, -1).map(cellId))
-  const queue: Cell[] = [curb]
-  const prev = new Map<string, string | null>([[cellId(curb), null]])
-  let farthest = curb
-  let farthestD = 0
-  let border: Cell | null = null
-  const entryId = cellId(approach[0])
-  for (let i = 0; i < queue.length; i++) {
-    const cur = queue[i]
-    for (const next of ortho(cur)) {
+  const seen = new Set(approach.map(cellId))
+  const out: Cell[] = [curb]
+  let prev = approach[approach.length - 2]
+  let cur = curb
+  for (;;) {
+    if (out.length > 1 && onBorder(cur)) break
+    const dc = cur.c - prev.c
+    const dr = cur.r - prev.r
+    const straight = { c: cur.c + dc, r: cur.r + dr }
+    const options = [straight, ...ortho(cur)].filter((next) => {
       const id = cellId(next)
-      if (!driveSet.has(id) || prev.has(id) || inbound.has(id)) continue
-      prev.set(id, cellId(cur))
-      const d = manhattan(next, curb)
-      if (d > farthestD) {
-        farthest = next
-        farthestD = d
-      }
-      if (!border && onBorder(next) && id !== entryId) border = next
-      queue.push(next)
-    }
+      return driveSet.has(id) && !seen.has(id)
+    })
+    const next = options[0]
+    if (!next) break
+    seen.add(cellId(next))
+    out.push(next)
+    prev = cur
+    cur = next
   }
-  const goal = border ?? (farthestD > 0 ? farthest : null)
-  const walked = goal ? rebuild(prev, goal) : [curb]
-  const tail = walked.length > 1 ? walked[walked.length - 1] : curb
-  const prevCell = walked.length > 1 ? walked[walked.length - 2] : approach[approach.length - 2]
-  const dc = Math.sign(tail.c - prevCell.c)
-  const dr = Math.sign(tail.r - prevCell.r)
-  const stepC = dc || 0
-  const stepR = dr || 1
-  return [
-    ...walked,
-    { c: tail.c + stepC, r: tail.r + stepR },
-    { c: tail.c + stepC * 2, r: tail.r + stepR * 2 },
-  ]
+  return out
+}
+
+/** True when the far end of the route leaves the map instead of ending in a U-turn. */
+export function exitsAtEdge(path: Cell[], exit: Cell[]): boolean {
+  if (exit.length < 2 || !path.length) return false
+  const far = exit[exit.length - 1]
+  return onBorder(far) && cellId(far) !== cellId(path[0])
 }
 
 /**
@@ -194,6 +179,7 @@ export function buildNetwork(field: LandsideField): Network {
   const frontage = curbFrontage(roads, terminals)
   const entry = pickEntry(roads)
   const path = approachPath(drive, entry, frontage)
+  const exit = exitPath(drive, path)
   return {
     roads,
     frontage,
@@ -210,6 +196,7 @@ export function buildNetwork(field: LandsideField): Network {
     curbLanes: uniq(field.curbLanes ?? []).length,
     taxiRanks: uniq(field.taxiRanks ?? []).length,
     door: nearestDoor(frontage, terminals),
-    exit: exitPath(drive, path),
+    exit,
+    edgeExit: exitsAtEdge(path, exit),
   }
 }

@@ -49,7 +49,8 @@ describe('curb network', () => {
     expect(net.path[0]).toEqual({ c: 7, r: 0 })
     expect(net.path.at(-1)?.c).toBe(7)
     expect(net.exit[0]).toEqual(net.path.at(-1))
-    expect(net.exit.at(-1)!.r).toBeGreaterThan(net.path.at(-1)!.r)
+    expect(net.exit.at(-1)).toEqual({ c: 7, r: 8 })
+    expect(net.edgeExit).toBe(false)
   })
 
   it('counts a parallel road as a second lane only when it runs the whole approach', () => {
