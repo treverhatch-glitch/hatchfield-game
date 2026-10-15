@@ -9,6 +9,7 @@ export const HINT_KIND_PREFIX: [prefix: string, kind: string][] = [
   ['session-', 'session'],
   ['standing-', 'standing'],
   ['delay-', 'turnaround-delay'],
+  ['cart-', 'cart-wait'],
   ['dead-', 'dead-end'],
   ['plan-dead_', 'plan-dead-end'],
   ['zone-', 'zone-unreachable'],
@@ -44,6 +45,7 @@ export const HINT_SEVERITY: Record<string, HintSeverity> = {
   'low-meals': 'tip',
   'low-fuel': 'warning',
   'turnaround-delay': 'tip',
+  'cart-wait': 'warning',
   standing: 'warning',
   session: 'tip',
 }

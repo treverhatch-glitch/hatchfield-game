@@ -84,6 +84,9 @@ describe('aircraft lights sit on the airframe', () => {
         }
       }
       if (tail) expect(tail.position.x).toBeLessThan(-spec.lengthM * 0.45)
+      const landing = lamps.find((l) => l.name === 'landing-light')
+      if (landing) expect(landing.children.some((child) => child.userData.glow), `${spec.id} landing glow`).toBe(true)
+      if (port) expect(port.children.some((child) => child.userData.glow), `${spec.id} nav glow`).toBe(true)
     })
   }
 })

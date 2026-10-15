@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Game } from '../game/sim'
 import { STARTER_KITS } from '../game/starterLayout'
+import { setDayNightCycleEnabled } from '../render/graphicsPrefs'
 import { LandScreen } from './LandScreen'
 import { TitleScreen } from './TitleScreen'
 
@@ -50,6 +51,44 @@ describe('start menu', () => {
     const html = title(false)
     expect(html).toContain('data-testid="hints-off-toggle" checked=""')
     expect(html).not.toContain('data-testid="enable-hints-toggle" checked=""')
+  })
+
+  it('offers the day and night cycle on the settings stage', () => {
+    setDayNightCycleEnabled(true)
+    const game = new Game()
+    const on = renderToStaticMarkup(
+      <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
+        sandbox={false}
+        onSandboxChange={() => {}}
+        enableHints
+        onEnableHintsChange={() => {}}
+        onNewGame={() => {}}
+        onContinue={() => {}}
+      />,
+    )
+    expect(on).toContain('data-testid="settings-day-night" checked=""')
+    expect(on).toContain('Day/night cycle: On')
+    setDayNightCycleEnabled(false)
+    const off = renderToStaticMarkup(
+      <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
+        sandbox={false}
+        onSandboxChange={() => {}}
+        enableHints
+        onEnableHintsChange={() => {}}
+        onNewGame={() => {}}
+        onContinue={() => {}}
+      />,
+    )
+    expect(off).toContain('Day/night cycle: Off')
+    expect(off).toContain('Always day')
+    expect(off).not.toContain('data-testid="settings-day-night" checked=""')
+    setDayNightCycleEnabled(true)
   })
 })
 

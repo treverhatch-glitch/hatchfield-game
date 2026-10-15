@@ -8,6 +8,7 @@ import {
   NIGHT_FLOOR,
   FIXED_DAY_HOUR,
   resolveHour,
+  resolvePlayHour,
   SKY_PHOTO_FADES,
   SKY_PHOTOS,
   skyPhotoBlend,
@@ -53,6 +54,29 @@ describe('day/night hooks', () => {
     expect(resolveHour(0, null, null)).toBe(8)
     expect(resolveHour(0, null, null, false)).toBe(FIXED_DAY_HOUR)
     expect(resolveHour(0, 23, null, false)).toBe(23)
+  })
+
+  it('holds late morning when the cycle is off, and still lets a photo hour win', () => {
+    expect(resolvePlayHour(0, null, null, false)).toBe(DAY_NIGHT.hold)
+    expect(resolvePlayHour(clockForHour(4, 23), null, null, false)).toBe(DAY_NIGHT.hold)
+    expect(resolvePlayHour(0, 18.5, null, false)).toBe(18.5)
+    expect(resolvePlayHour(0, null, { hour: 23 }, false)).toBe(23)
+    expect(resolvePlayHour(0, null, null, true)).toBe(8)
+    const dawn = skyState(DAY_NIGHT.shots.dawn)
+    const dusk = skyState(DAY_NIGHT.shots.dusk)
+    const noon = skyState(DAY_NIGHT.shots.noon)
+    const night = skyState(DAY_NIGHT.shots.night)
+    expect(dawn.sunDir.y).toBeLessThan(noon.sunDir.y * 0.5)
+    expect(dawn.sunDir.x).toBeGreaterThan(0)
+    expect(dusk.sunDir.x).toBeLessThan(0)
+    expect((dawn.sunColor >> 16) & 255).toBeGreaterThan(dawn.sunColor & 255)
+    expect((dusk.sunColor >> 16) & 255).toBeGreaterThan(dusk.sunColor & 255)
+    expect(dawn.stars).toBeLessThan(0.25)
+    expect(dusk.stars).toBeLessThan(0.35)
+    expect(noon.stars).toBe(0)
+    expect(night.stars).toBeGreaterThan(0.9)
+    expect(dawn.lights).toBeGreaterThan(0.9)
+    expect(noon.lights).toBe(0)
   })
 })
 
