@@ -6,6 +6,7 @@ import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
 import { axisTicks, barNote, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
 import type { TtFlight } from './types'
 import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
+import { schedulePillEscape, setSchedulePill, setSchedulePlanner, sheetShown } from './scheduleSheet'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
 describe('clock face', () => {
@@ -48,6 +49,25 @@ describe('clock face', () => {
   })
   it('converts drag pixels into seconds', () => {
     expect(pxToSec(100, 400, { from: 0, to: 80 })).toBe(20)
+  })
+})
+
+describe('one schedule sheet', () => {
+  it('opens from the pill or from Planner, and a build menu hides it', () => {
+    expect(sheetShown({ pill: true, planner: false, buildMenu: false })).toBe(true)
+    expect(sheetShown({ pill: false, planner: true, buildMenu: false })).toBe(true)
+    expect(sheetShown({ pill: true, planner: false, buildMenu: true })).toBe(false)
+    expect(sheetShown({ pill: false, planner: false, buildMenu: false })).toBe(false)
+  })
+
+  it('lets Esc close a pill-opened sheet and leaves a Planner-opened sheet', () => {
+    setSchedulePill(true)
+    setSchedulePlanner(false)
+    expect(schedulePillEscape()).toBe(true)
+    setSchedulePlanner(true)
+    expect(schedulePillEscape()).toBe(false)
+    setSchedulePill(false)
+    setSchedulePlanner(false)
   })
 })
 

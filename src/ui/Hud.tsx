@@ -5,6 +5,7 @@ import { LiveText } from './LiveText'
 import { ViewModeToggle } from './ViewModeToggle'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
+import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
 import { HubProgress } from './hub/HubPanels.tsx'
@@ -117,7 +118,6 @@ const BUDGET_KEYS: BudgetKey[] = [
 ]
 
 export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
-  const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<ManageTabId | null>(null)
   const [infoGroup, setInfoGroup] = useState<string | null>(null)
@@ -255,6 +255,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     document.getElementById(unlockFocus)?.scrollIntoView({ block: 'nearest' })
   }, [unlockFocus, manageTab])
 
+  useEffect(() => {
+    setSchedulePlanner(manageTab === 'planner')
+    return () => setSchedulePlanner(false)
+  }, [manageTab])
+
   const building = game.buildingCard()
   const ticker = game.news.slice(0, 5)
   const xp = game.fieldXpToNext()
@@ -276,7 +281,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
-      {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
+      <GameTimetable game={game} menuOpen={!!buildMenu} plannerOpen={manageTab === 'planner'} />
       <button
         type="button"
         className={`fids-toggle${boardsOpen ? ' on' : ''}`}
@@ -1846,135 +1851,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       {' · '}
                       stamp more strips for more banks — cycle Runway on each slot
                     </p>
-                    {game.runwayStripCount() >= 1 ? (
-                      <div className="row">
-                        <button
-                          type="button"
-                          className={game.plannerRwFilter == null ? 'on' : ''}
-                          onClick={() => game.setPlannerRwFilter(null)}
-                        >
-                          All banks
-                        </button>
-                        {Array.from({ length: game.runwayStripCount() }, (_, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            className={game.plannerRwFilter === i ? 'on' : ''}
-                            onClick={() => game.setPlannerRwFilter(i)}
-                          >
-                            Runway {i + 1} ({game.scheduleForRunway(i).length})
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className={game.plannerRwFilter === -1 ? 'on' : ''}
-                          onClick={() => game.setPlannerRwFilter(-1)}
-                        >
-                          Auto
-                        </button>
-                      </div>
-                    ) : null}
-                    {(() => {
-                      const strip = game.plannerStrip(120)
-                      const night = game.plannerNightBand(120)
-                      const nightUnlocked = game.hasResearch('night_bank')
-                      return (
-                        <div
-                          className="day-strip"
-                          title="Next 120s — click a bar to select that slot for drag / stand pin"
-                        >
-                          <div className="day-strip-rail">
-                            <span className="day-strip-now">now</span>
-                            <span className="day-strip-end">+2m</span>
-                            {night ? (
-                              <span
-                                className={`day-strip-night${nightUnlocked ? '' : ' locked'}`}
-                                style={{
-                                  left: `${(night.from / strip.horizon) * 100}%`,
-                                  width: `${Math.max(2, ((night.to - night.from) / strip.horizon) * 100)}%`,
-                                }}
-                                title={
-                                  nightUnlocked
-                                    ? 'Night bank open'
-                                    : 'Night column — research Night bank to clear curfew'
-                                }
-                              />
-                            ) : null}
-                            {strip.hosts.map((h, i) => (
-                              <span
-                                key={h.id}
-                                className="day-strip-slot stolen host"
-                                style={{ left: `${4 + i * 8}%` }}
-                                title={`${h.flightNo} · ${h.kind} host on ${h.stand} — steals bank capacity`}
-                              >
-                                {h.kind === 'divert' ? 'DIV' : 'TNK'}
-                              </span>
-                            ))}
-                            {strip.slots.map((s) => {
-                              const left = Math.min(96, (s.t / strip.horizon) * 100)
-                              return (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${s.stolen ? ' stolen' : ''}${selSlot === s.id ? ' selected' : ''}`}
-                                  style={{
-                                    left: `${left}%`,
-                                    background: s.stolen
-                                      ? '#c45a2a'
-                                      : game.airline(s.airline).color,
-                                  }}
-                                  title={
-                                    s.stolen
-                                      ? `${s.flightNo} · slipped — emergency stole a gate · ${s.stand}`
-                                      : `${s.flightNo}${s.model ? ` · ${s.model}` : ''} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`
-                                  }
-                                  onClick={() => setSelSlot(s.id)}
-                                >
-                                  {s.flightNo.slice(-3)}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })()}
-                    {selSlot ? (
-                      <div className="planner-drag">
-                        <p className="muted">
-                          Selected{' '}
-                          {game.schedule.find((s) => s.id === selSlot)?.flightNo ?? 'slot'} — drag
-                          ETA / pin stand
-                        </p>
-                        <div className="row">
-                          <button type="button" onClick={() => game.nudgeSlotEta(selSlot, -10)}>
-                            ETA −10
-                          </button>
-                          <button type="button" onClick={() => game.nudgeSlotEta(selSlot, 10)}>
-                            ETA +10
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              game.setSlotStandPref(selSlot, null)
-                            }}
-                          >
-                            Auto stand
-                          </button>
-                        </div>
-                        <div className="row">
-                          {tilesOf(game.tiles, 'stand').map((st) => (
-                            <button
-                              key={`${st.c},${st.r}`}
-                              type="button"
-                              title={`Pin ${game.gateLabel(st)}`}
-                              onClick={() => game.setSlotStandPref(selSlot, st)}
-                            >
-                              {game.gateLabel(st)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
+                    <p className="muted">Edit a turn on the schedule sheet. This panel does not move it.</p>
                     <div className="row">
                       <button
                         type="button"
@@ -1998,63 +1875,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         </button>
                       ))}
                     </div>
-                    <ul className="airlines">
-                      {game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).length === 0 ? (
-                        <li>
-                          <span className="muted">No slots — sign an airline or add manual.</span>
-                        </li>
-                      ) : (
-                        game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).map((s) => {
-                          const eta = Math.max(0, Math.round(s.eta - game.clock))
-                          const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
-                          const rw = game.runwayLabel(s.runwayPref)
-                          return (
-                            <li key={s.id}>
-                              <b style={{ color: game.airline(s.airline).color }}>
-                                {s.flightNo}{' '}
-                                <span className="muted">
-                                  {s.status}
-                                  {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
-                                  {s.manual ? ' · manual' : ''}
-                                  {' · '}
-                                  {rw}/{stand}
-                                  {game.slotAircraftName(s) ? ` · ${game.slotAircraftName(s)}` : ''}
-                                </span>
-                              </b>
-                              <span className="muted">
-                                {game.airline(s.airline).name} · ETA {eta}s
-                                {s.claimLane ? ` · claim ${s.claimLane}` : ''}
-                                {s.delayReason ? ` · ${s.delayReason}` : ''}
-                              </span>
-                              {s.status !== 'inbound' ? (
-                                <span className="row" style={{ marginTop: 4 }}>
-                                  <button type="button" onClick={() => game.pullSlot(s.id)}>
-                                    Pull
-                                  </button>
-                                  <button type="button" onClick={() => game.bumpSlot(s.id)}>
-                                    Bump
-                                  </button>
-                                  <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
-                                    Stand
-                                  </button>
-                                  {game.runwayStripCount() >= 1 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => game.cycleSlotRunway(s.id)}
-                                    >
-                                      Runway
-                                    </button>
-                                  ) : null}
-                                  <button type="button" onClick={() => game.cancelSlot(s.id)}>
-                                    Cancel
-                                  </button>
-                                </span>
-                              ) : null}
-                            </li>
-                          )
-                        })
-                      )}
-                    </ul>
                   </section>
                 </>
               ) : null}

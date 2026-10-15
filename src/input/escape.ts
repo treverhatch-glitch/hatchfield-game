@@ -10,6 +10,7 @@ export type EscapeStep =
   | 'close-info'
   | 'close-flight-card'
   | 'close-hub-profile'
+  | 'close-schedule'
   | 'open-menu'
 
 export function nextEscape(state: {
@@ -20,6 +21,7 @@ export function nextEscape(state: {
   infoViewOpen?: boolean
   flightCardOpen?: boolean
   hubProfileOpen?: boolean
+  schedulePillOpen?: boolean
 }): EscapeStep {
   if (state.menuOpen) return 'close-menu'
   if (state.cameraCaptured) return 'release-camera'
@@ -28,6 +30,7 @@ export function nextEscape(state: {
   if (state.infoViewOpen) return 'close-info'
   if (state.flightCardOpen) return 'close-flight-card'
   if (state.hubProfileOpen) return 'close-hub-profile'
+  if (state.schedulePillOpen) return 'close-schedule'
   return 'open-menu'
 }
 

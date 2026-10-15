@@ -36,6 +36,12 @@ describe('escape order', () => {
     expect(nextEscape({ ...idle, toolActive: true, flightCardOpen: true })).toBe('cancel-tool')
   })
 
+  it('closes a pill-opened schedule after the flight card and before the menu', () => {
+    expect(nextEscape({ ...idle, schedulePillOpen: true })).toBe('close-schedule')
+    expect(nextEscape({ ...idle, flightCardOpen: true, schedulePillOpen: true })).toBe('close-flight-card')
+    expect(nextEscape({ ...idle, hubProfileOpen: true, schedulePillOpen: true })).toBe('close-hub-profile')
+  })
+
   it('closes the hub profile after the flight card and before the menu', () => {
     expect(nextEscape({ ...idle, hubProfileOpen: true })).toBe('close-hub-profile')
     expect(nextEscape({ ...idle, flightCardOpen: true, hubProfileOpen: true })).toBe('close-flight-card')

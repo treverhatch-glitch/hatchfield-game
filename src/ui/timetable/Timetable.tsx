@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { axisTicks, barNote, boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type GanttBar, type RunwayLaneModel, type ViewSpan } from './layout'
 import { gameMinToSim, SCHEDULE } from './scheduleConfig'
+import { schedulePillOpen, setSchedulePill, sheetShown, subscribeScheduleSheet } from './scheduleSheet'
 import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, standFits } from './time'
 import type { TimetableAdapter, TtFlight } from './types'
 import './timetable.css'
@@ -26,13 +27,15 @@ interface Drag {
 export function Timetable({
   adapter,
   menuOpen = false,
+  plannerOpen = false,
   defaultOpen = false,
 }: {
   adapter: TimetableAdapter
   menuOpen?: boolean
+  plannerOpen?: boolean
   defaultOpen?: boolean
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [tab, setTab] = useState<Tab>('stands')
   const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(24)
   const [sel, setSel] = useState<string | null>(null)
@@ -41,18 +44,21 @@ export function Timetable({
   const [, tick] = useState(0)
   const dragRef = useRef<Drag | null>(null)
 
+  useEffect(() => setSchedulePill(pillOpen), [pillOpen])
+  useEffect(() => subscribeScheduleSheet(() => setPillOpen(schedulePillOpen())), [])
+  const shown = sheetShown({ pill: pillOpen, planner: plannerOpen, buildMenu: menuOpen })
+
   useEffect(() => {
-    if (!open) return
+    if (!shown) return
     const h = window.setInterval(() => tick((n) => n + 1), 500)
     return () => window.clearInterval(h)
-  }, [open])
+  }, [shown])
 
   const day = adapter.dayLength
   const now = adapter.now()
   const flights = adapter.flights()
   const stands = adapter.stands()
   const span = viewSpan(now, day, zoom)
-  const shown = open && !menuOpen
   const runwayList = adapter.runways()
   const multiRw = runwayList.length > 1
   const rwLabel = (id: string | null | undefined) => (id ? runwayList.find((r) => r.id === id)?.label ?? id : 'Auto')
@@ -140,7 +146,7 @@ export function Timetable({
         <button
           type="button"
           className="tt-pill"
-          onClick={() => setOpen(true)}
+          onClick={() => setPillOpen(true)}
           title={menuOpen ? 'Close the build menu to open the timetable' : 'Open timetable'}
         >
           <b>Timetable</b>
@@ -173,9 +179,11 @@ export function Timetable({
                 ))}
               </span>
             ) : null}
-            <button type="button" className="tt-close" onClick={() => setOpen(false)} title="Collapse">
-              ▾
-            </button>
+            {plannerOpen ? null : (
+              <button type="button" className="tt-close" onClick={() => setPillOpen(false)} title="Collapse">
+                ▾
+              </button>
+            )}
           </header>
           {swapFrom ? (
             <p className="tt-hint">Pick another flight to swap stands with · <button type="button" onClick={() => setSwapFrom(null)}>Cancel</button></p>

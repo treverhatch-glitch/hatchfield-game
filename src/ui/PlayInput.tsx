@@ -7,6 +7,7 @@ import { moreMenuSnapshot, setMoreMenu } from '../info/moreMenu.ts'
 import { closeMapDetail, closeMapView, mapViewSnapshot } from '../info/session.ts'
 import { nextEscape, numbersToClose } from '../input/escape.ts'
 import { closeFlightCard, isFlightCardOpen, syncFlightCardClick } from './inspector/flightCard.ts'
+import { schedulePillEscape, setSchedulePill } from './timetable/scheduleSheet.ts'
 import { closeHubProfile, isHubProfileOpen } from './hub/session.ts'
 import { cancelHallTool, hallToolActive, rotateHallTool } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
@@ -38,6 +39,7 @@ export function PlayInput({ game }: { game: Game }) {
           infoViewOpen: view.active != null,
           flightCardOpen: isFlightCardOpen(),
           hubProfileOpen: isHubProfileOpen(),
+          schedulePillOpen: schedulePillEscape(),
         })
         if (step === 'close-menu') pauseState.close()
         else if (step === 'release-camera') cameraSession.noteEscape()
@@ -66,6 +68,7 @@ export function PlayInput({ game }: { game: Game }) {
           closeMapView()
         } else if (step === 'close-flight-card') closeFlightCard()
         else if (step === 'close-hub-profile') closeHubProfile()
+        else if (step === 'close-schedule') setSchedulePill(false)
         else pauseState.openMenu()
         return
       }
