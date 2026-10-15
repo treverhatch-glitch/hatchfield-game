@@ -24,6 +24,16 @@ import type {
   SystemsPeaks,
 } from './types.ts'
 
+const MILESTONE_COMMANDS = new Set([
+  'addCheckinDesk',
+  'addSecurityLane',
+  'stampLate',
+  'voteCouncil',
+  'startGreenPioneer',
+  'commission',
+  'buyTowerIII',
+])
+
 export interface PersonaSpec {
   id: PersonaReport['persona']
   label: string
@@ -333,7 +343,11 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
       if (decided.intents.some((intent) => intent.do === 'speed')) heldSpeed = true
       for (const intent of decided.intents) {
         try {
-          note(execute(api, intent, rng))
+          const result = execute(api, intent, rng)
+          note(result)
+          if (result.ok && MILESTONE_COMMANDS.has(result.command) && notes.length < 24) {
+            notes.push(`${result.command} day ${api.view().day}: ${result.detail}`)
+          }
         } catch (error) {
           consoleErrors.push(`${intent.do}: ${message(error)}`)
           note({ ok: false, command: intent.do, detail: message(error) })
@@ -529,6 +543,20 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
       return api.buyTree(intent.id)
     case 'desk':
       return api.hireDesk()
+    case 'hallDesk':
+      return api.addCheckinDesk()
+    case 'hallLane':
+      return api.addSecurityLane()
+    case 'stampLate':
+      return api.stampLate(intent.tool)
+    case 'council':
+      return api.voteCouncil(intent.choice)
+    case 'pioneer':
+      return api.startGreenPioneer()
+    case 'commission':
+      return api.commission(intent.id)
+    case 'towerIII':
+      return api.buyTowerIII()
     case 'fieldBuild':
       return api.buildFieldAsk()
     case 'fieldDecline':

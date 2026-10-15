@@ -15,7 +15,13 @@ import {
   STAND_COST,
   DEPOT_COST,
 } from '../game/catalog.ts'
-import { UNLOCK_LEVEL } from '../progression/unlocks.ts'
+import { TOWER_III_UPGRADE } from '../airside/data.ts'
+import type { CouncilChoiceId } from '../council/types.ts'
+import { lateIdForTool } from '../game/lateBuildings.ts'
+import { itemDef, type ItemId } from '../game/terminal.ts'
+import { progressionBuildable, unlockLevel, UNLOCK_LEVEL } from '../progression/unlocks.ts'
+import { NIGHT_HUB_COST } from '../tier3/config.ts'
+import { buildingById } from '../tier3plus/index.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
@@ -375,6 +381,90 @@ class GamePlayer implements PlayerCommands {
     return result(ok, 'hireDesk', ok ? `#${this.game.deskStaff}` : this.latest('desk agent not hired'))
   }
 
+  addCheckinDesk(): CommandResult {
+    return this.placeHallPiece('checkin_belt', 'addCheckinDesk', 'check-in desk')
+  }
+
+  addSecurityLane(): CommandResult {
+    return this.placeHallPiece('security_small', 'addSecurityLane', 'security lane')
+  }
+
+  stampLate(tool: Tool): CommandResult {
+    const lateId = lateIdForTool(tool)
+    if (!lateId) return result(false, 'stampLate', `${tool} is not a late building`)
+    this.game.setView('apron')
+    this.game.setTool(tool)
+    const before = this.game.lateSites.filter((site) => site.id === lateId).length
+    const roads = tilesOf(this.game.tiles, 'road')
+    let last = 'no road-edge grass'
+    for (const road of roads) {
+      for (const cell of [
+        { c: road.c + 1, r: road.r },
+        { c: road.c - 1, r: road.r },
+        { c: road.c, r: road.r + 1 },
+        { c: road.c, r: road.r - 1 },
+      ]) {
+        if (this.game.tile(cell) !== 'grass') continue
+        const ghost = this.preview(tool, cell)
+        if (ghost) {
+          last = ghost
+          continue
+        }
+        this.clickTile(cell)
+        if (this.game.lateSites.filter((site) => site.id === lateId).length > before) {
+          return result(true, 'stampLate', `${tool} @ ${cell.c},${cell.r}`)
+        }
+        last = this.latest(last)
+      }
+    }
+    return result(false, 'stampLate', last)
+  }
+
+  voteCouncil(choice: CouncilChoiceId): CommandResult {
+    this.game.pokeCouncil()
+    const pending = this.game.councilView().pending
+    if (!pending) return result(false, 'voteCouncil', 'no council request')
+    const before = this.game.councilView().votes.length
+    this.game.answerCouncilRequest(pending.id, choice)
+    const after = this.game.councilView().votes.length
+    return result(after > before, 'voteCouncil', after > before ? `${pending.title} · ${choice}` : this.latest('vote did not land'))
+  }
+
+  startGreenPioneer(): CommandResult {
+    const ok = this.game.startGreenPioneer()
+    return result(ok, 'startGreenPioneer', ok ? 'started' : this.latest('Green Pioneer did not start'))
+  }
+
+  commission(id: string): CommandResult {
+    const before = this.game.progressionBuilt.includes(id)
+    const ok = this.game.commission(id)
+    const built = this.game.progressionBuilt.includes(id)
+    return result(ok && built && !before, 'commission', built && !before ? id : this.latest('commission refused'))
+  }
+
+  buyTowerIII(): CommandResult {
+    if (this.game.towerIII.size > 0) return result(false, 'buyTowerIII', 'already fitted')
+    const tower = tilesOf(this.game.tiles, 'tower')[0]
+    if (!tower) return result(false, 'buyTowerIII', 'no control tower')
+    this.game.infoOpen = `tower:${tower.c},${tower.r}`
+    const ok = this.game.buyTowerIII()
+    return result(ok, 'buyTowerIII', ok ? 'Tower III' : this.latest('Tower III refused'))
+  }
+
+  /** Buy one catalog piece in a spare cell. Success is an extra non-bundle item. */
+  private placeHallPiece(id: ItemId, command: string, label: string): CommandResult {
+    this.game.focusHallForDesk()
+    const before = this.extraHall(id)
+    this.game.placeHallItem(id)
+    const after = this.extraHall(id)
+    return result(after > before, command, after > before ? label : this.latest(`${label} did not place`))
+  }
+
+  private extraHall(def: string): number {
+    const fit = this.game.activeHall()
+    return (fit?.items ?? []).filter((it) => !it.bundle && it.def === def).length
+  }
+
   buildFieldAsk(): CommandResult {
     const task = this.game.fieldTask
     if (!task) return result(false, 'buildFieldAsk', 'no field ask')
@@ -629,6 +719,7 @@ class GamePlayer implements PlayerCommands {
       }
     }
     const curb = game.landsideView()
+    const sign = game.offer ? game.checkinSignReport(game.offer.airline) : null
     const offer = game.offer
       ? {
           name: game.airline(game.offer.airline).name,
@@ -636,8 +727,25 @@ class GamePlayer implements PlayerCommands {
           missing: game.letterVerdict(game.offer.airline).missing,
           deadline: game.offer.deadline,
           needsHelipad: game.carrierNeedsPad(game.offer.airline) && tilesOf(game.tiles, 'helipad').length < 1,
+          checkinOk: sign?.ok,
+          checkinLine: sign?.line,
         }
       : null
+    const hallItems = game.activeHall()?.items ?? []
+    const extraDesks = hallItems.filter((it) => !it.bundle && (it.def === 'checkin_belt' || it.def === 'checkin_express')).length
+    const extraLanes = hallItems.filter(
+      (it) =>
+        !it.bundle &&
+        (it.def === 'security_small' || it.def === 'security_medium' || it.def === 'security_large' || it.def === 'scanner'),
+    ).length
+    const council = game.councilView()
+    const fullChoice = council.pending?.choices.find((choice) => choice.id === 'full')
+    const compromiseChoice = council.pending?.choices.find((choice) => choice.id === 'compromise')
+    const approachSpec = progressionBuildable('atc_approach')
+    const approachBuilt = game.progressionBuilt.includes('atc_approach')
+    const towerBuilt = game.towerIII.size > 0
+    const spottersSpec = buildingById('spotters_deck')
+    const cargoSpec = buildingById('cargo_hub_ii')
     return {
       day: game.gameDay(),
       clock: game.clock,
@@ -716,6 +824,44 @@ class GamePlayer implements PlayerCommands {
       depotCost: DEPOT_COST,
       depotBuilding: game.sites.some((site) => site.tool === 'depot'),
       depotOpen: game.fieldLevel() >= (UNLOCK_LEVEL.depot ?? 2),
+      hall: {
+        deskCost: itemDef('checkin_belt')?.cost ?? 0,
+        laneCost: itemDef('security_small')?.cost ?? 0,
+        deskOpen: game.hallPieceOpen('checkin_belt'),
+        laneOpen: game.hallPieceOpen('security_small'),
+        extraDesks,
+        extraLanes,
+      },
+      council: {
+        unlocked: council.unlocked,
+        pendingId: council.pending?.id ?? null,
+        votes: council.votes.length,
+        fullCost: fullChoice?.cost ?? 0,
+        compromiseCost: compromiseChoice?.cost ?? 0,
+      },
+      pioneerStarted: game.carbonView().greenPioneer != null,
+      approach: {
+        built: approachBuilt,
+        cost: approachSpec?.cost ?? 0,
+        level: unlockLevel('atc_approach'),
+      },
+      tower: {
+        built: towerBuilt,
+        ready:
+          !towerBuilt &&
+          tilesOf(game.tiles, 'tower').length > 0 &&
+          game.fieldLevel() >= TOWER_III_UPGRADE.minFieldLevel &&
+          approachBuilt,
+        cost: TOWER_III_UPGRADE.cost,
+      },
+      late: {
+        nightHub: tilesOf(game.tiles, 'nighthub').length > 0,
+        nightHubCost: NIGHT_HUB_COST,
+        spotters: game.lateSites.some((site) => site.id === 'spotters_deck'),
+        spottersCost: spottersSpec?.cost ?? 0,
+        cargoHub: game.lateSites.some((site) => site.id === 'cargo_hub_ii'),
+        cargoHubCost: cargoSpec?.cost ?? 0,
+      },
     }
   }
 

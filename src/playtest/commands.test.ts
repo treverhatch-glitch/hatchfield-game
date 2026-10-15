@@ -66,6 +66,37 @@ describe('player command API', () => {
     expect(curb.ok).toBe(true)
     expect(curb.detail).toMatch(/bus/)
   })
+
+  it('buys a hall desk, starts Green Pioneer, and refuses a vote when the council is quiet', () => {
+    const api = createPlayer()
+    api.setSandbox(true)
+    api.beginNew('easy')
+    api.buyLand('city')
+    expect(api.buildStarterKit().ok).toBe(true)
+    const before = api.view().hall.extraDesks
+    const desk = api.addCheckinDesk()
+    expect(desk.ok).toBe(true)
+    expect(api.view().hall.extraDesks).toBe(before + 1)
+
+    const quiet = api.voteCouncil('decline')
+    expect(quiet.ok).toBe(false)
+    expect(quiet.detail).toMatch(/no council request/)
+
+    expect(api.startGreenPioneer().ok).toBe(true)
+    expect(api.view().pioneerStarted).toBe(true)
+  })
+
+  it('refuses the spotters deck at field level 1 through the late stamp', () => {
+    const api = createPlayer()
+    api.setSandbox(true)
+    api.beginNew('easy')
+    api.buyLand('city')
+    expect(api.buildStarterKit().ok).toBe(true)
+    const stamped = api.stampLate('spotters_deck')
+    expect(stamped.ok).toBe(false)
+    expect(stamped.command).toBe('stampLate')
+    expect(stamped.detail).toMatch(/Field Level 8/)
+  })
 })
 
 describe('playtest report', () => {

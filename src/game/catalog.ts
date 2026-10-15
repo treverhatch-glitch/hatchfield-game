@@ -738,6 +738,10 @@ export const HEAT_REWARD_THRESHOLD = 82
 export const HEAT_WARN_THRESHOLD = 36
 /** Sustained Standing at/below this → abandon (outside layover bans). */
 export const HEAT_ABANDON_THRESHOLD = 20
+/** Blocked finals that divert. Earlier passes stay a delay. */
+export const ATC_MAX_GO_AROUNDS = 6
+/** Standing lost on each go-around, so a pile-up does not walk the only carrier. */
+export const GO_AROUND_STANDING_HIT = 0.15
 /** Player-facing label for airlineHeat / heatOf. */
 export const STANDING_LABEL = 'Standing'
 /** Cargo path relation flavor (same meter, different words). */

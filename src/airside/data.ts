@@ -27,7 +27,7 @@ export const TOWER_III_UPGRADE = {
   name: 'Tower III',
   minFieldLevel: 9,
   prerequisite: 'atc_approach',
-  cost: 900_000,
+  cost: 140_000,
   upkeepPerDay: 12_000,
   movementsPerHour: TOWER_BASE_CAPACITY[3],
   maxInboundBonus: 1,

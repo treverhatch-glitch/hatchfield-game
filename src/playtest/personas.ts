@@ -105,6 +105,64 @@ function takeTree(view: AirportView, memory: PersonaMemory, daily: boolean): { i
   }
 }
 
+type PersonaKind = 'careful' | 'greedy' | 'chaotic'
+
+/**
+ * A blocked passenger letter buys one desk inside the hall, plus a lane when
+ * the queue or a second carrier is already pressing. The starter count stays put.
+ */
+function hallBuy(view: AirportView, buffer: number): Intent[] {
+  const intents: Intent[] = []
+  const blocked = view.offer?.checkinOk === false
+  if (blocked && view.hall.deskOpen && view.cash >= view.hall.deskCost + view.deskHireCost + buffer) {
+    intents.push({ do: 'hallDesk' })
+    if (view.deskStaff < 8) intents.push({ do: 'desk' })
+  }
+  const lanePressure = view.securityWaiting >= 6 || view.signed.length >= 2 || (view.signed.length >= 1 && blocked)
+  if (view.hall.extraLanes < 1 && view.hall.laneOpen && lanePressure && view.cash >= view.hall.laneCost + buffer) {
+    intents.push({ do: 'hallLane' })
+  }
+  return intents
+}
+
+/** Council vote and Green Pioneer. Neither spends the daily stamp. */
+function governanceIntents(view: AirportView, who: PersonaKind): Intent[] {
+  const intents: Intent[] = []
+  if (view.council.pendingId) {
+    const choice = who === 'careful' ? 'compromise' : who === 'greedy' ? 'full' : 'decline'
+    const cost = choice === 'full' ? view.council.fullCost : choice === 'compromise' ? view.council.compromiseCost : 0
+    if (view.cash >= cost) intents.push({ do: 'council', choice })
+  }
+  if (!view.pioneerStarted && view.day >= 2 && view.signed.length > 0) intents.push({ do: 'pioneer' })
+  return intents
+}
+
+/**
+ * One late buy: approach commission, Tower III, then the FL8 landmarks and cargo.
+ * Night hub waits until field level 8 so day 1 does not spend the till on it.
+ */
+function lateIntent(view: AirportView, buffer: number): Intent | null {
+  if (!view.approach.built && view.fieldLevel >= view.approach.level && view.cash >= view.approach.cost + buffer) {
+    return { do: 'commission', id: 'atc_approach' }
+  }
+  if (view.tower.ready && view.cash >= view.tower.cost + buffer) return { do: 'towerIII' }
+  if (!view.late.spotters && view.fieldLevel >= 8 && view.cash >= view.late.spottersCost + buffer) {
+    return { do: 'stampLate', tool: 'spotters_deck' }
+  }
+  if (!view.late.nightHub && view.fieldLevel >= 8 && view.cash >= view.late.nightHubCost + buffer) {
+    return { do: 'stamp', tool: 'nighthub' }
+  }
+  if (
+    view.late.nightHub &&
+    !view.late.cargoHub &&
+    view.fieldLevel >= 8 &&
+    view.cash >= view.late.cargoHubCost + buffer
+  ) {
+    return { do: 'stampLate', tool: 'cargo_hub_ii' }
+  }
+  return null
+}
+
 /** Hire until check-in and security both have a working body, and stop at three. */
 function needsDesk(view: AirportView, cashBuffer: number): boolean {
   const posts = (view.rooms.checkin ?? 0) > 0 || (view.rooms.security ?? 0) > 0
@@ -150,6 +208,8 @@ export function carefulIntents(
 ): PersonaDecision {
   const next = memoryOn(view, memory)
   const intents: Intent[] = []
+  const upgrades = hallBuy(view, CAREFUL_CASH_BUFFER)
+  const buyingDesk = upgrades.some((intent) => intent.do === 'hallDesk')
   if (view.yearReportPending) intents.push({ do: 'dismissYear' })
   if (!view.hasLand) {
     intents.push({ do: 'buyLand', kind: 'city' })
@@ -182,7 +242,10 @@ export function carefulIntents(
       }
     }
   } else if (view.offer) {
-    if (view.offer.met) intents.push({ do: 'accept' })
+    if (buyingDesk) {
+      // The extra desk has to land before the letter is signed.
+    } else if (view.offer.checkinOk === false) intents.push({ do: 'snooze' })
+    else if (view.offer.met) intents.push({ do: 'accept' })
     else intents.push({ do: 'snooze' })
   }
   if (view.openShopBids > 0 && view.leasedShops < view.shopUnits) {
@@ -194,6 +257,8 @@ export function carefulIntents(
   const tree = takeTree(view, next, true)
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, CAREFUL_CASH_BUFFER)) intents.push({ do: 'desk' })
+  intents.push(...upgrades)
+  intents.push(...governanceIntents(view, 'careful'))
   if (wantsCartDepot(view, next)) {
     intents.push({ do: 'stamp', tool: 'depot' })
     return {
@@ -287,6 +352,11 @@ export function carefulIntents(
   if (view.cash > 20_000 && roomTotal(view, 'bathroom') < 3 && view.terminals > 0) {
     intents.push({ do: 'room', id: 'bathroom' })
   }
+  const late = lateIntent(view, CAREFUL_CASH_BUFFER)
+  if (late) {
+    intents.push(late)
+    if (late.do === 'stamp' || late.do === 'stampLate') built.stampsToday += 1
+  }
   return { intents, memory: built }
 }
 
@@ -298,6 +368,8 @@ export function greedyIntents(
 ): PersonaDecision {
   const next = memoryOn(view, memory)
   const intents: Intent[] = []
+  const upgrades = hallBuy(view, 0)
+  const buyingDesk = upgrades.some((intent) => intent.do === 'hallDesk')
   if (view.yearReportPending) intents.push({ do: 'dismissYear' })
   if (!view.hasLand) {
     intents.push({ do: 'buyLand', kind: 'city' })
@@ -317,7 +389,12 @@ export function greedyIntents(
   if (heli === 'wait') {
     // The pad is already going up. Leave the letter on the desk.
   } else if (heli) intents.push(heli)
-  else if (view.offer) intents.push({ do: 'accept' })
+  else if (view.offer) {
+    if (buyingDesk) {
+      // The extra desk has to land before the letter is signed.
+    } else if (view.offer.checkinOk === false) intents.push({ do: 'snooze' })
+    else intents.push({ do: 'accept' })
+  }
   if (view.loanBalance <= 0 && view.loans.length) {
     const richest = [...view.loans].sort((a, b) => b.principal - a.principal)[0]
     if (richest && view.cash < 80_000) intents.push({ do: 'loan', id: richest.id })
@@ -328,6 +405,8 @@ export function greedyIntents(
   const tree = takeTree(view, next, false)
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, 0)) intents.push({ do: 'desk' })
+  intents.push(...upgrades)
+  intents.push(...governanceIntents(view, 'greedy'))
   if (view.nextResearch) intents.push({ do: 'research', id: view.nextResearch.id })
   if (policy.expand && wantsSecondStrip(view)) {
     intents.push({ do: 'stamp', tool: 'runway' })
@@ -360,10 +439,12 @@ export function greedyIntents(
     if (view.terminals > 0 && roomTotal(view, 'gate') < 3) queue.push({ do: 'room', id: 'gate' })
     if (view.cash > 30_000) queue.push({ do: 'parcel' })
     if (view.mechanics < 2 && view.cash > 12_000) queue.push({ do: 'mechanic' })
+    const late = view.stands >= 6 ? lateIntent(view, 0) : null
+    if (late) queue.unshift(late)
     const room = queue.length ? queue[built.stampsToday % queue.length] : undefined
     if (room) {
       intents.push(room)
-      if (room.do === 'stamp') built.stampsToday += 1
+      if (room.do === 'stamp' || room.do === 'stampLate') built.stampsToday += 1
     }
     return { intents, memory: built }
   }
@@ -421,6 +502,20 @@ export function chaoticIntents(
   if (tree.intent && rng() < 0.45) {
     intents.push(tree.intent)
     return { intents, memory: { ...tree.memory, builtOnDay: view.day } }
+  }
+  const upgrades = hallBuy(view, 0)
+  if (upgrades.length > 0 && rng() < 0.8) {
+    intents.push(...upgrades)
+    return { intents, memory: { ...next, builtOnDay: view.day } }
+  }
+  const governance = governanceIntents(view, 'chaotic')
+  if (governance.length > 0 && rng() < 0.5) intents.push(...governance)
+  if (view.fieldLevel >= 8) {
+    const late = lateIntent(view, 0)
+    if (late && rng() < 0.35) {
+      intents.push(late)
+      return { intents, memory: { ...next, builtOnDay: view.day } }
+    }
   }
   const kind = Math.floor(rng() * 8)
   if (kind === 0 && view.offer) {

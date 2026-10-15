@@ -75,6 +75,26 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     depotCost: 9_800,
     depotBuilding: false,
     depotOpen: false,
+    hall: {
+      deskCost: 6000,
+      laneCost: 8000,
+      deskOpen: false,
+      laneOpen: false,
+      extraDesks: 0,
+      extraLanes: 0,
+    },
+    council: { unlocked: false, pendingId: null, votes: 0, fullCost: 0, compromiseCost: 0 },
+    pioneerStarted: false,
+    approach: { built: false, cost: 75_000, level: 7 },
+    tower: { built: false, ready: false, cost: 140_000 },
+    late: {
+      nightHub: false,
+      nightHubCost: 78_000,
+      spotters: false,
+      spottersCost: 145_000,
+      cargoHub: false,
+      cargoHubCost: 220_000,
+    },
     ...partial,
   }
 }
@@ -469,6 +489,42 @@ describe('playtest personas', () => {
 
     const greedy = greedyIntents(held, freshMemory())
     expect(greedy.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
+  })
+
+  it('buys a check-in desk when the open letter is blocked, and holds the signature', () => {
+    const blocked = carefulIntents(
+      board({
+        cash: 40_000,
+        offer: { name: 'Harbor', met: true, missing: [], deadline: 40, checkinOk: false, checkinLine: 'Add check-in desks' },
+        hall: {
+          deskCost: 6000,
+          laneCost: 8000,
+          deskOpen: true,
+          laneOpen: true,
+          extraDesks: 0,
+          extraLanes: 0,
+        },
+      }),
+      freshMemory(),
+    )
+    expect(blocked.intents).toContainEqual({ do: 'hallDesk' })
+    expect(blocked.intents.some((intent) => intent.do === 'accept')).toBe(false)
+  })
+
+  it('commissions approach control once the field can afford it and the daily stands are done', () => {
+    const ready = board({
+      cash: 200_000,
+      stands: 4,
+      snacks: 1,
+      rooms: { food: 2, souvenir: 2, checkin: 2, security: 2, gate: 2, bathroom: 3 },
+      fieldLevel: 8,
+    })
+    const careful = carefulIntents(ready, freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'commission', id: 'atc_approach' })
+
+    const greedy = greedyIntents(board({ ...ready, stands: 6 }), freshMemory())
+    expect(greedy.intents).toContainEqual({ do: 'commission', id: 'atc_approach' })
+    expect(greedy.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(false)
   })
 
   it('chaotic clicks are stable for a seed', () => {

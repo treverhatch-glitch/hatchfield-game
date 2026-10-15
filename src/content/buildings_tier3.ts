@@ -124,7 +124,7 @@ export const TIER3_BUILDINGS: readonly Tier3BuildingDef[] = [
   },
   {
     id: 'cargo_hub_ii', tier: 3, name: 'Cargo hub II', unlockFL: 8,
-    cost: 640_000, upkeepPerDay: 8_000, buildDays: 16,
+    cost: 220_000, upkeepPerDay: 8_000, buildDays: 16,
     footprint: { widthM: 220, depthM: 120 }, staff: 60,
     effects: { cargoTonnesPerDay: 900 },
     purpose: 'Freighter-scale sort and build-up',
@@ -140,7 +140,7 @@ export const TIER3_BUILDINGS: readonly Tier3BuildingDef[] = [
   },
   {
     id: 'atc_approach_centre', tier: 3, name: 'ATC approach centre', unlockFL: 9,
-    cost: 900_000, upkeepPerDay: 12_000, buildDays: 18,
+    cost: 160_000, upkeepPerDay: 12_000, buildDays: 18,
     footprint: { widthM: 50, depthM: 40 }, staff: 30,
     effects: { runwayMovementsPerHour: 6 },
     purpose: 'Tighter approach spacing on busy banks',

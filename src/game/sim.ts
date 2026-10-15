@@ -56,6 +56,8 @@ import {
   HALL_SCRUB_COST,
   ABANDON_ACC_SECONDS,
   ABANDON_FINE,
+  ATC_MAX_GO_AROUNDS,
+  GO_AROUND_STANDING_HIT,
   HEAT_ABANDON_THRESHOLD,
   HEAT_BAN_THRESHOLD,
   HEAT_REWARD_THRESHOLD,
@@ -1182,8 +1184,12 @@ const FINANCING_CATEGORIES = new Set([
   'diplomacy_income',
 ])
 
-const ATC_MAX_GO_AROUNDS = 3
 const ATC_DEPARTURE_STARVE_SEC = 30
+/**
+ * Scale desks a new game starts with. The prefab places one staffed belt;
+ * the other desk is the published clearance until the player buys one inside.
+ */
+const STARTER_SCALE_DESKS = 2
 
 /** Letter and contract card when a helicopter carrier has no pad. */
 export const HELIPAD_NEED = 'Needs a helipad (Build > Airfield)'
@@ -1590,7 +1596,7 @@ export class Game {
   roadMinutes = 0
   scaleFleet: Partial<Record<VehicleType, number>> = {}
   bagSystem: BagSystemId = 'carts'
-  paxDesks = 2
+  paxDesks = STARTER_SCALE_DESKS
   paxKiosks = 0
   paxBagDrops = 0
   scannerLanes = 1
@@ -3175,8 +3181,9 @@ export class Game {
   /**
    * Passenger contract versus open desks and kiosks.
    * Staffed common desks, and a dedicated desk already given to this carrier,
-   * are what the walk can serve. Scale-desk purchases count only for the desks
-   * the hall has not already opened.
+   * are what the walk can serve. A desk the player places inside the hall
+   * adds clearance on top of the starter. Scale-desk purchases count only
+   * for desks that furniture has not already opened.
    */
   checkinSignReport(id: AirlineId): CheckinSignGate {
     const airline = this.airline(id)
@@ -3209,11 +3216,20 @@ export class Game {
   private checkinCapacityFor(airlineId: AirlineId): { desks: number; kiosks: number } {
     const desks = this.checkinDesks()
     if (!desks.length) return { desks: Math.max(0, this.paxDesks), kiosks: Math.max(0, this.paxKiosks) }
+    const nav = this.hallNav.nav
+    const fit = this.activeHall()
+    const included = new Set<string>()
+    if (nav && fit) {
+      for (const point of staffPoints(nav.facilities.list, fit.items ?? [])) {
+        if (point.included) included.add(point.id)
+      }
+    }
     const alloc = this.checkinAllocation()
     const byId = new Map(alloc.desks.map((row) => [row.deskId, row]))
-    let openCommon = 0
-    let openDedicatedHere = 0
-    let openHallDesks = 0
+    let bundleStaffed = 0
+    let playerStaffed = 0
+    let bundleForAirline = 0
+    let playerForAirline = 0
     let kiosks = 0
     for (const desk of desks) {
       if (!desk.staffed) continue
@@ -3221,14 +3237,24 @@ export class Game {
         kiosks += 1
         continue
       }
-      openHallDesks += 1
       const row = byId.get(desk.id)
-      if (row?.mode === 'dedicated' && row.airlineId === airlineId) openDedicatedHere += 1
-      else if (row?.mode !== 'dedicated') openCommon += 1
+      const countsHere =
+        (row?.mode === 'dedicated' && row.airlineId === airlineId) || row?.mode !== 'dedicated'
+      const fromBundle = included.has(desk.id)
+      if (fromBundle) bundleStaffed += 1
+      else playerStaffed += 1
+      if (!countsHere) continue
+      if (fromBundle) bundleForAirline += 1
+      else playerForAirline += 1
     }
-    const extra = Math.max(0, Math.floor(this.paxDesks) - openHallDesks)
+    const scale = Math.max(0, Math.floor(this.paxDesks))
+    const prefab = Boolean(fit?.premade && !fit.redesigned)
+    const starterScale = prefab ? Math.min(STARTER_SCALE_DESKS, scale) : 0
+    const boughtScale = Math.max(0, scale - (prefab ? STARTER_SCALE_DESKS : 0))
+    const phantom = Math.max(0, starterScale - bundleStaffed)
+    const scaleExtra = Math.max(0, boughtScale - playerStaffed)
     return {
-      desks: openCommon + openDedicatedHere + extra,
+      desks: bundleForAirline + playerForAirline + phantom + scaleExtra,
       kiosks: kiosks + Math.max(0, Math.floor(this.paxKiosks)),
     }
   }
@@ -7815,7 +7841,7 @@ export class Game {
       this.bargeMinutes = s.pillar?.bargeMinutes ?? 0
       this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
       this.bagSystem = s.pillar?.bagSystem ?? 'carts'
-      this.paxDesks = s.pillar?.desks ?? 2
+      this.paxDesks = s.pillar?.desks ?? STARTER_SCALE_DESKS
       this.paxKiosks = s.pillar?.kiosks ?? 0
       this.paxBagDrops = s.pillar?.bagDrops ?? 0
       this.scannerLanes = s.pillar?.scannerLanes ?? 1
@@ -15062,6 +15088,13 @@ export class Game {
     this.commitHallItem(id, cell.c, cell.r, 0)
   }
 
+  /** A spare cell would take this piece, and the till covers the catalog price. */
+  hallPieceOpen(id: ItemId): boolean {
+    const def = itemDef(id)
+    if (!def || !this.hallSpot(id)) return false
+    return this.sandbox || this.cash >= def.cost
+  }
+
   /** First hall cell that would accept this item. Does not spend cash or write zones. */
   private hallSpot(id: ItemId): { c: number; r: number } | null {
     const fit = this.activeHall()
@@ -15764,7 +15797,7 @@ export class Game {
     this.roadMinutes = 0
     this.scaleFleet = {}
     this.bagSystem = 'carts'
-    this.paxDesks = 2
+    this.paxDesks = STARTER_SCALE_DESKS
     this.paxKiosks = 0
     this.paxBagDrops = 0
     this.scannerLanes = 1
@@ -24653,7 +24686,7 @@ export class Game {
     f.goArounds = (f.goArounds ?? 0) + 1
     const fuel = 260 + Math.round((AIRFRAMES[f.airframeId]?.seats ?? 150) * 1.2)
     this.charge(fuel, 'penalties', this.simMinutes(), 'Go-around delay')
-    this.adjustHeat(f.airline, -0.6)
+    this.adjustHeat(f.airline, -GO_AROUND_STANDING_HIT)
     this.reputation = Math.max(0, this.reputation - 0.25)
     if (f.scheduleId) {
       const slot = this.schedule.find((s) => s.id === f.scheduleId)

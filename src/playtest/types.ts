@@ -1,3 +1,4 @@
+import type { CouncilChoiceId } from '../council/types.ts'
 import type { Difficulty, FieldTaskKind, RoomId, SiteKind, Speed, StartFocus, Tool, Vec } from '../game/types.ts'
 
 /** What a player command returned. Failures become "couldn't do" lines. */
@@ -33,7 +34,16 @@ export interface AirportView {
   leasedShops: number
   openShopBids: number
   signed: string[]
-  offer: { name: string; met: boolean; missing: string[]; deadline: number; needsHelipad?: boolean } | null
+  offer: {
+    name: string
+    met: boolean
+    missing: string[]
+    deadline: number
+    needsHelipad?: boolean
+    /** False when the open letter needs more check-in desks before it can sign. */
+    checkinOk?: boolean
+    checkinLine?: string
+  } | null
   helipads: number
   /** A helipad is already under construction, so the letter stays open. */
   helipadBuilding: boolean
@@ -98,6 +108,33 @@ export interface AirportView {
   depotBuilding: boolean
   /** Field level allows the depot stamp. */
   depotOpen: boolean
+  /** Spare cells inside the starter hall, and what a bought desk or lane costs. */
+  hall: {
+    deskCost: number
+    laneCost: number
+    deskOpen: boolean
+    laneOpen: boolean
+    extraDesks: number
+    extraLanes: number
+  }
+  council: {
+    unlocked: boolean
+    pendingId: string | null
+    votes: number
+    fullCost: number
+    compromiseCost: number
+  }
+  pioneerStarted: boolean
+  approach: { built: boolean; cost: number; level: number }
+  tower: { built: boolean; ready: boolean; cost: number }
+  late: {
+    nightHub: boolean
+    nightHubCost: number
+    spotters: boolean
+    spottersCost: number
+    cargoHub: boolean
+    cargoHubCost: number
+  }
   /** The open airline field ask, when one Build or Decline can answer it. */
   fieldAsk: {
     kind: FieldTaskKind
@@ -164,6 +201,20 @@ export interface PlayerCommands {
   buyTree(id: string): CommandResult
   /** Hire one desk agent. Bodies cover check-in, security, and the gate. */
   hireDesk(): CommandResult
+  /** Buy one check-in desk in a spare cell of the open hall. */
+  addCheckinDesk(): CommandResult
+  /** Buy one small security lane in a spare cell of the open hall. */
+  addSecurityLane(): CommandResult
+  /** Stamp a late building on road-edge grass. The existing placeLate rules apply. */
+  stampLate(tool: Tool): CommandResult
+  /** Cast the open council request. Refuses when none is waiting. */
+  voteCouncil(choice: CouncilChoiceId): CommandResult
+  /** Start the Green Pioneer net-zero run. */
+  startGreenPioneer(): CommandResult
+  /** Buy a progression commission such as ATC approach. */
+  commission(id: string): CommandResult
+  /** Fit Tower III on the placed control tower. */
+  buyTowerIII(): CommandResult
   /** Pay the open field ask's stamp or hire. */
   buildFieldAsk(): CommandResult
   /** Retire the open field ask. A small Standing nick, no fine. */
@@ -212,6 +263,13 @@ export type Intent =
   | { do: 'research'; id: string }
   | { do: 'tree'; id: string }
   | { do: 'desk' }
+  | { do: 'hallDesk' }
+  | { do: 'hallLane' }
+  | { do: 'stampLate'; tool: Tool }
+  | { do: 'council'; choice: CouncilChoiceId }
+  | { do: 'pioneer' }
+  | { do: 'commission'; id: string }
+  | { do: 'towerIII' }
   | { do: 'fieldBuild' }
   | { do: 'fieldDecline' }
   | { do: 'curb' }
