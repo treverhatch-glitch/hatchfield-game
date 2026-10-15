@@ -1,4 +1,14 @@
-import { CATEGORIES, OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, SPEC_PENALTY, STAFF_ROOM_BOOST, levelReward } from './config.ts'
+import {
+  BANK_CAP_MULTIPLE,
+  CATEGORIES,
+  OPS_RP_PER_SEC,
+  RESEARCH_DAY_SEC,
+  ROOM_DIMINISH,
+  ROOM_RP_PER_SEC,
+  SPEC_PENALTY,
+  STAFF_ROOM_BOOST,
+  levelReward,
+} from './config.ts'
 import { linkFor } from './links.ts'
 import { RESEARCH_NODES, nodeById, nodesInCategory } from './nodes.ts'
 import type { NodeState, ResearchNode, ResearchState, RoomCounts } from './types.ts'
@@ -7,11 +17,20 @@ export function emptyResearchState(): ResearchState {
   return { points: 0, carry: 0, unlocked: [], rewardedThrough: 1, primarySpec: null }
 }
 
+/** Geometric weight of `count` copies. The first copy is 1. Later copies shrink. */
+export function diminishedUnits(count: number): number {
+  const copies = Math.max(0, Math.floor(count))
+  if (copies <= 0) return 0
+  const ratio: number = ROOM_DIMINISH
+  if (ratio === 1) return copies
+  return (1 - Math.pow(ratio, copies)) / (1 - ratio)
+}
+
 export function roomRate(rooms: RoomCounts): number {
   return (
-    Math.max(0, rooms.desk) * ROOM_RP_PER_SEC.desk +
-    Math.max(0, rooms.board) * ROOM_RP_PER_SEC.board +
-    Math.max(0, rooms.machine) * ROOM_RP_PER_SEC.machine
+    diminishedUnits(rooms.desk) * ROOM_RP_PER_SEC.desk +
+    diminishedUnits(rooms.board) * ROOM_RP_PER_SEC.board +
+    diminishedUnits(rooms.machine) * ROOM_RP_PER_SEC.machine
   )
 }
 
@@ -23,17 +42,57 @@ export function researchRate(rooms: RoomCounts, operating: boolean, staff = 0): 
   return OPS_RP_PER_SEC + roomRate(rooms) * boost
 }
 
+/**
+ * Cap on points still in the wallet. The basis is the cheapest node that can
+ * be bought now, or the cheapest locked node when nothing is open, or the
+ * dearest node once the tree is finished.
+ */
+export function unspentCap(state: ResearchState, fieldLevel: number): number {
+  let cheapestOpen = Number.POSITIVE_INFINITY
+  let cheapestLocked = Number.POSITIVE_INFINITY
+  let dearest = 0
+  for (const node of RESEARCH_NODES) {
+    const cost = nodeCost(state, node)
+    if (cost > dearest) dearest = cost
+    if (cost <= 0 || state.unlocked.includes(node.id)) continue
+    const status = nodeState(state, node, fieldLevel)
+    if (status === 'available' && cost < cheapestOpen) cheapestOpen = cost
+    if (status === 'locked' && cost < cheapestLocked) cheapestLocked = cost
+  }
+  const basis = Number.isFinite(cheapestOpen)
+    ? cheapestOpen
+    : Number.isFinite(cheapestLocked)
+      ? cheapestLocked
+      : Math.max(1, dearest)
+  return BANK_CAP_MULTIPLE * basis
+}
+
+export function clampUnspent(state: ResearchState, fieldLevel: number): ResearchState {
+  const cap = unspentCap(state, fieldLevel)
+  if (state.points <= cap) return state
+  return { ...state, points: cap, carry: 0 }
+}
+
+/** Add a lump (a flight, a grant) into the same wallet the rooms fill. */
+export function creditPoints(state: ResearchState, amount: number, fieldLevel: number): ResearchState {
+  if (!(amount > 0) || !Number.isFinite(amount)) return state
+  const sum = state.carry + amount
+  const whole = Math.floor(sum)
+  return clampUnspent({ ...state, points: state.points + whole, carry: sum - whole }, fieldLevel)
+}
+
 export function accrue(
   state: ResearchState,
   seconds: number,
   rooms: RoomCounts,
   operating: boolean,
   staff = 0,
+  fieldLevel = 1,
 ): ResearchState {
   if (!(seconds > 0) || !operating) return state
   const sum = state.carry + researchRate(rooms, true, staff) * seconds
   const whole = Math.floor(sum)
-  return { ...state, points: state.points + whole, carry: sum - whole }
+  return clampUnspent({ ...state, points: state.points + whole, carry: sum - whole }, fieldLevel)
 }
 
 export function categoryUnlocked(category: (typeof CATEGORIES)[number]['id'], fieldLevel: number): boolean {

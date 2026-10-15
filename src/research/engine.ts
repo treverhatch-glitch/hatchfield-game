@@ -1,4 +1,4 @@
-import { accrue, blockReason, buyNode, claimLevels, emptyResearchState, researchRate } from './logic.ts'
+import { accrue, blockReason, buyNode, claimLevels, creditPoints, emptyResearchState, researchRate } from './logic.ts'
 import { linkFor, type BuildLink } from './links.ts'
 import type { ResearchState, RoomCounts } from './types.ts'
 
@@ -10,8 +10,13 @@ export class ResearchEngine {
   }
 
   /** Operations trickle from the first tick. Rooms add the larger share. Staff raise the room share. */
-  tick(seconds: number, operating: boolean, rooms: RoomCounts, staff = 0): void {
-    this.state = accrue(this.state, seconds, rooms, operating, staff)
+  tick(seconds: number, operating: boolean, rooms: RoomCounts, staff = 0, fieldLevel = 1): void {
+    this.state = accrue(this.state, seconds, rooms, operating, staff, fieldLevel)
+  }
+
+  /** Flight and other operations lumps. Same wallet as the room tick, same unspent cap. */
+  credit(amount: number, fieldLevel: number): void {
+    this.state = creditPoints(this.state, amount, fieldLevel)
   }
 
   rate(rooms: RoomCounts, operating: boolean, staff = 0): number {

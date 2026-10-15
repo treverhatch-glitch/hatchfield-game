@@ -6,8 +6,29 @@ import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
  * or FIELD_LEVEL_XP.
  */
 
-export const OPS_RP_PER_SEC = 0.009
-export const ROOM_RP_PER_SEC = { desk: 0.032, board: 0.024, machine: 0.048 } as const
+export const OPS_RP_PER_SEC = 0.01
+export const ROOM_RP_PER_SEC = { desk: 0.09, board: 0.07, machine: 0.12 } as const
+
+/**
+ * Each extra copy of the same room adds this fraction of the previous copy.
+ * One desk pays the full rate. A second desk adds 40% of that. A pile of
+ * desks approaches 1 / (1 − this) times one desk, not one line per desk.
+ */
+export const ROOM_DIMINISH = 0.4
+
+/**
+ * Unspent points stop at this multiple of the next node's cost. A finished
+ * tree stops at the same multiple of the dearest node.
+ */
+export const BANK_CAP_MULTIPLE = 2
+
+/**
+ * Operations trickle paid when a flight lifts off. Rooms are the larger share.
+ * Fractions sit in the tree carry until they make a whole point.
+ */
+export const FLIGHT_RP = 0.35
+export const FLIGHT_RP_PER_50_PAX = 0.1
+export const NIGHT_FREIGHT_RP = 0.25
 
 /**
  * Each hired researcher multiplies the room rate by (1 + n × this).
@@ -24,11 +45,10 @@ export const SPEC_PENALTY = 1.5
 /**
  * Point costs by tier. The first node of a line is free so the category can open.
  * Each later tier costs more than the one before it. One careful lab (one desk,
- * one chalkboard, one bench, no researchers) plus the points flights already
- * grant owns about 60% of the tree at day 90, on one specialisation.
- * The other branches stay out of reach until around day 150 or later.
+ * one chalkboard, one bench, no researchers) finishes the tree around day 70–90
+ * when it buys the cheapest open node as points allow. See docs/RESEARCH.md.
  */
-export const TIER_COSTS = [0, 76, 86, 96, 100, 114] as const
+export const TIER_COSTS = [0, 26, 38, 54, 76, 108] as const
 
 export const CATEGORIES = [
   { id: 'airfield', label: 'Airfield', unlockLevel: 1 },

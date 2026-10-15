@@ -656,8 +656,8 @@ export const RP_RATE_MACHINE = 0.12
 /** Bare researcher with no lab furniture — almost nothing. */
 export const RP_RATE_BARE = 0.015
 /**
- * Operations trickle once a strip and a stand are up, before anyone is hired.
- * 0.05 RP/s banks Night bank (28) inside one opening window (600s).
+ * Legacy desk rates. The Growth tree does not read these. Its trickle, room
+ * rates, and flight lumps live in src/research/config.ts.
  */
 export const RP_RATE_OPS = 0.05
 /**
@@ -1854,10 +1854,13 @@ export const RESEARCH_NODES: ResearchNode[] = [
   })),
 ]
 
-/** Research points per completed takeoff. */
-export const RP_PER_FLIGHT = 3
+/**
+ * Flight research is a small operations trickle on the Growth tree.
+ * The live amounts are FLIGHT_RP and FLIGHT_RP_PER_50_PAX in src/research/config.ts.
+ */
+export const RP_PER_FLIGHT = 0.35
 /** Research points per 50 pax boarded/served on departure. */
-export const RP_PER_50_PAX = 1
+export const RP_PER_50_PAX = 0.1
 
 /** Weather divert accept fee band. */
 export const DIVERT_FEE_MIN = 4500

@@ -1,5 +1,7 @@
 # Research pacing — 15 Oct
 
+The rates and tier prices in the tables below were replaced the same day. The live curve is diminishing room returns, a wallet cap at twice the next node, and one Growth-tree balance. See [RESEARCH.md](../RESEARCH.md) and the 90-day table in [research_pace.md](research_pace.md).
+
 No new gates. Field-level category unlocks and the prerequisite chains are unchanged. The 1.5× price on a second specialisation branch is unchanged. What moved are the tier prices and the two incomes that feed the Growth tree: the operations trickle, and the research desk, chalkboard, and lab bench.
 
 | Tunable | Before | After |

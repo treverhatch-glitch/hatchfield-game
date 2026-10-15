@@ -18,7 +18,7 @@ Costs stay in the building catalog. The persona list is `PLAYTEST_TUNING.labRoom
 
 ## Research tree
 
-The Growth tree is a separate point balance from the operations trickle. When a node is affordable (field level open, previous step owned, points cover the cost), a persona buys the cheapest one. Careful buys at most one node a day. Greedy buys one on every look. Chaotic takes the offer on a little under half of its looks. Tier-1 category nodes cost 0 points.
+The Growth tree is the only research wallet. The operations trickle, finished flights, and the lab rooms all pay into it. When a node is affordable (field level open, previous step owned, points cover the cost), a persona buys the cheapest one. Careful buys at most one node a day. Greedy buys one on every look. Chaotic takes the offer on a little under half of its looks. Tier-1 category nodes cost 0 points. Unspent points stop at twice the next node's cost.
 
 ## Desk agents
 

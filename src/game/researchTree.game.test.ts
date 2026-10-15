@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, TIER_COSTS, levelReward } from '../research/config.ts'
+import { SAVE_SCHEMA_VERSION, serialize, storedData } from '../features/save/index.ts'
+import { FLIGHT_RP, FLIGHT_RP_PER_50_PAX, OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, TIER_COSTS, levelReward } from '../research/config.ts'
+import { SAVE_KEY } from './types.ts'
 import { Game } from './sim.ts'
+import type { Flight } from './types.ts'
 
 function opened(): Game {
   const game = new Game()
@@ -35,7 +38,8 @@ describe('research tree on the field', () => {
     expect(game.researchers).toBe(0)
     const bare = OPS_RP_PER_SEC + roomSum
     expect(game.researchRate()).toBeCloseTo(bare, 5)
-    expect(game.researchRate() * RESEARCH_DAY_SEC).toBeLessThan(TIER_COSTS[1]!)
+    expect(game.researchRate() * RESEARCH_DAY_SEC).toBeGreaterThan(TIER_COSTS[1]!)
+    expect(game.researchRate() * RESEARCH_DAY_SEC).toBeLessThan(TIER_COSTS[4]!)
     const before = game.researchPoints + game.researchTree.state.carry
     game.tick(1)
     expect(game.researchPoints + game.researchTree.state.carry - before).toBeCloseTo(bare, 5)
@@ -71,6 +75,50 @@ describe('research tree on the field', () => {
     expect(game.researchUnlocked).not.toContain('hydrant_fuel')
     game.buyScaleVehicle('hydrant_dispenser')
     expect(game.scaleFleet.hydrant_dispenser).toBe(1)
+  })
+
+  it('adds a finished flight to the growth tree', () => {
+    const game = opened()
+    const before = game.researchTree.points() + game.researchTree.state.carry
+    game.grantResearchForFlight({ pax: 80, kind: 'narrowbody' } as Flight)
+    const after = game.researchTree.points() + game.researchTree.state.carry
+    expect(after - before).toBeCloseTo(FLIGHT_RP + FLIGHT_RP_PER_50_PAX, 5)
+    expect(game.researchPoints).toBe(game.researchTree.points())
+  })
+
+  it('folds an old desk balance into the tree once', () => {
+    const starter = opened()
+    starter.autosave = true
+    starter.persist()
+    starter.autosave = false
+    const raw = localStorage.getItem(SAVE_KEY)
+    expect(raw).toBeTruthy()
+    const oldSnap = storedData(raw!) as Record<string, unknown>
+    oldSnap.researchPoints = 40.25
+    oldSnap.researchUnlocked = ['deice']
+    oldSnap.researchUnified = false
+    oldSnap.researchTree = { points: 0, carry: 0, unlocked: [], rewardedThrough: 1, primarySpec: null }
+    const wave = oldSnap.wave3 as { research?: { points?: number; carry?: number; unlocked?: string[] } } | undefined
+    if (wave?.research) {
+      wave.research.points = 0
+      wave.research.carry = 0
+      wave.research.unlocked = []
+    }
+    localStorage.setItem(
+      SAVE_KEY,
+      serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => oldSnap, restore() {} }, 0),
+    )
+    const loaded = new Game()
+    loaded.autosave = false
+    expect(loaded.load()).toBe(true)
+    expect(loaded.researchTree.points() + loaded.researchTree.state.carry).toBeCloseTo(40.25, 5)
+    expect(loaded.researchTree.state.unlocked).toContain('airfield-2')
+    expect(loaded.researchPoints).toBe(loaded.researchTree.points())
+    loaded.persist()
+    const again = new Game()
+    again.autosave = false
+    expect(again.load()).toBe(true)
+    expect(again.researchTree.points() + again.researchTree.state.carry).toBeCloseTo(40.25, 5)
   })
 
   it('refuses a linked stamp until its node is owned', () => {

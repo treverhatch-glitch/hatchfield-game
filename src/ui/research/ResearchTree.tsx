@@ -3,6 +3,7 @@ import { CATEGORIES, SPEC_BRANCHES } from '../../research/config.ts'
 import { lockCopy, nodeCost, nodeState, shortfallCopy } from '../../research/logic.ts'
 import { RESEARCH_NODES, nodesInCategory } from '../../research/nodes.ts'
 import type { ResearchNode, ResearchState } from '../../research/types.ts'
+import { LiveText } from '../LiveText.tsx'
 
 export function ResearchTree({
   state,
@@ -10,12 +11,15 @@ export function ResearchTree({
   ratePerSec,
   focusId,
   onUnlock,
+  livePoints,
 }: {
   state: ResearchState
   fieldLevel: number
   ratePerSec: number
   focusId?: string | null
   onUnlock: (id: string) => void
+  /** Live wallet read so the footer keeps up between React renders. */
+  livePoints?: () => string
 }) {
   const focus = focusId ? RESEARCH_NODES.find((row) => row.id === focusId) : undefined
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>(focus?.category ?? 'airfield')
@@ -104,7 +108,8 @@ export function ResearchTree({
         </aside>
       </div>
       <footer className="rtree-foot" data-testid="research-tree-points">
-        Available research points: {state.points}
+        Available research points:{' '}
+        {livePoints ? <LiveText read={livePoints} testId="research-tree-points-live" /> : state.points}
         {needCopy ? ` · ${needCopy}` : ''}
       </footer>
     </section>

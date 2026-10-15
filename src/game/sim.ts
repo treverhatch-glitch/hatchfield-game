@@ -91,8 +91,6 @@ import {
   rewardForPersona,
   REWARD_DETAIL,
   REWARD_LABEL,
-  RP_PER_50_PAX,
-  RP_PER_FLIGHT,
   TANKER_FEE,
   TANKER_MX_FEE,
   EMERGENCY_FAIL_FINE,
@@ -617,7 +615,7 @@ import {
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
-import { OPS_RP_PER_SEC, CATEGORIES } from '../research/config.ts'
+import { OPS_RP_PER_SEC, CATEGORIES, FLIGHT_RP, FLIGHT_RP_PER_50_PAX, NIGHT_FREIGHT_RP } from '../research/config.ts'
 import { ResearchEngine } from '../research/engine.ts'
 import { researchMods } from '../research/effects.ts'
 import { DESK_TO_NODE, deskIdsForNode, foldResearchSave, WAVE3_TO_NODE } from '../research/legacy.ts'
@@ -4055,14 +4053,14 @@ export class Game {
     return this.buyResearchNode(nodeId)
   }
 
-  /** Award RP when a jet/helo finishes takeoff. */
+  /** Award a small operations trickle when a jet/helo finishes takeoff. It lands on the Growth tree. */
   grantResearchForFlight(f: Flight) {
-    let rp = RP_PER_FLIGHT
-    if (f.pax > 0) rp += Math.floor(f.pax / 50) * RP_PER_50_PAX
+    let rp = FLIGHT_RP
+    if (f.pax > 0) rp += Math.floor(f.pax / 50) * FLIGHT_RP_PER_50_PAX
     if (f.kind === 'freighter' && this.hasResearch('night_bank') && this.isNight()) {
-      rp += 1
+      rp += NIGHT_FREIGHT_RP
     }
-    this.researchPoints += rp
+    this.researchTree.credit(rp, this.fieldLevel())
   }
 
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
@@ -21971,7 +21969,13 @@ export class Game {
     // Day 1 specialization points. No staff and no rooms required.
     const gear = this.labGear()
     this.wave3.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
-    this.researchTree.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines }, this.researchers)
+    this.researchTree.tick(
+      step,
+      true,
+      { desk: gear.desks, board: gear.boards, machine: gear.machines },
+      this.researchers,
+      this.fieldLevel(),
+    )
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)

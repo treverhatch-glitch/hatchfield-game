@@ -362,8 +362,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <FieldBadge
           progress={xp}
-          points={() => `${Math.floor(game.researchPoints)} RP`}
-          title={`Field ${xp.label}. Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. ${Math.floor(game.researchPoints)} research points.`}
+          points={() => `${Math.floor(game.researchTree.points())} RP`}
+          title={`Field ${xp.label}. Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. ops trickle -> tree · ${Math.floor(game.researchTree.points())} research points.`}
           onOpen={() => {
             setInfoGroup('growth')
             openPanel('levels')
@@ -1545,6 +1545,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   ratePerSec={game.researchRate()}
                   focusId={growthFocus}
                   onUnlock={(id) => game.buyResearchNode(id)}
+                  livePoints={() => `${Math.floor(game.researchTree.points())}`}
                 />
               ) : null}
 
@@ -1552,7 +1553,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 <section>
                   <h3>R&D rooms</h3>
                   <p className="muted">
-                    {Math.floor(game.researchPoints)} RP · operations + lab rooms ~
+                    ops trickle -&gt; tree · {Math.floor(game.researchTree.points())} RP ·{' '}
                     {game.researchRate().toFixed(2)}/s
                     {(() => {
                       const g = game.labGear()
