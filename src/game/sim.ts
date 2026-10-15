@@ -20326,6 +20326,16 @@ export class Game {
     return best
   }
 
+  /** Cash paid for fittings on a host. Granted legacy bridges were free. */
+  private paidFittings(host: string, size?: StandSize): number {
+    let paid = 0
+    for (const item of this.fittings[host] ?? []) {
+      if (item.granted === 'legacy') continue
+      paid += item.id === 'jet_bridge' && size ? jetBridgeCost(size) : fittingDef(item.id).cost
+    }
+    return paid
+  }
+
   refundFor(tile: Tile, at?: Vec): number {
     if (tile === 'grass') return 0
     if (tile === 'runway') {
@@ -20339,11 +20349,23 @@ export class Game {
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
     if (tile === 'hangar' && at) {
       const scale = this.hangarScale[`${at.c},${at.r}`] ?? 'small'
-      return Math.round(HANGAR_OFFERS[scale].cost * BULLDOZE_REFUND)
+      return Math.round((HANGAR_OFFERS[scale].cost + this.paidFittings(hostKey('hangar', at.c, at.r))) * BULLDOZE_REFUND)
+    }
+    if (tile === 'fire' && at) {
+      const b = BUILDINGS.find((x) => x.tile === tile)
+      return Math.round(((b?.cost ?? 0) + this.paidFittings(hostKey('fire', at.c, at.r))) * BULLDOZE_REFUND)
     }
     if (tile === 'stand' && at) {
-      const scale = this.standScale[`${at.c},${at.r}`]
-      const pit = this.standPits[`${at.c},${at.r}`] ? (progressionBuildable('hydrant')?.cost ?? 0) : 0
+      const key = `${at.c},${at.r}`
+      const scale = this.standScale[key]
+      const pit = this.standPits[key] ? (progressionBuildable('hydrant')?.cost ?? 0) : 0
+      const size = this.standSize[key]
+      const rung = this.standRung[key]
+      if (size && rung != null) {
+        let paid = pit + this.paidFittings(hostKey('stand', at.c, at.r), size)
+        for (let step = 0; step <= rung; step++) paid += rungStepCost(size, step as StandRung)
+        return Math.round(paid * BULLDOZE_REFUND)
+      }
       const base =
         scale === 'wide'
           ? STAND_OFFERS.wide.cost
