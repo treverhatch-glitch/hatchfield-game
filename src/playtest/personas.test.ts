@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { freshMemory, carefulIntents, chaoticIntents, greedyIntents } from './personas.ts'
+import { freshMemory, carefulIntents, chaoticIntents, greedyIntents, TIP_POLICY } from './personas.ts'
 import type { AirportView } from './types.ts'
 
 function board(partial: Partial<AirportView> = {}): AirportView {
@@ -61,6 +61,12 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     activeFlights: 1,
     fuelTerm: 'apex_local',
     fuelSignCost: 3_500,
+    spotOffer: null,
+    runwayOver: false,
+    standPressure: 0,
+    standCost: 6_200,
+    researcherCost: 4_800,
+    researchers: 0,
     fieldAsk: null,
     helipads: 0,
     helipadBuilding: false,
@@ -186,7 +192,15 @@ describe('playtest personas', () => {
 
   it('careful answers a jammed curb with a bay or a lane, after the lab', () => {
     const jammed = carefulIntents(
-      board({ curbPressure: 1.4, busBays: 0, lanes: 1, cash: 30_000, stands: 2 }),
+      board({
+        curbPressure: 1.4,
+        busBays: 0,
+        lanes: 1,
+        cash: 30_000,
+        stands: 2,
+        standCost: 40_000,
+        runwayCost: 80_000,
+      }),
       freshMemory(),
     )
     expect(jammed.intents).toContainEqual({ do: 'curb' })
@@ -203,13 +217,29 @@ describe('playtest personas', () => {
     expect(clear.intents.some((intent) => intent.do === 'curb')).toBe(false)
 
     const rank = carefulIntents(
-      board({ curbPressure: 1.3, busBays: 1, curbLanes: 1, taxiRanks: 0, cash: 30_000, stands: 4 }),
+      board({
+        curbPressure: 1.3,
+        busBays: 1,
+        curbLanes: 1,
+        taxiRanks: 0,
+        cash: 30_000,
+        stands: 6,
+        runwayCost: 80_000,
+      }),
       freshMemory(),
     )
     expect(rank.intents).toContainEqual({ do: 'curb' })
 
     const built = carefulIntents(
-      board({ curbPressure: 1.3, busBays: 1, curbLanes: 1, taxiRanks: 1, cash: 30_000, stands: 4 }),
+      board({
+        curbPressure: 1.3,
+        busBays: 1,
+        curbLanes: 1,
+        taxiRanks: 1,
+        cash: 30_000,
+        stands: 6,
+        runwayCost: 80_000,
+      }),
       freshMemory(),
     )
     expect(built.intents.some((intent) => intent.do === 'curb')).toBe(false)
@@ -323,6 +353,83 @@ describe('playtest personas', () => {
     expect(site.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'runway')).toBe(false)
     const greedyLater = greedyIntents(pressed, { builtOnDay: pressed.day, stampsToday: 4, treeOnDay: -1 })
     expect(greedyLater.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+  })
+
+  it('adds a second strip and two stands when the field is over and cash clears 3×', () => {
+    const rich = board({
+      runwayOver: true,
+      runway: 1,
+      stands: 4,
+      cash: 200_000,
+      runwayCost: 38_000,
+      standCost: 6_200,
+    })
+    const careful = carefulIntents(rich, freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+
+    const stands = carefulIntents(board({ ...rich, runway: 2 }), freshMemory())
+    expect(stands.intents).toContainEqual({ do: 'stamp', tool: 'stand' })
+
+    const done = carefulIntents(board({ ...rich, runway: 2, stands: 6 }), freshMemory())
+    expect(done.intents.some((intent) => intent.do === 'stamp')).toBe(false)
+
+    const quiet = carefulIntents(
+      board({ cash: 200_000, runway: 1, stands: 4, runwayOver: false, curbPressure: 0, standPressure: 0 }),
+      freshMemory(),
+    )
+    expect(quiet.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'runway')).toBe(false)
+    expect(quiet.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(false)
+
+    const greedy = greedyIntents(rich, freshMemory())
+    expect(greedy.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+
+    const greedyStands = greedyIntents(board({ ...rich, runway: 2, stands: 6 }), freshMemory())
+    expect(greedyStands.intents).toContainEqual({ do: 'stamp', tool: 'stand' })
+  })
+
+  it('hires one researcher once a lab room exists', () => {
+    const open = carefulIntents(
+      board({ rooms: { rdesk: 1 }, researchers: 0, researcherCost: 4_800, cash: 40_000 }),
+      freshMemory(),
+    )
+    expect(open.intents).toContainEqual({ do: 'researcher' })
+
+    const hired = carefulIntents(
+      board({ rooms: { rdesk: 1 }, researchers: 1, researcherCost: 4_800, cash: 40_000 }),
+      freshMemory(),
+    )
+    expect(hired.intents.some((intent) => intent.do === 'researcher')).toBe(false)
+
+    const broke = carefulIntents(
+      board({ rooms: { rdesk: 1 }, researchers: 0, researcherCost: 4_800, cash: 4_800 }),
+      freshMemory(),
+    )
+    expect(broke.intents.some((intent) => intent.do === 'researcher')).toBe(false)
+
+    const greedy = greedyIntents(
+      board({ rooms: { rdesk: 1 }, researchers: 0, researcherCost: 4_800, cash: 40_000 }),
+      freshMemory(),
+    )
+    expect(greedy.intents).toContainEqual({ do: 'researcher' })
+  })
+
+  it('spot probes accept or ignore the card and never sign a term', () => {
+    const card = board({
+      fuelTerm: null,
+      cash: 80_000,
+      fuelSignCost: 3_500,
+      spotOffer: { flightNo: 'PDJ101', secondsLeft: 40 },
+    })
+    const accept = carefulIntents(card, freshMemory(), { fuel: 'spot-accept', expand: false, researcher: false })
+    expect(accept.intents).toContainEqual({ do: 'spotAccept' })
+    expect(accept.intents.some((intent) => intent.do === 'fuelTerm')).toBe(false)
+
+    const ignore = carefulIntents(card, freshMemory(), { fuel: 'spot-ignore', expand: false, researcher: false })
+    expect(ignore.intents.some((intent) => intent.do === 'spotAccept' || intent.do === 'fuelTerm')).toBe(false)
+
+    const tip = carefulIntents(card, freshMemory(), TIP_POLICY)
+    expect(tip.intents).toContainEqual({ do: 'fuelTerm' })
+    expect(tip.intents.some((intent) => intent.do === 'spotAccept')).toBe(false)
   })
 
   it('chaotic clicks are stable for a seed', () => {

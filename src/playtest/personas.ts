@@ -2,11 +2,22 @@ import { ROOMS } from '../game/catalog.ts'
 import type { RoomId, Speed, Tool, Vec } from '../game/types.ts'
 import { SIZE } from '../game/types.ts'
 import { PLAYTEST_TUNING as T } from './tuning.ts'
-import type { AirportView, Intent, PersonaDecision, PersonaMemory } from './types.ts'
+import type { AirportView, Intent, PersonaDecision, PersonaMemory, PersonaPolicy } from './types.ts'
 
 const CAREFUL_CASH_BUFFER = 8_000
 const CURB_CASH_BUFFER = 12_000
 const RUNWAY_RESERVE = 30_000
+/** Careful's ordinary stand cap, then two more once the field is over. */
+const CAREFUL_STANDS = 4
+const CAREFUL_PRESSURE_STANDS = 6
+/** Greedy already aims at six stands. Pressure adds two more. */
+const GREEDY_PRESSURE_STANDS = 8
+
+/** Tip bots: sign Apex Local, leave the second strip, hire no researchers. */
+export const TIP_POLICY: PersonaPolicy = { fuel: 'term', expand: false, researcher: false }
+
+/** Live bots: second strip and two stands when the field is over, plus one researcher. */
+export const LIVE_POLICY: PersonaPolicy = { fuel: 'term', expand: true, researcher: true }
 
 /** Second strip once the airfield is deferring demand and the till clears the stamp plus a reserve. */
 function wantsSecondStrip(view: AirportView): boolean {
@@ -16,6 +27,35 @@ function wantsSecondStrip(view: AirportView): boolean {
     !view.runwayBuilding &&
     view.cash >= view.runwayCost + RUNWAY_RESERVE
   )
+}
+
+function overField(view: AirportView): boolean {
+  return view.runwayOver || view.curbPressure > 1 || view.standPressure > 1
+}
+
+/** Second strip first, then stands up to the pressure ceiling. Cash has to clear 3× the stamp. */
+function expansionStamp(view: AirportView, standCeiling: number): Intent | null {
+  if (!overField(view)) return null
+  if (view.runway < 2 && !view.runwayBuilding && view.cash > view.runwayCost * 3) return { do: 'stamp', tool: 'runway' }
+  if (view.stands < standCeiling && view.cash > view.standCost * 3) return { do: 'stamp', tool: 'stand' }
+  return null
+}
+
+function labReady(view: AirportView): boolean {
+  return (view.rooms.rdesk ?? 0) + (view.rooms.rboard ?? 0) + (view.rooms.rmachine ?? 0) > 0
+}
+
+function researcherIntent(view: AirportView, policy: PersonaPolicy): Intent | null {
+  if (!policy.researcher || !labReady(view) || view.researchers >= 1) return null
+  if (view.cash <= view.researcherCost) return null
+  return { do: 'researcher' }
+}
+
+function fuelIntent(view: AirportView, policy: PersonaPolicy): Intent | null {
+  if (policy.fuel === 'spot-accept') return view.spotOffer ? { do: 'spotAccept' } : null
+  if (policy.fuel === 'spot-ignore') return null
+  if (!view.fuelTerm && view.cash >= view.fuelSignCost) return { do: 'fuelTerm' }
+  return null
 }
 
 /** Build when the bonus covers the stamp, or the till still clears the cash floor. Otherwise decline. */
@@ -89,7 +129,11 @@ function heliBeforeSign(view: AirportView): Intent | 'wait' | null {
 }
 
 /** Keeps a cash buffer, signs letters that already pass, and adds one piece a day. */
-export function carefulIntents(view: AirportView, memory: PersonaMemory): PersonaDecision {
+export function carefulIntents(
+  view: AirportView,
+  memory: PersonaMemory,
+  policy: PersonaPolicy = LIVE_POLICY,
+): PersonaDecision {
   const next = memoryOn(view, memory)
   const intents: Intent[] = []
   if (view.yearReportPending) intents.push({ do: 'dismissYear' })
@@ -101,7 +145,10 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
-  if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
+  const fuel = fuelIntent(view, policy)
+  if (fuel) intents.push(fuel)
+  const researcher = researcherIntent(view, policy)
+  if (researcher) intents.push(researcher)
   const fieldAsk = fieldAskIntent(view, CAREFUL_CASH_BUFFER)
   if (fieldAsk) intents.push(fieldAsk)
   const heli = heliBeforeSign(view)
@@ -130,7 +177,7 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   if (needsDesk(view, CAREFUL_CASH_BUFFER)) intents.push({ do: 'desk' })
   // Deferred demand can show up after the day's other stamp. Read the airfield
   // figure on every decision, including a day that already built something else.
-  if (wantsSecondStrip(view)) {
+  if (policy.expand && wantsSecondStrip(view)) {
     intents.push({ do: 'stamp', tool: 'runway' })
     return {
       intents,
@@ -144,6 +191,14 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   }
   if (view.day === next.builtOnDay) return { intents, memory: tree.memory }
   const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }
+  if (policy.expand) {
+    const expand = expansionStamp(view, CAREFUL_PRESSURE_STANDS)
+    if (expand) {
+      intents.push(expand)
+      built.stampsToday += 1
+      return { intents, memory: built }
+    }
+  }
   if (
     view.curbPressure > 1 &&
     view.cash > CURB_CASH_BUFFER &&
@@ -158,7 +213,7 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
     if (micro) intents.push({ do: 'loan', id: micro.id })
     return { intents, memory: built }
   }
-  if (view.cash > 22_000 && view.stands < 4) {
+  if (view.cash > 22_000 && view.stands < CAREFUL_STANDS) {
     intents.push({ do: 'stamp', tool: 'stand' })
     built.stampsToday += 1
     return { intents, memory: built }
@@ -188,7 +243,11 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
 }
 
 /** Takes loans, signs every letter, and spends cash on stands, rooms, and shops. */
-export function greedyIntents(view: AirportView, memory: PersonaMemory): PersonaDecision {
+export function greedyIntents(
+  view: AirportView,
+  memory: PersonaMemory,
+  policy: PersonaPolicy = LIVE_POLICY,
+): PersonaDecision {
   const next = memoryOn(view, memory)
   const intents: Intent[] = []
   if (view.yearReportPending) intents.push({ do: 'dismissYear' })
@@ -200,7 +259,10 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
-  if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
+  const fuel = fuelIntent(view, policy)
+  if (fuel) intents.push(fuel)
+  const researcher = researcherIntent(view, policy)
+  if (researcher) intents.push(researcher)
   const fieldAsk = fieldAskIntent(view, 0)
   if (fieldAsk) intents.push(fieldAsk)
   const heli = heliBeforeSign(view)
@@ -219,7 +281,7 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, 0)) intents.push({ do: 'desk' })
   if (view.nextResearch) intents.push({ do: 'research', id: view.nextResearch.id })
-  if (wantsSecondStrip(view)) {
+  if (policy.expand && wantsSecondStrip(view)) {
     intents.push({ do: 'stamp', tool: 'runway' })
     return {
       intents,
@@ -237,6 +299,10 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
       treeOnDay: tree.memory.treeOnDay,
     }
     const queue: Intent[] = []
+    if (policy.expand) {
+      const expand = expansionStamp(view, GREEDY_PRESSURE_STANDS)
+      if (expand) queue.push(expand)
+    }
     if (view.runway < 1) queue.push({ do: 'stamp', tool: 'runway' })
     if (view.stands < 6) queue.push({ do: 'stamp', tool: 'stand' })
     if (view.stands > 0) queue.push({ do: 'stamp', tool: 'taxi' })

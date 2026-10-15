@@ -1,8 +1,9 @@
+import { RESEARCH_NODES as TREE_NODES } from '../research/nodes.ts'
 import { taxiOutRecoveryNote } from '../game/stuckWatchdog.ts'
 import type { Difficulty, StartFocus } from '../game/types.ts'
 import { tryStamp } from './build.ts'
 import { createPlayer } from './commands.ts'
-import { chaoticIntents, carefulIntents, freshMemory, greedyIntents, mulberry32 } from './personas.ts'
+import { chaoticIntents, carefulIntents, freshMemory, greedyIntents, LIVE_POLICY, mulberry32, TIP_POLICY } from './personas.ts'
 import { PLAYTEST_TUNING as T } from './tuning.ts'
 import type {
   CommandResult,
@@ -14,8 +15,10 @@ import type {
   PersonaReport,
   PlayerCommands,
   Probe,
+  LedgerOps,
   ResearchBuy,
   ResearchPools,
+  RunOps,
   SlowTick,
   StuckRecord,
   SystemsPeaks,
@@ -31,35 +34,51 @@ export interface PersonaSpec {
   decide: (view: ReturnType<PlayerCommands['view']>, memory: PersonaMemory, rng: () => number) => PersonaDecision
 }
 
+function personaSpec(
+  id: PersonaSpec['id'],
+  label: string,
+  days: number,
+  seed: number,
+  policy: typeof LIVE_POLICY,
+): PersonaSpec {
+  return {
+    id,
+    label,
+    days,
+    difficulty: 'standard',
+    focus: 'pax',
+    seed,
+    decide: (view, memory, rng) => {
+      if (id === 'greedy') return greedyIntents(view, memory, policy)
+      if (id === 'chaotic') return chaoticIntents(view, memory, rng)
+      return carefulIntents(view, memory, policy)
+    },
+  }
+}
+
+/** Live bots. Careful and Greedy add a strip and a researcher when the rules say so. */
 export const PERSONAS: PersonaSpec[] = [
-  {
-    id: 'careful',
-    label: 'Careful',
-    days: T.carefulDays,
-    difficulty: 'standard',
-    focus: 'pax',
-    seed: 0x5eed,
-    decide: (view, memory) => carefulIntents(view, memory),
-  },
-  {
-    id: 'greedy',
-    label: 'Greedy expander',
-    days: T.greedyDays,
-    difficulty: 'standard',
-    focus: 'pax',
-    seed: 0x6eed,
-    decide: (view, memory) => greedyIntents(view, memory),
-  },
-  {
-    id: 'chaotic',
-    label: 'Chaotic random clicker',
-    days: T.chaoticDays,
-    difficulty: 'standard',
-    focus: 'pax',
-    seed: 0xc0a0,
-    decide: (view, memory, rng) => chaoticIntents(view, memory, rng),
-  },
+  personaSpec('careful', 'Careful', T.carefulDays, 0x5eed, LIVE_POLICY),
+  personaSpec('greedy', 'Greedy expander', T.greedyDays, 0x6eed, LIVE_POLICY),
+  personaSpec('chaotic', 'Chaotic random clicker', T.chaoticDays, 0xc0a0, LIVE_POLICY),
 ]
+
+/**
+ * The term-signing bots from before the strip and researcher tweak.
+ * Research pace and the 90-day comparison use these so the table stays the human-equivalent tip.
+ */
+export const TIP_PERSONAS: PersonaSpec[] = [
+  personaSpec('careful', 'Careful', T.carefulDays, 0x5eed, TIP_POLICY),
+  personaSpec('greedy', 'Greedy expander', T.greedyDays, 0x6eed, TIP_POLICY),
+  personaSpec('chaotic', 'Chaotic random clicker', T.chaoticDays, 0xc0a0, TIP_POLICY),
+]
+
+/** Careful's other decisions, with the fuel term left unsigned. */
+export function spotProbePersonas(days: number): PersonaSpec[] {
+  const spot = (fuel: 'spot-accept' | 'spot-ignore', label: string): PersonaSpec =>
+    personaSpec('careful', label, days, 0x5eed, { fuel, expand: false, researcher: false })
+  return [spot('spot-accept', 'Spot accept'), spot('spot-ignore', 'Spot ignore')]
+}
 
 export function runHeadless(options?: {
   personas?: PersonaSpec[]
@@ -117,6 +136,46 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
   }
   let landing: { sec: number; day: number; phase: string; flight: string } | null = null
   let sampledDay = -1
+  const seenNews = new Set<string>()
+  const fuelHeld = new Set<string>()
+  const divertNews = new Set<string>()
+  const groundingWarnings: string[] = []
+  let firstGroundingDay: number | null = null
+  let curbCrossDay: number | null = null
+  let hubTier = 'none'
+  let hubRank = -1
+  let hubTierDay: number | null = null
+
+  const notePulse = (day: number) => {
+    const pulse = api.pulse()
+    if (curbCrossDay == null && pulse.curbPressure > 1) curbCrossDay = day
+    if (pulse.curbPressure > peaks.curbPressure) peaks.curbPressure = pulse.curbPressure
+    if (firstGroundingDay == null) {
+      if (pulse.spotOffer) {
+        const line = `Spot card for ${pulse.spotOffer.flightNo}`
+        if (!groundingWarnings.includes(line) && groundingWarnings.length < 8) groundingWarnings.push(line)
+      }
+      for (const item of pulse.news) {
+        if (seenNews.has(item.id) || !priorFuelWarning(item.text)) continue
+        if (groundingWarnings.length < 8) groundingWarnings.push(item.text)
+      }
+      for (const alert of pulse.alerts) {
+        const text = `${alert.title}: ${alert.detail}`
+        if (!priorFuelWarning(text) || groundingWarnings.includes(text) || groundingWarnings.length >= 8) continue
+        groundingWarnings.push(text)
+      }
+    }
+    for (const item of pulse.news) {
+      if (seenNews.has(item.id)) continue
+      seenNews.add(item.id)
+      if (/\bdiverted\b/i.test(item.text)) divertNews.add(item.id)
+    }
+    for (const id of pulse.fuelHeldIds) {
+      if (fuelHeld.has(id)) continue
+      fuelHeld.add(id)
+      if (firstGroundingDay == null) firstGroundingDay = day
+    }
+  }
 
   const note = (result: CommandResult) => {
     if (result.ok || result.command === 'wait') return
@@ -201,6 +260,44 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
       nanFlags,
       researchBuys,
       research: noteResearch(api.view().day),
+      ops: buildOps(api.tallyOps(), api.view().day),
+    }
+  }
+
+  function cashOn(day: number): number | null {
+    return cashCurve.find((row) => row.day === day)?.cash ?? null
+  }
+
+  function buildOps(ledger: LedgerOps, endDay: number): RunOps {
+    const flights = api.view().flightsDone
+    const treeDone = days.find((row) => row.treeNodes >= TREE_NODES.length)
+    const preferred = days.find((row) => row.relationTier2 >= 1)
+    const trusted = days.find((row) => row.relationTier3 >= 1)
+    const spentDays = Math.max(1, endDay)
+    return {
+      flightsPerDay: Math.round((flights / spentDays) * 10) / 10,
+      flightDiverts: divertNews.size,
+      connectionDiverts: ledger.connectionDiverts,
+      goArounds: ledger.goArounds,
+      missedConnectionCash: ledger.missedConnectionCash,
+      curbCrossDay,
+      curbPeak: round(peaks.curbPressure),
+      fuelGroundings: fuelHeld.size,
+      firstGroundingDay,
+      groundingWarnings: groundingWarnings.slice(),
+      treeCompleteDay: treeDone?.day ?? null,
+      cashDay30: cashOn(30),
+      cashDay60: cashOn(60),
+      cashDay90: cashOn(90),
+      preferredDay: preferred?.day ?? null,
+      trustedDay: trusted?.day ?? null,
+      hubTier,
+      hubTierDay,
+      fuelPurchase: ledger.fuelPurchase,
+      spotPurchase: ledger.spotPurchase,
+      termPurchase: ledger.termPurchase,
+      fuelPurchasePerDay: Math.round(ledger.fuelPurchase / spentDays),
+      spotPurchasePerDay: Math.round(ledger.spotPurchase / spentDays),
     }
   }
 
@@ -287,6 +384,7 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
       }
     }
     trackStuck(openStuck, pendingClear, recovered, after)
+    notePulse(after.day)
     noteNan(nanFlags, after)
     if (after.day !== sampledDay) {
       sampledDay = after.day
@@ -334,7 +432,17 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         relationBest: relations[0]?.score ?? 0,
         fieldLevel: board.fieldLevel,
         prestigeStars: board.prestigeStars,
+        flightsDone: board.flightsDone,
+        runway: board.runway,
+        stands: board.stands,
+        runwayOver: board.runwayOver,
       })
+      const hub = api.hubReached()
+      if (hub.rank > hubRank) {
+        hubRank = hub.rank
+        hubTier = hub.tier
+        hubTierDay = after.day
+      }
       if (after.guestCount > peaks.guests) peaks.guests = after.guestCount
       if (after.guestHappiness != null && (peaks.happiness == null || after.guestHappiness > peaks.happiness)) {
         peaks.happiness = after.guestHappiness
@@ -387,6 +495,10 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
       return api.buildStarterKit()
     case 'fuelTerm':
       return api.signFuelTerm()
+    case 'spotAccept':
+      return api.acceptSpot()
+    case 'researcher':
+      return api.hireResearcher()
     case 'freehand':
       return api.chooseFreehand()
     case 'accept':
@@ -508,6 +620,12 @@ function rememberTick(slowest: SlowTick[], tick: SlowTick) {
 
 function round(n: number): number {
   return Math.round(n * 10) / 10
+}
+
+/** Copy a player could read before a departure is held. The grounding sentence itself is the event. */
+function priorFuelWarning(text: string): boolean {
+  if (/grounded — no fuel|cancelled — no fuel|departures grounded/i.test(text)) return false
+  return /spot card|spot offer|apex rack|fuel farm|tanker|no fuel/i.test(text)
 }
 
 function message(error: unknown): string {

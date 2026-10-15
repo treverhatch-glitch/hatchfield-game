@@ -1,0 +1,374 @@
+{
+  "daysRan": 150,
+  "cashStart": 168000,
+  "cashEnd": 1021035,
+  "flights": 826,
+  "signed": [
+    "air_regional_1",
+    "zoomjet",
+    "alpine_swift",
+    "air_lowcost_1",
+    "harbor_heli",
+    "island_heli",
+    "medevac_one",
+    "rotorlink",
+    "skyline_rescue",
+    "cityhopper"
+  ],
+  "stands": 6,
+  "runway": 2,
+  "treeNodes": 62,
+  "fieldLevel": 10,
+  "prestigeStars": 0,
+  "first": [
+    [
+      "FL1",
+      0
+    ],
+    [
+      "FL2",
+      5
+    ],
+    [
+      "FL3",
+      10
+    ],
+    [
+      "FL4",
+      15
+    ],
+    [
+      "FL5",
+      23
+    ],
+    [
+      "FL6",
+      40
+    ],
+    [
+      "FL7",
+      51
+    ],
+    [
+      "FL8",
+      70
+    ],
+    [
+      "FL9",
+      87
+    ],
+    [
+      "FL10",
+      126
+    ]
+  ],
+  "curve": [
+    {
+      "day": 0,
+      "fl": 1,
+      "stars": 0,
+      "tree": 0
+    },
+    {
+      "day": 1,
+      "fl": 1,
+      "stars": 0,
+      "tree": 1
+    },
+    {
+      "day": 10,
+      "fl": 3,
+      "stars": 0,
+      "tree": 10
+    },
+    {
+      "day": 20,
+      "fl": 4,
+      "stars": 0,
+      "tree": 20
+    },
+    {
+      "day": 30,
+      "fl": 5,
+      "stars": 0,
+      "tree": 30
+    },
+    {
+      "day": 40,
+      "fl": 6,
+      "stars": 0,
+      "tree": 40
+    },
+    {
+      "day": 50,
+      "fl": 6,
+      "stars": 0,
+      "tree": 50
+    },
+    {
+      "day": 60,
+      "fl": 7,
+      "stars": 0,
+      "tree": 57
+    },
+    {
+      "day": 70,
+      "fl": 8,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 80,
+      "fl": 8,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 90,
+      "fl": 9,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 100,
+      "fl": 9,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 110,
+      "fl": 9,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 120,
+      "fl": 9,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 130,
+      "fl": 10,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 140,
+      "fl": 10,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 150,
+      "fl": 10,
+      "stars": 0,
+      "tree": 62
+    }
+  ],
+  "softlocks": [],
+  "errors": [],
+  "run": {
+    "label": "Careful",
+    "persona": "careful",
+    "daysRan": 150,
+    "cashStart": 168000,
+    "cashEnd": 1021035,
+    "cashDay30": 189208,
+    "cashDay60": 432927,
+    "cashDay90": 702108,
+    "flights": 826,
+    "flightsPerDay": 5.5,
+    "flightDiverts": 45,
+    "connectionDiverts": 48,
+    "goArounds": 88,
+    "missedConnectionCash": -74400,
+    "curbCrossDay": 18,
+    "curbPeak": 5.4,
+    "fuelGroundings": 0,
+    "firstGroundingDay": null,
+    "groundingWarnings": [
+      "Signed Apex Local. 36,000 L road tankers at $0.020/L. Band 80,000 L a day.",
+      "Research: Fuel farm"
+    ],
+    "treeCompleteDay": 69,
+    "preferredDay": 14,
+    "trustedDay": 28,
+    "hubTier": "station",
+    "hubTierDay": 1,
+    "fuelPurchase": 74760,
+    "spotPurchase": 0,
+    "termPurchase": 74760,
+    "fuelPurchasePerDay": 498,
+    "spotPurchasePerDay": 0,
+    "runway": 2,
+    "stands": 6,
+    "researchers": 1,
+    "treeNodes": 62,
+    "signed": [
+      "air_regional_1",
+      "zoomjet",
+      "alpine_swift",
+      "air_lowcost_1",
+      "harbor_heli",
+      "island_heli",
+      "medevac_one",
+      "rotorlink",
+      "skyline_rescue",
+      "cityhopper"
+    ],
+    "fieldLevel": 10,
+    "prestigeStars": 0,
+    "penaltyTotal": -785878,
+    "judged": 1015,
+    "missed": 31,
+    "softlocks": [],
+    "errors": [],
+    "marks": [
+      {
+        "day": 0,
+        "cash": 73000,
+        "flights": 0,
+        "tree": 0,
+        "runway": 0,
+        "stands": 0,
+        "curb": 0,
+        "researchers": 0,
+        "field": 1,
+        "stars": 0
+      },
+      {
+        "day": 1,
+        "cash": 2475,
+        "flights": 1,
+        "tree": 1,
+        "runway": 1,
+        "stands": 3,
+        "curb": 0.4,
+        "researchers": 1,
+        "field": 1,
+        "stars": 0
+      },
+      {
+        "day": 15,
+        "cash": 50930,
+        "flights": 52,
+        "tree": 15,
+        "runway": 1,
+        "stands": 4,
+        "curb": 0.4,
+        "researchers": 1,
+        "field": 4,
+        "stars": 0
+      },
+      {
+        "day": 30,
+        "cash": 189208,
+        "flights": 118,
+        "tree": 30,
+        "runway": 1,
+        "stands": 4,
+        "curb": 1.6,
+        "researchers": 1,
+        "field": 5,
+        "stars": 0
+      },
+      {
+        "day": 45,
+        "cash": 261681,
+        "flights": 189,
+        "tree": 45,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.1,
+        "researchers": 1,
+        "field": 6,
+        "stars": 0
+      },
+      {
+        "day": 60,
+        "cash": 432927,
+        "flights": 288,
+        "tree": 57,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.7,
+        "researchers": 1,
+        "field": 7,
+        "stars": 0
+      },
+      {
+        "day": 75,
+        "cash": 573476,
+        "flights": 385,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 2.2,
+        "researchers": 1,
+        "field": 8,
+        "stars": 0
+      },
+      {
+        "day": 90,
+        "cash": 702108,
+        "flights": 480,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 2.8,
+        "researchers": 1,
+        "field": 9,
+        "stars": 0
+      },
+      {
+        "day": 105,
+        "cash": 731162,
+        "flights": 540,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 3.2,
+        "researchers": 1,
+        "field": 9,
+        "stars": 0
+      },
+      {
+        "day": 120,
+        "cash": 817458,
+        "flights": 631,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 3.7,
+        "researchers": 1,
+        "field": 9,
+        "stars": 0
+      },
+      {
+        "day": 135,
+        "cash": 928526,
+        "flights": 720,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 4.2,
+        "researchers": 1,
+        "field": 10,
+        "stars": 0
+      },
+      {
+        "day": 150,
+        "cash": 1021035,
+        "flights": 826,
+        "tree": 62,
+        "runway": 2,
+        "stands": 6,
+        "curb": 5.3,
+        "researchers": 1,
+        "field": 10,
+        "stars": 0
+      }
+    ]
+  }
+}

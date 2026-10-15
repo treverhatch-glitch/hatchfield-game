@@ -1,7 +1,8 @@
 import { writeFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RESEARCH_NODES } from '../src/research/nodes.ts'
-import { PERSONAS, runHeadless } from '../src/playtest/run.ts'
+import { TIP_PERSONAS, runHeadless } from '../src/playtest/run.ts'
+import { summarizeRun } from '../src/playtest/summary.ts'
 import type { PersonaReport } from '../src/playtest/types.ts'
 
 const MARKS = [15, 30, 60, 90] as const
@@ -9,11 +10,15 @@ const MARKS = [15, 30, 60, 90] as const
 describe('research pace', () => {
   it('runs each persona for 90 days and writes the table', () => {
     const reports = runHeadless({
-      personas: PERSONAS.map((persona) => ({ ...persona, days: 90 })),
+      personas: TIP_PERSONAS.map((persona) => ({ ...persona, days: 90 })),
       onProgress: (line) => console.log(line),
     })
     const body = render(reports)
     writeFileSync(new URL('../docs/playtest/research_pace.md', import.meta.url), body)
+    writeFileSync(
+      new URL('../docs/playtest/bots/tip90.json', import.meta.url),
+      JSON.stringify(reports.map(summarizeRun), null, 2),
+    )
     expect(reports).toHaveLength(3)
     for (const report of reports) expect(report.nanFlags).toEqual([])
     const careful = reports.find((report) => report.persona === 'careful')
@@ -36,7 +41,11 @@ function render(reports: PersonaReport[]): string {
   lines.push('# Research pace — 90-day headless')
   lines.push('')
   lines.push(
-    'Careful, Greedy, and Chaotic each ran 90 sim days on this branch (standard difficulty, passenger focus, sandbox off). One day is 180 sim seconds. The driver uses the player command API at 5×, tick dt 0.25s, and looks at the board every 12 sim seconds. Seeds are Careful `0x5eed`, Greedy `0x6eed`, Chaotic `0xc0a0`.',
+    'Measured on `4b02521` (15 Oct 2026). Headway is 48s. These three runs sign the Apex term and do not hire.',
+  )
+  lines.push('')
+  lines.push(
+    'Careful, Greedy, and Chaotic each ran 90 sim days on the tip policy (standard difficulty, passenger focus, sandbox off). They sign Apex Local, they do not build a second strip, and they hire no researchers. The live bot policy that adds a strip and one researcher is measured separately. One day is 180 sim seconds. The driver uses the player command API at 5×, tick dt 0.25s, and looks at the board every 12 sim seconds. Seeds are Careful `0x5eed`, Greedy `0x6eed`, Chaotic `0xc0a0`.',
   )
   lines.push('')
   lines.push(
