@@ -91,4 +91,24 @@ test('bot playtest writes a report', async () => {
   writeFileSync(join(outDir, 'report.md'), renderReport(report))
   console.log(`wrote ${join(outDir, 'report.md')}`)
   if (openingError) throw new Error(openingError)
+  const failures = botFailures(report.headless, quick ? null : browser)
+  if (failures.length) throw new Error(`Bot playtest found problems:\n${failures.join('\n')}`)
 })
+
+function botFailures(
+  runs: { persona: string; softlocks: string[]; consoleErrors: string[]; nanFlags?: string[]; daysRan: number; daysRequested: number }[],
+  browser: BrowserReport | null,
+): string[] {
+  const out: string[] = []
+  for (const run of runs) {
+    for (const line of run.softlocks) out.push(`${run.persona}: softlock — ${line}`)
+    for (const line of run.consoleErrors) out.push(`${run.persona}: error — ${line}`)
+    for (const line of run.nanFlags ?? []) out.push(`${run.persona}: NaN — ${line}`)
+    if (run.daysRan < run.daysRequested) out.push(`${run.persona}: stopped on day ${run.daysRan} of ${run.daysRequested}`)
+  }
+  if (browser && (browser.skipped || !browser.ok)) {
+    out.push(`browser smoke: ${browser.skipped ? `skipped (${browser.reason ?? 'no reason'})` : 'failed'}`)
+    for (const line of browser.consoleErrors) out.push(`browser: error — ${line}`)
+  }
+  return out
+}
