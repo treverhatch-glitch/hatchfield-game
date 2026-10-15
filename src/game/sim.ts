@@ -20887,7 +20887,7 @@ export class Game {
       queueLength: throughput.queueLength,
       queueKind: 'passengers',
       bays,
-      note: hallForecast(node, metrics)?.text,
+      note: hallForecast(node, metrics, this.activeHall()?.items ?? [])?.text,
       alert: alloc?.reason ?? undefined,
       actions: alloc ? this.checkinActions(alloc) : undefined,
     }

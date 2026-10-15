@@ -69,9 +69,9 @@ export const HALL_MOOD_LINK = {
     lost: 0.6,
     no_amenity: 0.6,
     out_of_stock: 0.6,
-    no_seats: 0.6,
+    no_seats: 0.2,
     nice_seats: 0.6,
-    crowded: 0.6,
+    crowded: 0.2,
     hungry: 0.3,
     thirsty: 0.3,
     need_toilet: 0.3,
@@ -85,10 +85,10 @@ export const HALL_MOOD_LINK = {
 export const HALL_CAPACITY_TUNING = {
   /**
    * Nav seconds over which the passengers committed to a point count as one
-   * hour's rate. 1200 (20 nav minutes): a lane with 30 people headed for it
-   * is read as 90 pax/hr, so a 120 pax/hr lane shows 75% loaded.
+   * hour's rate. 400 reads five people at a desk as 45 an hour, about what
+   * a two-desk starter can serve.
    */
-  planWindowNavSec: 1200,
+  planWindowNavSec: 400,
 }
 
 /** Terminal crew in the hall walk (src/paxnav/crew.ts). */

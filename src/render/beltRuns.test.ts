@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
 import type { Tile } from '../game/types.ts'
-import { deckSides } from './beltDeck.ts'
+import { CELL } from './aircraft/specs.ts'
+import { addBeltDeck, beltArmRange, BELT_SURFACE_Y, deckSides } from './beltDeck.ts'
 import { alongRun, bagsPerRun, beltArms, beltRuns, type BeltCell } from './beltRuns.ts'
 
 function grid(belts: [number, number][]): Tile[][] {
@@ -69,6 +71,76 @@ describe('belt runs', () => {
 })
 
 describe('belt deck', () => {
+  function worldBoxes(arms: Parameters<typeof addBeltDeck>[1]) {
+    const g = new THREE.Group()
+    addBeltDeck(g, arms)
+    g.updateMatrixWorld(true)
+    const boxes: { kind: string; box: THREE.Box3 }[] = []
+    g.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (!mesh.isMesh) return
+      mesh.geometry.computeBoundingBox()
+      const local = new THREE.Vector3()
+      mesh.geometry.boundingBox!.getSize(local)
+      const box = mesh.geometry.boundingBox!.clone()
+      box.applyMatrix4(mesh.matrixWorld)
+      const thin = [local.x, local.y, local.z].filter((v) => v < 0.12).length
+      const kind = mesh.geometry.type === 'PlaneGeometry' ? 'deck' : thin >= 2 ? 'rail' : 'roller'
+      boxes.push({ kind, box })
+    })
+    return boxes
+  }
+
+  it('meets the next straight cell so a bag does not cross a dark gap', () => {
+    const span = beltArmRange(false)
+    expect(span.from).toBe(0)
+    expect(CELL - span.to * 2).toBeLessThanOrEqual(0)
+    const a = worldBoxes({ e: true, w: true, n: false, s: false })
+    const b = worldBoxes({ e: true, w: true, n: false, s: false })
+    for (const row of b) row.box.translate(new THREE.Vector3(CELL, 0, 0))
+    const east = a.filter((row) => row.kind === 'deck').sort((p, q) => q.box.max.x - p.box.max.x)[0]
+    const west = b.filter((row) => row.kind === 'deck').sort((p, q) => p.box.min.x - q.box.min.x)[0]
+    expect(west.box.min.x - east.box.max.x).toBeLessThanOrEqual(-0.4)
+  })
+
+  it('keeps the visible deck above the rollers at the bag surface', () => {
+    const boxes = worldBoxes({ e: true, w: true, n: false, s: false })
+    const decks = boxes.filter((row) => row.kind === 'deck')
+    const rollers = boxes.filter((row) => row.kind === 'roller')
+    expect(decks.length).toBeGreaterThan(0)
+    expect(rollers.length).toBeGreaterThan(0)
+    for (const deck of decks) expect((deck.box.min.y + deck.box.max.y) / 2).toBeCloseTo(BELT_SURFACE_Y, 2)
+    for (const roller of rollers) expect(roller.box.max.y).toBeLessThan(BELT_SURFACE_Y)
+  })
+
+  it('keeps bend rails on their own arm instead of crossing into an X', () => {
+    const bend = beltArmRange(true)
+    const halfW = (CELL * 0.42) / 2
+    expect(bend.from).toBeGreaterThanOrEqual(halfW - 1e-6)
+    expect(bend.to).toBe(beltArmRange(false).to)
+    const boxes = worldBoxes({ e: true, w: false, n: true, s: false })
+    const rails = boxes.filter((row) => row.kind === 'rail')
+    const decks = boxes.filter((row) => row.kind === 'deck')
+    expect(rails.length).toBe(4)
+    const along = (box: THREE.Box3) => {
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      return size.x >= size.z ? 'x' : 'z'
+    }
+    let crossed = 0
+    for (const rail of rails) {
+      for (const deck of decks) {
+        if (along(rail.box) === along(deck.box)) continue
+        const hit = rail.box.clone().intersect(deck.box)
+        if (hit.isEmpty()) continue
+        const size = new THREE.Vector3()
+        hit.getSize(size)
+        if (Math.min(size.x, size.z) > 0.08) crossed += 1
+      }
+    }
+    expect(crossed).toBe(0)
+  })
+
   it('runs the deck along the belt, including north-south runs and bends', () => {
     const tiles = grid(STARTER)
     expect(deckSides(beltArms(tiles, 11, 7)).sort()).toEqual(['n', 's'])

@@ -164,42 +164,12 @@ function earthBerm(g: THREE.Group, x: number, z: number, radius: number, mat: TH
   }
 }
 
-function canopyTanker(g: THREE.Group, x: number, z: number, hose: THREE.Material) {
-  const root = new THREE.Group()
-  root.name = 'canopy-tanker'
-  root.position.set(x, 0, z)
-  const white = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.42, metalness: 0.12 })
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.78, 1.05), white)
-  cab.position.set(0, 0.52, 1.15)
-  cab.castShadow = true
-  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.15, 10), white)
-  tank.rotation.x = Math.PI / 2
-  tank.position.set(0, 0.68, -0.2)
-  tank.castShadow = true
-  const wheel = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.85 })
-  for (const [wx, wz] of [
-    [-0.46, 0.85],
-    [0.46, 0.85],
-    [-0.46, -0.85],
-    [0.46, -0.85],
-    [-0.46, -0.35],
-    [0.46, -0.35],
-  ] as const) {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.08, 8), wheel)
-    w.rotation.z = Math.PI / 2
-    w.position.set(wx, 0.15, wz)
-    root.add(w)
-  }
-  root.add(cab, tank)
-  g.add(root)
-  pipe(g, new THREE.Vector3(x, 2.02, z + 0.15), new THREE.Vector3(x, 1.12, z - 0.2), 0.035, hose)
-}
-
 /**
- * Stage-III depot: tanks sit in grass earth berms, two tankers dock under a
- * drive-through canopy, and the yard carries tire tracks. The fill socket
- * stays on the +X outlet the fuel hose already uses. The loading lane is
- * painted lines, not a filled yellow pad.
+ * Stage-III depot: tanks sit in grass earth berms under a drive-through canopy,
+ * and the yard carries tire tracks. No decorative tanker is parked in the yard:
+ * the bowser that loads here is the live truck on the taxi cell beside the farm.
+ * The fill socket stays on the +X outlet the fuel hose already uses. The loading
+ * lane is painted lines, not a filled yellow pad.
  */
 export function addFuelFarm(g: THREE.Group) {
   const shell = skinMaterial('fuel_farm', 'wall', { metalness: 0.35 })
@@ -211,7 +181,6 @@ export function addFuelFarm(g: THREE.Group) {
   const concrete = new THREE.MeshStandardMaterial({ color: '#c9c6bf', roughness: 0.82 })
   const earth = new THREE.MeshStandardMaterial({ color: '#5d7a3a', roughness: 0.95 })
   const canopyMat = new THREE.MeshStandardMaterial({ color: '#c5ccd3', roughness: 0.55, metalness: 0.35 })
-  const hoseMat = new THREE.MeshStandardMaterial({ color: '#1c1c1c', roughness: 0.7 })
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   yard.rotation.x = -Math.PI / 2
@@ -288,9 +257,6 @@ export function addFuelFarm(g: THREE.Group) {
       g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, z))
     }
   }
-  canopyTanker(g, -0.72, laneZ, hoseMat)
-  canopyTanker(g, 0.72, laneZ, hoseMat)
-
   // Outlet the locked farm_fill socket hoses into. The socket itself does not move.
   const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 10), trim)
   reel.rotation.z = Math.PI / 2
