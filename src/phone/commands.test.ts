@@ -21,6 +21,9 @@ function host(): PhoneCommandHost {
     declineFieldTask: vi.fn(),
     ackLetter: vi.fn(),
     dismissAdvisor: vi.fn(),
+    acceptFuelSpot: vi.fn(),
+    declineFuelSpot: vi.fn(),
+    dropFuelTerm: vi.fn(),
     emit: vi.fn(),
   }
 }

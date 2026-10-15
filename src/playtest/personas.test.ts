@@ -55,6 +55,8 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     yearReportPending: false,
     flightsDone: 1,
     activeFlights: 1,
+    fuelTerm: 'apex_local',
+    fuelSignCost: 3_500,
     fieldAsk: null,
     ...partial,
   }

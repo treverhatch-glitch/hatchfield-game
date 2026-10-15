@@ -63,6 +63,10 @@ export interface AirportView {
   yearReportPending: boolean
   flightsDone: number
   activeFlights: number
+  /** Signed fuel term id. Null while the field is still on spot. */
+  fuelTerm: string | null
+  /** Cash to sign the first term (Apex Local). */
+  fuelSignCost: number
   /** The open airline field ask, when one Build or Decline can answer it. */
   fieldAsk: {
     kind: FieldTaskKind
@@ -104,6 +108,7 @@ export interface PlayerCommands {
   setFocus(focus: StartFocus): CommandResult
   buyLand(kind: SiteKind): CommandResult
   buildStarterKit(): CommandResult
+  signFuelTerm(): CommandResult
   chooseFreehand(): CommandResult
   setSpeed(speed: Speed): CommandResult
   setTool(tool: Tool): CommandResult
@@ -166,6 +171,7 @@ export type Intent =
   | { do: 'parcel' }
   | { do: 'speed'; speed: Speed }
   | { do: 'dismissYear' }
+  | { do: 'fuelTerm' }
   | { do: 'nothing' }
 
 export interface PersonaMemory {

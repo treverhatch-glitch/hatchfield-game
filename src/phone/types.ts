@@ -29,6 +29,9 @@ export type PhoneAction =
   | { type: 'decline-field' }
   | { type: 'ack'; key: string }
   | { type: 'dismiss-advisor'; cardId: string }
+  | { type: 'accept-fuel-spot' }
+  | { type: 'decline-fuel-spot' }
+  | { type: 'drop-fuel-term' }
 
 export interface PhoneButton {
   id: string
@@ -93,5 +96,8 @@ export interface PhoneCommandHost {
   declineFieldTask(): void
   ackLetter(key: string): void
   dismissAdvisor(cardId: string): void
+  acceptFuelSpot(): void
+  declineFuelSpot(): void
+  dropFuelTerm(): void
   emit(): void
 }

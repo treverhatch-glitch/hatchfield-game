@@ -12,6 +12,7 @@ import { SIZE } from '../game/types.ts'
 import { OPS_RP_PER_SEC } from '../research/config.ts'
 import { nodeCost, nodeState, roomRate as treeRoomRate } from '../research/logic.ts'
 import { RESEARCH_NODES as TREE_NODES, nodeById } from '../research/nodes.ts'
+import { FUEL_CONTRACTS } from '../scale/data.ts'
 import { queueAtNode } from '../terminalplay/queues.ts'
 import { techNode } from '../wave3/research.ts'
 import type { AirportView, CommandResult, PlayerCommands, Probe, ResearchPools, SystemsBooks } from './types.ts'
@@ -104,6 +105,13 @@ class GamePlayer implements PlayerCommands {
     this.game.buildStarterKit()
     const ok = this.game.starterKitStamped && !before
     return result(ok, 'buildStarterKit', ok ? 'starter kit stamped' : this.latest('starter kit did not stamp'))
+  }
+
+  signFuelTerm(): CommandResult {
+    const before = this.game.contractId
+    this.game.signScaleContract('apex_local')
+    const ok = this.game.contractId === 'apex_local' && before !== 'apex_local'
+    return result(ok, 'signFuelTerm', ok ? 'Apex Local' : this.latest('fuel term did not sign'))
   }
 
   chooseFreehand(): CommandResult {
@@ -562,6 +570,8 @@ class GamePlayer implements PlayerCommands {
       yearReportPending: game.pendingYearReport() != null,
       flightsDone: game.flightsDone,
       activeFlights: game.flights.length,
+      fuelTerm: game.contractId,
+      fuelSignCost: FUEL_CONTRACTS.find((row) => row.id === 'apex_local')?.sign ?? 0,
       fieldAsk: fieldAskView(game),
     }
   }

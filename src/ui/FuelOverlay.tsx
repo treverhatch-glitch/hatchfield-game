@@ -1,8 +1,10 @@
 import type { Game } from '../game/sim.ts'
 import type { DeliveryRead } from '../fuel/index.ts'
+import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
 import { coverLabel, daysOfCover } from '../info/model.ts'
 import { FUEL } from '../fuel/config.ts'
-import { tankDef } from '../scale/logic.ts'
+import { FUEL_CONTRACTS } from '../scale/data.ts'
+import { canSignContract, contractById, tankDef } from '../scale/logic.ts'
 import { LiveText } from './LiveText.tsx'
 
 function litres(n: number): string {
@@ -10,11 +12,40 @@ function litres(n: number): string {
   return Math.round(n).toLocaleString('en-US')
 }
 
+function dollars(n: number): string {
+  return `$${Math.round(n).toLocaleString('en-US')}`
+}
+
 function queueLine(row: DeliveryRead, price: number): string {
   const name = row.mode === 'pipeline' ? 'Pipeline' : 'Tanker'
   const where = row.state === 'road' ? 'on the road' : row.state === 'wait_cash' ? 'waiting on cash' : 'docked'
-  const bill = row.mode === 'tanker' && price > 0 ? ` · $${Math.round(row.litres * price).toLocaleString('en-US')}` : ''
+  const bill = row.mode === 'tanker' && price > 0 ? ` · ${dollars(row.litres * price)}` : ''
   return `${name} · ${litres(row.litres)} L · ${where}${bill}`
+}
+
+function supplierLine(game: Game): string {
+  const contract = contractById(game.contractId)
+  if (contract) return `${contract.name} · $${contract.wholesalePerLitre.toFixed(3)}/L`
+  if (game.spotInbound) return `Spot · ${SPOT_OFFER.supplier} · $${game.spotInbound.perLitre.toFixed(3)}/L`
+  return `Spot · ${SPOT_OFFER.supplier} · $${SPOT_OFFER.perLitre.toFixed(3)}/L`
+}
+
+function nextBill(game: Game): string {
+  const inbound = game.spotInbound
+  if (inbound) return `${dollars(inbound.litres * inbound.perLitre)} when the tanker docks`
+  const contract = contractById(game.contractId)
+  if (contract) return `${dollars(contract.tankerLitres * contract.wholesalePerLitre)} for the next road tanker`
+  return `${dollars(SPOT_OFFER.tankerLitres * SPOT_OFFER.perLitre)} for one spot tanker`
+}
+
+function bandLine(game: Game): string {
+  const contract = contractById(game.contractId)
+  if (!contract) return 'No term. Untaken litres are not billed until you sign.'
+  const band = termBandLitres(contract.id)
+  const drawn = Math.max(0, game.termUpliftLitres)
+  const gap = Math.max(0, band - drawn)
+  const short = gap * contract.wholesalePerLitre * SPOT_OFFER.shortfallFraction
+  return `Drawn today ${litres(drawn)} L · promised ${litres(band)} L · shortfall ${litres(gap)} L (${dollars(short)}) if the day ended now`
 }
 
 /**
@@ -24,6 +55,7 @@ function queueLine(row: DeliveryRead, price: number): string {
 export function FuelPanel({ game, onClose }: { game: Game; onClose: () => void }) {
   if (!game.site || game.view === 'hall') return null
   const view = game.fuelView()
+  const offer = game.spotOffer
   return (
     <aside className="fuel-panel" data-testid="fuel-farm">
       <header>
@@ -32,6 +64,12 @@ export function FuelPanel({ game, onClose }: { game: Game; onClose: () => void }
           Close
         </button>
       </header>
+      <p className="fuel-summary" data-testid="fuel-supplier">
+        {supplierLine(game)}
+      </p>
+      <p className="fuel-meta" data-testid="fuel-next-bill">
+        Next bill · {nextBill(game)}
+      </p>
       <p
         className="fuel-summary"
         data-testid="fuel-summary"
@@ -48,6 +86,50 @@ export function FuelPanel({ game, onClose }: { game: Game; onClose: () => void }
           }}
         />
       </p>
+      <p className="fuel-meta" data-testid="fuel-band">
+        {bandLine(game)}
+      </p>
+      {offer ? (
+        <div className="fuel-actions" data-testid="fuel-spot-offer">
+          <p className="fuel-meta">
+            {SPOT_OFFER.supplier} · {litres(SPOT_OFFER.tankerLitres)} L at ${SPOT_OFFER.perLitre.toFixed(3)}/L · {offer.flightNo}
+          </p>
+          <button type="button" data-testid="fuel-spot-accept" onClick={() => game.acceptSpot()}>
+            Order tanker · {dollars(SPOT_OFFER.tankerLitres * SPOT_OFFER.perLitre)}
+          </button>
+          <button type="button" data-testid="fuel-spot-decline" onClick={() => game.declineSpot()}>
+            Decline
+          </button>
+        </div>
+      ) : null}
+      <p className="fuel-meta">Terms</p>
+      <ul className="fuel-queue" data-testid="fuel-terms">
+        {FUEL_CONTRACTS.map((c) => {
+          const gate = canSignContract(c.id, game.fieldLevel(), game.researchGrants())
+          const band = termBandLitres(c.id)
+          const signed = game.contractId === c.id
+          return (
+            <li key={c.id}>
+              <button
+                type="button"
+                data-testid={`fuel-term-${c.id}`}
+                disabled={!gate.ok || signed}
+                title={gate.ok ? '' : gate.why}
+                onClick={() => game.signScaleContract(c.id)}
+              >
+                {signed ? 'Signed · ' : ''}
+                {c.name} {dollars(c.sign)} · ${c.wholesalePerLitre.toFixed(3)}/L · {litres(band)} L/day
+              </button>
+              {!gate.ok ? <span className="muted"> {gate.why}</span> : null}
+            </li>
+          )
+        })}
+      </ul>
+      {game.contractId ? (
+        <button type="button" data-testid="fuel-drop-term" onClick={() => game.dropFuelTerm()}>
+          Drop back to spot
+        </button>
+      ) : null}
       <dl className="fuel-draw">
         <div title="Inputs: litres per minute the bowsers take from tankLitres.">
           <dt>Trucks</dt>

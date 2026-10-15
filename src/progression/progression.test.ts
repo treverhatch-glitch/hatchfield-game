@@ -17,7 +17,7 @@ import {
   prestigeThreshold,
 } from '../game/catalog.ts'
 import { Game } from '../game/sim.ts'
-import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS } from '../scale/data.ts'
+import { BAG_SYSTEMS, PAX_UNITS, TANK_TIERS } from '../scale/data.ts'
 import { ITEMS, PREFAB_TIERS } from '../game/terminal.ts'
 import {
   EXTRA_PATH_CAPSTONE_PREMIUM,
@@ -268,7 +268,6 @@ describe('daily upkeep', () => {
     const bill = payrollForGameDay(0, 'early', game.payrollPreview())
     const pillar =
       TANK_TIERS[0]!.upkeepPerDay +
-      (FUEL_CONTRACTS.find((row) => row.id === 'apex_local')?.upkeepPerDay ?? 0) +
       BAG_SYSTEMS.carts.upkeepPerDay +
       2 * PAX_UNITS.desk.upkeepPerDay +
       PAX_UNITS.scanner.upkeepPerDay

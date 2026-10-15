@@ -109,6 +109,8 @@ describe('one fuel stock', () => {
     game.spawnCool = 10_000
     game.tankLitres = 10_000
     game.roadMinutes = 0
+    game.contractId = 'apex_local'
+    game.fuelBrand = 'apex'
     game.tick(12)
     expect(game.tankLitres).toBe(46_000)
     sameStock(game)

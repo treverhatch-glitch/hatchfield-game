@@ -11,6 +11,8 @@ import {
   rewardBlurb,
 } from '../game/catalog.ts'
 import type { Game } from '../game/sim.ts'
+import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
+import { contractById } from '../scale/logic.ts'
 import { buildPhoneFeed } from './feed.ts'
 import type { PhoneCard } from './types.ts'
 import type { PhoneWorld } from './feed.ts'
@@ -58,6 +60,28 @@ export function readPhoneWorld(game: Game): PhoneWorld {
           }
         : null,
     signed: game.signed.map((id) => signedRow(game, id)),
+    fuelSpot: game.spotOffer
+      ? {
+          flightNo: game.spotOffer.flightNo,
+          supplier: SPOT_OFFER.supplier,
+          litres: SPOT_OFFER.tankerLitres,
+          perLitre: SPOT_OFFER.perLitre,
+          bill: Math.round(SPOT_OFFER.tankerLitres * SPOT_OFFER.perLitre),
+          leadMinutes: SPOT_OFFER.leadMinutes,
+          secondsLeft: Math.max(0, Math.ceil(game.spotOffer.expiresAt - game.clock)),
+        }
+      : null,
+    fuelSigned: (() => {
+      const def = contractById(game.contractId)
+      if (!def) return null
+      return {
+        id: def.id,
+        name: def.name,
+        perLitre: def.wholesalePerLitre,
+        bandLitres: termBandLitres(def.id),
+        drawnLitres: Math.round(game.termUpliftLitres),
+      }
+    })(),
     mxSigned: game.mxSigned.map((id) => signedRow(game, id)),
     hubs: game.hubAirlines.map((id) => signedRow(game, id)),
     layoverOffer:
@@ -177,6 +201,7 @@ export function readPhoneCards(game: Game): PhoneCard[] {
     else if (item.id === 'field') item.left = () => Math.ceil(game.fieldTaskLeft())
     else if (item.id === 'cargo-vol') item.left = () => Math.ceil(game.cargoVolumeLeft())
     else if (item.id === 'layover-live') item.left = () => Math.ceil(game.layover?.remaining ?? 0)
+    else if (item.id === 'fuel-spot') item.left = () => Math.max(0, Math.ceil((game.spotOffer?.expiresAt ?? game.clock) - game.clock))
   }
   return cards
 }

@@ -376,6 +376,8 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
       return api.buyLand(intent.kind)
     case 'starterKit':
       return api.buildStarterKit()
+    case 'fuelTerm':
+      return api.signFuelTerm()
     case 'freehand':
       return api.chooseFreehand()
     case 'accept':

@@ -31,9 +31,29 @@ export interface PhoneSignedRow {
   note?: string
 }
 
+export interface PhoneFuelSpot {
+  flightNo: string
+  supplier: string
+  litres: number
+  perLitre: number
+  bill: number
+  leadMinutes: number
+  secondsLeft: number
+}
+
+export interface PhoneFuelSigned {
+  id: string
+  name: string
+  perLitre: number
+  bandLitres: number
+  drawnLitres: number
+}
+
 export interface PhoneWorld {
   contract: PhoneContractOffer | null
   signed: PhoneSignedRow[]
+  fuelSpot: PhoneFuelSpot | null
+  fuelSigned: PhoneFuelSigned | null
   mxSigned: PhoneSignedRow[]
   hubs: PhoneSignedRow[]
   layoverOffer: {
@@ -109,6 +129,8 @@ export function emptyPhoneWorld(): PhoneWorld {
   return {
     contract: null,
     signed: [],
+    fuelSpot: null,
+    fuelSigned: null,
     mxSigned: [],
     hubs: [],
     layoverOffer: null,
@@ -182,6 +204,51 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       ],
     })
     if (filed) cards.push(filed)
+  }
+
+  const fuelSigned = world.fuelSigned
+  if (fuelSigned) {
+    const title = `${fuelSigned.name} · fuel term`
+    const body = `$${fuelSigned.perLitre.toFixed(3)}/L · band ${fuelSigned.drawnLitres.toLocaleString('en-US')} / ${fuelSigned.bandLitres.toLocaleString('en-US')} L today.`
+    const built = card({
+      id: `fuel-signed:${fuelSigned.id}`,
+      key: `fuel-signed:${fuelSigned.id}`,
+      tab: 'contracts',
+      kind: 'fuel-signed',
+      from: fuelSigned.name,
+      title,
+      preview: phonePreview(title),
+      body,
+      tone: 'ok',
+      arrives: false,
+      secondsLeft: null,
+      actions: [btn('drop-term', 'Drop back to spot', { type: 'drop-fuel-term' })],
+    })
+    if (built) cards.push(built)
+  }
+
+  const spot = world.fuelSpot
+  if (spot) {
+    const title = `${spot.supplier} · ${spot.flightNo}`
+    const body = `${spot.litres.toLocaleString('en-US')} L at $${spot.perLitre.toFixed(3)}/L · $${spot.bill.toLocaleString('en-US')} · on the road in ${spot.leadMinutes} game minutes. ${spot.flightNo} stays grounded if this offer is ignored.`
+    const built = card({
+      id: 'fuel-spot',
+      key: `fuel-spot:${spot.flightNo}`,
+      tab: 'messages',
+      kind: 'fuel-spot',
+      from: spot.supplier,
+      title,
+      preview: phonePreview(`${spot.supplier} tanker for ${spot.flightNo}`),
+      body,
+      tone: 'warn',
+      arrives: true,
+      secondsLeft: spot.secondsLeft,
+      actions: [
+        btn('accept-spot', 'Order tanker', { type: 'accept-fuel-spot' }, { primary: true }),
+        btn('decline-spot', 'Decline', { type: 'decline-fuel-spot' }),
+      ],
+    })
+    if (built) cards.push(built)
   }
 
   for (const row of world.signed) {

@@ -1,6 +1,8 @@
 # Fuel contracts
 
-A fuel contract should be a truck you can watch, a price you agreed to, and a wing that does not leave until the hose is done. This pass audits what the game does today, checks it against how airports actually buy jet fuel, and proposes a progression from a single road tanker to a pipeline. No gameplay changes in this note. Numbers below are the ones in the tree on 15 Oct 2026, plus a proposed column for later tickets.
+A fuel contract should be a truck you can watch, a price you agreed to, and a wing that does not leave until the hose is done. This note audits the desk as it was on 15 Oct 2026, checks it against how airports actually buy jet fuel, and sets the progression from a single road tanker to a pipeline.
+
+Phase 1 is in the game. The starter no longer signs a term or fills the tank. A spot card orders one Apex road tanker into `tankLitres`. A signed term auto-orders at its price, bills the untaken band at midnight, and sets the brand the wing bill reads. The fuel rack, the services desk, the phone, and the farm card show supplier, price, and band. Later phases (hydrant pits that count, pipeline, supplier standing, the into-plane split) are still ahead. Numbers below are the 15 Oct audit, plus the proposed column the build is following.
 
 Shots are a passenger starter kit, sandbox off, paused, desktop 1920×1080. The tanker frame is the same field after the tank was drawn down to 12,000 L and the clock ran 18 half-second ticks, so the lead time was still open.
 

@@ -25,8 +25,9 @@ import { financeBreakdown } from '../game/financeBreakdown.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
+import { SPOT_OFFER, termBandLitres } from '../fuel/offerData'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
-import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
+import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, contractById, tankDef } from '../scale/logic'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -2129,34 +2130,52 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 <>
                   <section>
                     <h3>Fuel desk</h3>
-                    <p className="muted">
-                      {game.fuelBrand
-                        ? `${FUEL[game.fuelBrand].name} · ${game.fuelLoads} loads`
-                        : 'No carrier. Airlines that need fuel will not sign.'}
+                    <p className="muted" data-testid="fuel-desk-status">
+                      {(() => {
+                        const contract = contractById(game.contractId)
+                        if (contract) {
+                          const band = termBandLitres(contract.id)
+                          return `${contract.name} · $${contract.wholesalePerLitre.toFixed(3)}/L · band ${Math.round(game.termUpliftLitres).toLocaleString('en-US')} / ${band.toLocaleString('en-US')} L today`
+                        }
+                        if (game.spotInbound) {
+                          return `Spot · ${SPOT_OFFER.supplier} tanker on the road · ${game.spotInbound.litres.toLocaleString('en-US')} L`
+                        }
+                        if (game.spotOffer) {
+                          return `Spot offer · ${game.spotOffer.flightNo} · ${SPOT_OFFER.supplier} $${SPOT_OFFER.perLitre.toFixed(3)}/L`
+                        }
+                        return game.fuelBrand
+                          ? `${FUEL[game.fuelBrand].name} · spot $${SPOT_OFFER.perLitre.toFixed(3)}/L · no term`
+                          : 'No carrier. A spot tanker or a term keeps fuel on the wing.'
+                      })()}
                     </p>
-                    <div className="row">
-                      <button type="button" onClick={() => game.signFuel('apex')}>
-                        Apex {money(FUEL.apex.sign)}
-                      </button>
-                      <button type="button" onClick={() => game.signFuel('kiln')}>
-                        Kiln {money(FUEL.kiln.sign)}
-                      </button>
-                    </div>
-                    <button type="button" className="wide" onClick={() => game.buyLoads()}>
-                      Buy 4 loads
-                      {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
-                    </button>
                     <p className="muted">
                       Tank {game.tankTier} · {Math.round(game.tankLitres).toLocaleString('en-US')} /{' '}
                       {tankDef(game.tankTier).capacityLitres.toLocaleString('en-US')} L · {game.fuelSupply}
-                      {game.contractId ? ` · ${FUEL_CONTRACTS.find((c) => c.id === game.contractId)?.name}` : ''}
                     </p>
+                    <button
+                      type="button"
+                      data-testid="open-fuel-rack"
+                      onClick={() => {
+                        setPanel(null)
+                        game.showFuelRack()
+                      }}
+                    >
+                      Open the fuel rack
+                    </button>
                     <div className="row">
                       {FUEL_CONTRACTS.map((c) => {
                         const gate = canSignContract(c.id, game.fieldLevel(), game.researchGrants())
+                        const signed = game.contractId === c.id
                         return (
-                          <button key={c.id} type="button" disabled={!gate.ok} onClick={() => game.signScaleContract(c.id)}>
-                            {c.name} {money(c.sign)}
+                          <button
+                            key={c.id}
+                            type="button"
+                            disabled={!gate.ok || signed}
+                            title={gate.ok ? `$${c.wholesalePerLitre.toFixed(3)} per litre` : gate.why}
+                            onClick={() => game.signScaleContract(c.id)}
+                          >
+                            {c.name} {money(c.sign)} · ${c.wholesalePerLitre.toFixed(3)}/L
+                            {!gate.ok ? ` · ${gate.why}` : ''}
                           </button>
                         )
                       })}

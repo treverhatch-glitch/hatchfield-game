@@ -78,6 +78,7 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
   const fieldAsk = fieldAskIntent(view, CAREFUL_CASH_BUFFER)
   if (fieldAsk) intents.push(fieldAsk)
   if (view.offer) {
@@ -156,6 +157,7 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
   const fieldAsk = fieldAskIntent(view, 0)
   if (fieldAsk) intents.push(fieldAsk)
   if (view.offer) intents.push({ do: 'accept' })
@@ -234,6 +236,7 @@ export function chaoticIntents(
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  if (!view.fuelTerm && view.cash >= view.fuelSignCost && roll < 0.5) intents.push({ do: 'fuelTerm' })
   const ask = view.fieldAsk
   if (ask) intents.push(ask.canBuild && rng() < 0.55 ? { do: 'fieldBuild' } : { do: 'fieldDecline' })
   if (view.yearReportPending && rng() < 0.5) intents.push({ do: 'dismissYear' })

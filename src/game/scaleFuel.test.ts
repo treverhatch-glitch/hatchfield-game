@@ -79,15 +79,17 @@ function bowser(game: Game) {
 describe('scale fuel stays in step with bowser loads', () => {
   it('opens tank room when a load is pumped, then the road tanker refills it', () => {
     const game = field()
-    expect(game.tankLitres).toBe(80_000)
-    expect(game.fuelLoads).toBe(4)
+    expect(game.tankLitres).toBe(20_000)
+    expect(game.fuelLoads).toBe(1)
+    expect(game.contractId).toBeNull()
     bowser(game)
-    expect(game.fuelLoads).toBe(3)
-    expect(game.tankLitres).toBe(60_000)
+    expect(game.fuelLoads).toBe(0)
+    expect(game.tankLitres).toBe(0)
     game.cash += 50_000
+    game.signScaleContract('apex_local')
     game.tick(12)
-    expect(game.fuelLoads).toBeGreaterThanOrEqual(4)
-    expect(game.tankLitres).toBeGreaterThan(60_000)
+    expect(game.fuelLoads).toBeGreaterThanOrEqual(1)
+    expect(game.tankLitres).toBeGreaterThan(0)
   })
 
   it('keeps bought loads in the tank', () => {

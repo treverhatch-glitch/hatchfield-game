@@ -361,6 +361,7 @@ function bestHangar(field: FieldSnapshot): SizeTier | null {
   return best
 }
 
+/** Brand with no term still counts as Apex for who may land. It does not order tankers. */
 function activeContract(field: FieldSnapshot, state: PillarState) {
   return contractById(state.contractId) ?? (field.legacyFuel ? FUEL_CONTRACTS[0] : null)
 }
@@ -844,7 +845,8 @@ export function tickFuel(
 ): FuelTickResult {
   const none: FuelTickResult = { delivered: 0, paid: 0, method: 'none', railFlowing: false, waitingOnCash: false }
   if (cellsOf(field.tiles, 'fuel').length === 0) return none
-  const contract = activeContract(field, state)
+  // A signed term orders the tanker. A brand alone is spot, and spot waits for the card.
+  const contract = contractById(state.contractId)
   if (!contract || gameMinutes <= 0) return none
   const capacity = tankDef(state.tankTier).capacityLitres
   const room = Math.max(0, capacity - state.litres)

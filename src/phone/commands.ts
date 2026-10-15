@@ -23,6 +23,9 @@ export function phoneHost(game: Game): PhoneCommandHost {
     declineFieldTask: () => game.declineFieldTask(),
     ackLetter: (key) => game.ackLetter(key),
     dismissAdvisor: (cardId) => game.standingAdvisor.dismissCard(cardId),
+    acceptFuelSpot: () => game.acceptSpot(),
+    declineFuelSpot: () => game.declineSpot(),
+    dropFuelTerm: () => game.dropFuelTerm(),
     emit: () => game.emit(),
   }
 }
@@ -77,6 +80,15 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
     case 'dismiss-advisor':
       host.dismissAdvisor(action.cardId)
       host.emit()
+      return
+    case 'accept-fuel-spot':
+      host.acceptFuelSpot()
+      return
+    case 'decline-fuel-spot':
+      host.declineFuelSpot()
+      return
+    case 'drop-fuel-term':
+      host.dropFuelTerm()
       return
     default: {
       const never: never = action

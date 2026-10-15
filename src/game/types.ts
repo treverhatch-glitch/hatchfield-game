@@ -7,6 +7,7 @@ import type { StaffHousingSave } from '../staffhousing/types.ts'
 import type { BuildLayout } from '../terminalbuild/types.ts'
 import type { ResearchState } from '../research/types.ts'
 import type { Wave3State } from '../wave3/types.ts'
+import type { SpotInbound, SpotOffer } from '../fuel/offerData.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -972,6 +973,10 @@ export interface GameSnapshot {
     litres: number
     supply: 'road' | 'rail'
     roadMinutes: number
+    spotOffer?: SpotOffer | null
+    spotInbound?: SpotInbound | null
+    termUpliftLitres?: number
+    spotCool?: number
     fleet: Record<string, number>
     bagSystem: 'carts' | 'sorter' | 'bhs'
     desks: number

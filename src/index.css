@@ -4402,6 +4402,17 @@ h1.game-title::after {
   font-size: 13px;
 }
 
+.fuel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.fuel-actions .fuel-meta {
+  flex: 1 1 100%;
+}
+
 .fuel-queue {
   list-style: none;
   margin: 0;

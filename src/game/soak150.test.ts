@@ -62,6 +62,7 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
     game.cash = 5_000_000
     game.fuelLoads = 40
     game.tankLitres = 200_000
+    game.contractId = 'apex_local'
     game.reputation = 80
     game.speed = 5
     game.scheduleAuto = true
