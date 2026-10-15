@@ -99,7 +99,7 @@ describe('walker thoughts reach the fare', () => {
   it('a thought moves the fare happiness by its configured share, and zero-weight thoughts do not', () => {
     const game = field()
     const hallId = game.hallKey(game.activeHall()!)
-    const g = spawnHallGuest('mood-flight', 'depart', 'leisure', { hallId })
+    const g = spawnHallGuest('mood-flight', 'depart', 'budget', { hallId })
     game.hallGuests.push(g)
     g.happiness = 70
     const real = game.hallNav.drainMood.bind(game.hallNav)

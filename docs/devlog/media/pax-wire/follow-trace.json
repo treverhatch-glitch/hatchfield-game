@@ -1,0 +1,9 @@
+{
+  "id": "g-zqrics",
+  "stops": [
+    "0s checkin follow",
+    "15s security follow",
+    "27s gate (airside) follow"
+  ],
+  "errors": []
+}
