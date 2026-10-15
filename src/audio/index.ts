@@ -13,5 +13,5 @@ export * from './library';
 export { buildSample } from './samples';
 export { ApronMixer, cellToWorld, syncApronAudio, releaseApronAudio } from './stage';
 export type { ApronSnapshot, ApronCamera, ApronFlight, ApronTruck } from './stage';
-export { applyAudioSettings, applyStoredAudio, audioSettings } from './prefs';
-export { preloadAudioClips, bindUiClicks } from './boot';
+export { applyAudioSettings, applyStoredAudio, audioSettings, watchAudioSettings } from './prefs';
+export { preloadAudioClips, bindUiClicks, installGestureUnlock } from './boot';

@@ -82,9 +82,11 @@ export function Field({ game }: { game: Game }) {
       if (next) live.setGraphicsQuality(next)
     })
 
+    let alive = true
     let raf = 0
     let last = performance.now()
     const loop = (now: number) => {
+      if (!alive) return
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       if (game.view === 'apron') {
@@ -178,6 +180,7 @@ export function Field({ game }: { game: Game }) {
     }
     raf = requestAnimationFrame(loop)
     return () => {
+      alive = false
       offPress()
       cancelAnimationFrame(raf)
       releaseApronAudio()

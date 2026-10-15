@@ -71,13 +71,13 @@ const RECIPES = {
   gpuHum: loop('vehicles', [hum(400, 4, 0.05), eng(30, 160, 0.12)]),
   passengerBus: loop('vehicles', [eng(30, 200, 0.3), nz('lowpass', 250, 0.7, 0.08)]),
   busDoorHiss: shot('vehicles', [bs('highpass', 2800, 0, 0.7, 0.45, 0.7), bs('bandpass', 5000, 0.05, 0.35, 0.2, 2), tn('triangle', 300, 0.75, 0.08, 0.15, 180)]),
-  reversingBeeper: loop('vehicles', [beep(1050, 1, 0.2)]),
+  reversingBeeper: loop('vehicles', [beep(1050, 1, 0.11)]),
   // ---- maintenance ----
   repairVan: loop('vehicles', [eng(45, 400, 0.25), nz('lowpass', 300, 0.7, 0.06)]),
   towTruck: loop('vehicles', [eng(28, 170, 0.35), nz('bandpass', 1400, 4, 0.05, 6, 0.8)]),
   runwaySweeper: loop('vehicles', [eng(34, 240, 0.25), nz('bandpass', 3000, 0.8, 0.25, 7, 0.4)]),
   impactWrench: shot('sfx', seq(8, 0.045, (_, at) => [bs('bandpass', 2600, at, 0.035, 0.4, 3)]).concat([tn('sawtooth', 220, 0, 0.5, 0.06, 140)])),
-  breakdownClunk: shot('sfx', [tn('sine', 90, 0, 0.35, 0.8, 40, 0.003), bs('lowpass', 500, 0, 0.3, 0.6), bs('bandpass', 1200, 0.18, 0.2, 0.3, 3), bs('highpass', 2500, 0.35, 0.6, 0.15, 0.7)]),
+  breakdownClunk: shot('sfx', [tn('sine', 90, 0, 0.35, 0.35, 40, 0.003), bs('lowpass', 500, 0, 0.3, 0.28), bs('bandpass', 1200, 0.18, 0.2, 0.16, 3), bs('highpass', 2500, 0.35, 0.6, 0.1, 0.7)]),
   hazardTicks: loop('vehicles', [beep(1600, 1.6, 0.06), nz('highpass', 4000, 0.7, 0.02, 1.6, 1)]),
   // ---- construction ----
   contractorVan: loop('vehicles', [eng(48, 450, 0.25), nz('lowpass', 320, 0.7, 0.06)]),
@@ -236,7 +236,7 @@ export function buildSfx(ctx: BaseAudioContext, p: SfxParams, out: AudioNode): V
       updaters.push((v, t) => {
         o.frequency.setTargetAtTime(l.hz * (1 + v * 2), t, 0.4);
         lp.frequency.setTargetAtTime(l.lp * (1 + v * 3), t, 0.4);
-        g.gain.setTargetAtTime(l.lvl * (0.5 + v * 0.7), t, 0.4);
+        g.gain.setTargetAtTime(l.lvl * (0.35 + v * 0.65), t, 0.4);
       });
     } else if (l.k === 'noise') {
       const n = noise(ctx); const f = ctx.createBiquadFilter(); f.type = l.filter; f.frequency.value = l.hz; f.Q.value = l.q;
@@ -248,7 +248,7 @@ export function buildSfx(ctx: BaseAudioContext, p: SfxParams, out: AudioNode): V
       }
       updaters.push((v, t) => {
         if (throttle) f.frequency.setTargetAtTime(l.hz * (0.7 + v * 0.6), t, 0.3);
-        else g.gain.setTargetAtTime(l.lvl * v * 1.4, t, 1);
+        else g.gain.setTargetAtTime(l.lvl * (0.2 + 0.8 * v), t, 1);
       });
     } else if (l.k === 'hum') {
       const os = Array.from({ length: Math.max(1, l.harmonics) }, (_, i) => {

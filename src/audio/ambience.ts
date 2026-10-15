@@ -9,7 +9,7 @@
  * each update, stops it when it falls silent, and schedules PA announcements.
  */
 import { crowdIntensity, type SfxId } from './services';
-import type { SfxPlayOptions, SoundHandle } from './engine';
+import { peekAudio, type SfxPlayOptions, type SoundHandle } from './engine';
 import type { Vec3 } from './spatial';
 
 export type AmbienceLayer =
@@ -44,6 +44,31 @@ export interface AmbienceState {
   fuelPumpsRunning?: number;
   /** 0 = camera fully inside terminal, 1 = fully out on the apron (crossfades zones). */
   outdoorMix?: number;
+  /**
+   * Who plays the close belt and fuel loops. `apron` leaves those beds silent
+   * so the positional apron mixer is the only copy.
+   */
+  serviceOwner?: 'apron' | 'ambience';
+}
+
+/**
+ * Loops a bed or the apron mixer already plays. Game events must not start a
+ * second copy (gpuHum is the event name for the apron GPU bed).
+ */
+export const OWNED_LOOP_SOUNDS = [
+  'checkinChatter', 'rollingSuitcases', 'securityBeeps',
+  'apuHum', 'apronGpu', 'gpuHum',
+  'apronBeltLoader', 'apronFuelPump',
+  'beltLoader', 'hydrantPump', 'heavyFuelTruck', 'reversingBeeper',
+] as const;
+
+export function isOwnedLoop(sound: string): boolean {
+  return (OWNED_LOOP_SOUNDS as readonly string[]).includes(sound);
+}
+
+/** Stop leftover event loops for beds the mixers own. No-op if the engine was never opened. */
+export function silenceOwnedEventLoops(): void {
+  peekAudio()?.stopEventSounds(OWNED_LOOP_SOUNDS);
 }
 
 /** Many-source loudness: grows with count but saturates (sqrt) so 20 GPUs ≠ 20× louder. */
@@ -57,14 +82,15 @@ export function ambienceTargets(s: AmbienceState): Record<AmbienceLayer, number>
   const inT = 1 - out * 0.85, inA = 0.15 + out * 0.85; // never fully gone: glass + open doors
   const lanes = s.securityLanesOpen ?? 0;
   const sec = lanes > 0 ? Math.min(1, 0.2 + 0.8 * Math.min(1, (s.securityThroughputPerMin ?? 0) / (lanes * 6))) : 0;
+  const apronOwnsServices = s.serviceOwner === 'apron';
   return {
     checkinChatter: crowdIntensity(s.checkinOccupancy ?? 0) * inT,
     rollingSuitcases: crowdIntensity(s.walkingWithBagsOccupancy ?? 0) * inT,
     securityBeeps: sec * inT,
     apuHum: countIntensity(s.apusRunning) * inA,
     gpu: countIntensity(s.gpusConnected) * inA,
-    beltLoader: countIntensity(s.beltLoadersRunning, 6) * inA,
-    fuelPump: countIntensity(s.fuelPumpsRunning, 6) * inA,
+    beltLoader: apronOwnsServices ? 0 : countIntensity(s.beltLoadersRunning, 6) * inA,
+    fuelPump: apronOwnsServices ? 0 : countIntensity(s.fuelPumpsRunning, 6) * inA,
   };
 }
 
@@ -96,8 +122,14 @@ export class AmbienceMixer {
       const v = t[id], h = this.live.get(id);
       if (v > AMBIENCE_SILENT) {
         if (h && !h.stopped) h.setIntensity(v);
-        else { const n = this.sink.playSfx(AMBIENCE_LAYERS[id].sound, { intensity: v }); if (n) this.live.set(id, n); }
-      } else if (h) { h.stop(1.5); this.live.delete(id); }
+        else {
+          const n = this.sink.playSfx(AMBIENCE_LAYERS[id].sound, { intensity: v, slot: `bed:${id}` });
+          if (n) this.live.set(id, n);
+        }
+      } else if (h) {
+        h.stop(id === 'beltLoader' || id === 'fuelPump' ? 0 : 1.5);
+        this.live.delete(id);
+      }
     }
     const people = state.checkinOccupancy ?? 0;
     if (people > 0) {
@@ -110,4 +142,25 @@ export class AmbienceMixer {
   }
   activeLayers(): AmbienceLayer[] { return [...this.live.keys()]; }
   stopAll(fade = 1): void { for (const h of this.live.values()) h.stop(fade); this.live.clear(); }
+}
+
+const AMBIENCE_SLOT = '__hatchfieldAmbience';
+
+/** One ambience mixer for the page. A reloaded module stops the previous owner first. */
+export function claimAmbience(sink: AmbienceSink, rand: () => number = Math.random): AmbienceMixer {
+  const g = globalThis as Record<string, unknown>;
+  const held = g[AMBIENCE_SLOT];
+  if (held instanceof AmbienceMixer) return held;
+  if (held && typeof (held as AmbienceMixer).stopAll === 'function') (held as AmbienceMixer).stopAll(0);
+  const created = new AmbienceMixer(sink, rand);
+  g[AMBIENCE_SLOT] = created;
+  return created;
+}
+
+/** Stop the page ambience owner and drop it so the next claim starts clean. */
+export function releaseAmbience(): void {
+  const g = globalThis as Record<string, unknown>;
+  const held = g[AMBIENCE_SLOT];
+  if (held && typeof (held as AmbienceMixer).stopAll === 'function') (held as AmbienceMixer).stopAll(0);
+  delete g[AMBIENCE_SLOT];
 }

@@ -1,6 +1,6 @@
 # Audio credits
 
-Every clip under `public/assets/audio/` is CC0 1.0. Files are short mono Ogg Vorbis excerpts (22.05 kHz). Loops are a few seconds; one-shots stay under two seconds. Attribution is not required by the license. It is recorded here anyway.
+Every clip under `public/assets/audio/` is CC0 1.0. Files are short mono Ogg Vorbis excerpts (22.05 kHz). Each file also has an `.mp3` twin of the same excerpt so a browser that cannot decode Vorbis still gets the cue. Loops are a few seconds; one-shots stay under two seconds. Attribution is not required by the license. It is recorded here anyway.
 
 Freesound rows are excerpts of the CC0 recording, trimmed from the preview encode because the full download needs an account. The work itself is CC0.
 
