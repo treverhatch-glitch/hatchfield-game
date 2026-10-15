@@ -63,22 +63,12 @@ export function openingSpacingBonus(clock: number): number {
 export const OPENING_FIRST_SLOTS = 2
 
 /**
- * Departing passengers one Prefab I slot releases into the hall.
- * The opening stays a short wave so the first turns are readable.
- * Once a departure is scheduled past the opening, the same two desks
- * and two lanes see a full regional turn and the line goes red.
- * An expanded hall uses the airframe's own headcount instead.
+ * Prefab I check-in service, as a multiple of the normal desk time, once the
+ * opening window has ended. The first turns stay on the normal pace. After
+ * that the same two desks take longer with each passenger, and the kiosk
+ * line crosses the red wait. An expanded hall goes back to pace 1.
  */
-export const STARTER_WAVE = { opening: 12, full: 40 } as const
-
-/** Show-up opens this many sim seconds before STD (leisure lead). */
-const STARTER_SHOWUP_LEAD_SEC = 24
-
-/** Headcount for a Prefab I departure whose STD is `std`. */
-export function starterDepartureCount(std: number): number {
-  if (std < OPENING_SEC + STARTER_SHOWUP_LEAD_SEC) return STARTER_WAVE.opening
-  return STARTER_WAVE.full
-}
+export const STARTER_CHECKIN_PACE = 3
 
 /** Seconds after the kit before the first letter can arrive. */
 export const FIRST_LETTER_COOL = 2

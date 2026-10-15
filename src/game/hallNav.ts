@@ -616,6 +616,8 @@ export class HallNav {
   private deskPlanSet = false
   private deskRows: { id: string; airlineId: string | null; general: boolean; serviceShare: number }[] = []
   private deskPace = new Map<string, number>()
+  /** Multiplier on every check-in desk. 1 is the normal pace. */
+  private checkinPace = 1
 
   get nav(): PaxNav | null {
     return this.navObj
@@ -893,6 +895,11 @@ export class HallNav {
    * Branded desks for this moment. Applied before anyone is admitted, so a
    * passenger released on this tick already walks to their airline.
    */
+  /** Slow or restore every check-in desk. Applied on the next tick, before anyone is served. */
+  setCheckinPace(pace: number): void {
+    this.checkinPace = pace > 0 ? pace : 1
+  }
+
   setDeskPlan(rows: readonly { id: string; airlineId: string | null; general: boolean; serviceShare: number }[]): void {
     this.deskPlanSet = true
     this.deskRows = rows.slice()
@@ -930,6 +937,7 @@ export class HallNav {
       if (it && isKioskDef(it.def) && kioskShare > 0 && kioskShare <= 1) sec *= kioskShare
       const trusted = this.deskPace.get(eq.id)
       if (trusted != null && trusted > 0 && trusted < 1) sec *= trusted
+      if (this.checkinPace > 0 && this.checkinPace !== 1) sec *= this.checkinPace
       facility.serviceSec = sec
     }
   }

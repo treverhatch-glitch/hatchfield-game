@@ -41,9 +41,9 @@ export const HALL_QUEUE_TUNING = {
   /**
    * A facility is a bottleneck once someone joining now would wait this long,
    * or its line has spilled past the marked floor. Check-in sits above the
-   * opening wave (about 300 nav seconds on the starter kiosk) and under the
-   * full Prefab I turn that starts once the opening window ends (about 390).
-   * Security stays higher: the starter's first red line is the desks.
+   * opening wave (about 300 nav seconds on the starter kiosk). After the
+   * opening, Prefab I check-in runs slower (STARTER_CHECKIN_PACE) and the
+   * same wave crosses this line. Security stays higher: the first red line is the desks.
    */
   bottleneckSec: { checkin_desk: 360, security_lane: 600, toilet: 300, shop_counter: 420, gate_desk: 900 } as Partial<Record<EquipKind, number>>,
   /** A wait up to this long costs no mood. */

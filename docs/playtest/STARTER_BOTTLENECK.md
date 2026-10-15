@@ -9,22 +9,20 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | | |
 | --- | --- |
 | Seed | 1 |
-| First red line | in-game day 5 |
-| Clock | 774 sim seconds (the opening ends at 600) |
+| First red line | in-game day 6 |
+| Clock | 932 sim seconds (the opening ends at 600) |
 | Facility | check-in desk |
-| Queue | 4 waiting |
-| Estimated wait | 368 nav seconds |
+| Queue | 2 waiting |
+| Estimated wait | 380 nav seconds |
 | Signed | `air_regional_1` only |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
 ## What changed
 
-The same seed used to never raise the flag. One regional wave is spread across the check-in window, so the starter kiosk peaked near 294 nav seconds during the opening and stayed there. The red line was 900 nav seconds, which that spread does not reach. Two onset numbers moved. Fees did not.
+The same seed used to never raise the flag. One regional wave is spread across the check-in window, so the starter kiosk peaked near 294 nav seconds during the opening and, after that, the line stayed shorter (about 140 nav seconds). The red line was 900 nav seconds, which that spread does not reach. Two onset numbers moved. Fees did not. `STARTER_CAPACITY` did not (46 passengers, 3.2 s service, 2 desks, 2 lanes). Those ceilings feed the lane throughput, not the walk's queue.
 
-1. `STARTER_WAVE` in `src/game/openingData.ts`. A Prefab I departure whose scheduled time is still inside the opening, plus the 24-second show-up lead, releases 12 passengers. A departure scheduled after that releases 40, a full regional turn on the same two desks and two lanes. An expanded or custom hall keeps the airframe's own headcount, at most 18.
-2. Check-in `bottleneckSec` in `src/game/hallNavData.ts`, from 900 to 360 nav seconds. 360 sits above the opening peak and under the full-turn peak. Security stays at 600. The first red line is the desks.
+1. Check-in `bottleneckSec` in `src/game/hallNavData.ts`, from 900 to 360 nav seconds. 360 sits above the opening peak. Security stays at 600. The first red line is the desks.
+2. `STARTER_CHECKIN_PACE` in `src/game/openingData.ts`, set to 3. Prefab I check-in keeps the normal pace through the opening. Once the clock passes 600 seconds, those desks take three times as long. The same short queue then waits about 380 nav seconds. An expanded hall goes back to pace 1.
 
-`STARTER_CAPACITY` is unchanged (46 passengers, 3.2 s service, 2 desks, 2 lanes). Those ceilings feed the lane throughput, not the walk's queue.
-
-Day 5 is past the opening and in the band the hall pacing note already described. Another desk or a security lane clears the line. Prefab II is what opens a third carrier.
+Day 6 is past the opening and in the band the hall pacing note already described. Another desk or a security lane clears the line. Prefab II is what opens a third carrier.

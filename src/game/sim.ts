@@ -265,7 +265,7 @@ import {
   openingSlotCap,
   openingSpacingBonus,
   STARTER_CAPACITY,
-  starterDepartureCount,
+  STARTER_CHECKIN_PACE,
 } from './openingData.ts'
 import {
   dismissTip as dismissTipId,
@@ -10052,14 +10052,10 @@ export class Game {
 
   private visualDepartureCount(f: Flight): number {
     const mode = this.standPaxMode(f.stand)
-    const visual = Math.max(
+    return Math.max(
       6,
       Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
     )
-    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.fits[0] ?? null
-    if (!fit || !fit.premade || fit.redesigned || (fit.tier ?? 1) !== 1) return visual
-    const std = f.std ?? this.clock + PLANNED_TURN_SEC
-    return Math.max(visual, starterDepartureCount(std))
   }
 
   private entranceReleaseTimes(hallId: string, exceptSlot?: string): number[] {
@@ -10079,8 +10075,7 @@ export class Game {
     if (!fit) return
     const std = slot.eta + PLANNED_TURN_SEC
     const hallId = this.hallKey(fit)
-    const starter = Boolean(fit.premade && !fit.redesigned && (fit.tier ?? 1) === 1)
-    const drawn = this.composeDeparture(starter ? starterDepartureCount(std) : 12, std, false, a.persona, fit, hallId)
+    const drawn = this.composeDeparture(12, std, false, a.persona, fit, hallId)
     this.showUps.push({
       slotId: slot.id,
       std,
@@ -10774,6 +10769,8 @@ export class Game {
       fit.items ?? [],
     )
     this.hallNav.setDeskPlan(this.checkinRows(this.checkinAllocation()))
+    const starterHall = Boolean(fit.premade && !fit.redesigned && (fit.tier ?? 1) === 1)
+    this.hallNav.setCheckinPace(starterHall && this.clock >= OPENING_SEC ? STARTER_CHECKIN_PACE : 1)
     this.hallNav.setShopStock(this.foodShelf, this.shopShelf)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
