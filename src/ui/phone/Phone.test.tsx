@@ -76,8 +76,97 @@ describe('PhoneView', () => {
     expect(html).toContain('data-testid="phone-card-contract"')
     expect(html).toContain('data-testid="phone-action-contract-sign"')
     expect(html).toContain('data-testid="phone-action-contract-decline"')
+    expect(html).toContain('data-phone-action="sign-contract"')
+    expect(html).toContain('data-phone-action="decline-contract"')
     expect(html).toContain('>Sign<')
     expect(html).toContain('>Decline<')
+  })
+
+  it('uses the same Sign, Decline, and Later ids on the filed copy', () => {
+    const filed = letter()
+    filed.id = 'contract-file'
+    filed.tab = 'contracts'
+    filed.kind = 'offer'
+    filed.arrives = false
+    filed.actions = [
+      ...filed.actions,
+      { id: 'later', label: 'Later', action: { type: 'later-contract' } },
+    ]
+    const open = renderToStaticMarkup(
+      <PhoneView
+        cards={[filed]}
+        shell={{ ...phoneOpen(createPhoneShell()), tab: 'contracts', tabOpen: true }}
+        onOpen={() => {}}
+        onClose={() => {}}
+        onTab={() => {}}
+        onSwipe={() => {}}
+        onAction={() => {}}
+      />,
+    )
+    expect(open).toContain('data-testid="phone-card-contract-file"')
+    expect(open).toContain('data-testid="phone-action-contract-sign"')
+    expect(open).toContain('data-testid="phone-action-contract-decline"')
+    expect(open).toContain('data-testid="phone-action-contract-later"')
+    expect(open).toContain('data-phone-action="later-contract"')
+    expect(open).not.toContain('phone-action-contract-file-sign')
+  })
+
+  it('stamps inbound and council actions with stable ids', () => {
+    const cards: PhoneCard[] = [
+      {
+        id: 'inbound',
+        key: 'inbound:in-1',
+        tab: 'messages',
+        kind: 'inbound',
+        from: 'Traffic',
+        title: 'Night freighter',
+        preview: 'Night freighter',
+        body: 'One turn.',
+        tone: 'ok',
+        arrives: true,
+        secondsLeft: 40,
+        actions: [
+          { id: 'accept', label: 'Accept', primary: true, action: { type: 'accept-inbound', requestId: 'in-1' } },
+          { id: 'refuse', label: 'Refuse', action: { type: 'refuse-inbound', requestId: 'in-1' } },
+        ],
+      },
+      {
+        id: 'council',
+        key: 'council:c-1',
+        tab: 'messages',
+        kind: 'council',
+        from: 'Transit committee',
+        title: 'Curb works',
+        preview: 'Curb works',
+        body: 'Vote.',
+        tone: 'warn',
+        arrives: true,
+        secondsLeft: null,
+        actions: [
+          { id: 'full', label: 'Underwrite the compact', primary: true, action: { type: 'vote-council', requestId: 'c-1', choiceId: 'full' } },
+          { id: 'compromise', label: 'Fund the curb works', action: { type: 'vote-council', requestId: 'c-1', choiceId: 'compromise' } },
+          { id: 'decline', label: 'Decline funding', action: { type: 'vote-council', requestId: 'c-1', choiceId: 'decline' } },
+        ],
+      },
+    ]
+    const html = renderToStaticMarkup(
+      <PhoneView
+        cards={cards}
+        shell={{ ...phoneOpen(createPhoneShell()), tab: 'messages', tabOpen: true }}
+        onOpen={() => {}}
+        onClose={() => {}}
+        onTab={() => {}}
+        onSwipe={() => {}}
+        onAction={() => {}}
+      />,
+    )
+    expect(html).toContain('data-testid="phone-action-inbound-accept"')
+    expect(html).toContain('data-testid="phone-action-inbound-refuse"')
+    expect(html).toContain('data-phone-action="accept-inbound"')
+    expect(html).toContain('data-testid="phone-action-council-full"')
+    expect(html).toContain('data-testid="phone-action-council-compromise"')
+    expect(html).toContain('data-testid="phone-action-council-decline"')
+    expect(html).toContain('data-phone-action="vote-council"')
   })
 
   it('closes the open tab without closing the phone', () => {

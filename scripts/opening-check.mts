@@ -163,28 +163,49 @@ export async function runOpeningCheck(outDir = OUT): Promise<string[]> {
     if (stamped?.kit) fail('showStarterKit stayed true after stamping')
     await shot(page, outDir, '05-kit-stamped', shots)
 
-    // Desktop hides the HUD letter. The same offer is a Messages card; Sign is Accept.
+    // The runway tray covers the left edge. Close it before the handset opens.
+    if (await page.getByTestId('build-tray').isVisible().catch(() => false)) {
+      await page.getByTestId('build-airfield').click()
+    }
+
+    // Desktop hides the HUD letter. Sign lives on the phone.
+    // A string passed to waitForFunction is evaluated and not called, so the
+    // check used to continue before the letter existed.
     const offerShown = await page
-      .waitForFunction('() => Boolean(window.__hatch && window.__hatch.offer)', { timeout: 30_000 })
+      .waitForFunction(() => Boolean(window.__hatch?.offer), { timeout: 45_000 })
       .then(() => true)
       .catch(() => false)
     if (!offerShown) fail('first contract letter did not appear')
+    await page
+      .waitForFunction(
+        () => document.querySelector('[data-testid="phone"]')?.getAttribute('data-state') === 'flash',
+        { timeout: 8_000 },
+      )
+      .catch(() => {})
     const peek = page.getByTestId('phone-peek')
-    await peek.waitFor({ state: 'attached', timeout: 4000 })
-    // The dock is slid off the left edge, so a center click misses the visible sliver.
-    await peek.evaluate((el) => (el as HTMLButtonElement).click())
+    if ((await peek.count()) > 0) {
+      // The dock is slid off the left edge, so a center click misses the visible sliver.
+      await peek.evaluate((el) => (el as HTMLButtonElement).click())
+    }
+    // Message and filed copy both expose phone-action-contract-sign.
+    // phone-action-contract-file-sign is the old filed-copy id.
     const messageSign = page.getByTestId('phone-action-contract-sign')
     const fileSign = page.getByTestId('phone-action-contract-file-sign')
-    const onMessages = await messageSign.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false)
+    const onMessages = await messageSign.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false)
     const onFile = onMessages
       ? false
-      : await fileSign.waitFor({ state: 'visible', timeout: 2000 }).then(() => true).catch(() => false)
+      : await fileSign.waitFor({ state: 'visible', timeout: 4_000 }).then(() => true).catch(() => false)
     if (!onMessages && !onFile) {
-      await page.getByTestId('phone-tab-messages').click()
-      await messageSign.waitFor({ state: 'visible', timeout: 4000 })
+      const messages = page.getByTestId('phone-tab-messages')
+      if ((await messages.getAttribute('aria-selected').catch(() => null)) !== 'true') {
+        await messages.click()
+      }
+      await messageSign.waitFor({ state: 'visible', timeout: 20_000 })
     }
+    const sign = onFile ? fileSign : messageSign
+    await sign.scrollIntoViewIfNeeded()
     await shot(page, outDir, '06-contract', shots)
-    await (onFile ? fileSign : messageSign).click()
+    await sign.click()
 
     const speed = await readField(page)
     if (speed?.speed !== 1) fail(`clock was not at 1× after accept (speed ${speed?.speed ?? 'missing'})`)

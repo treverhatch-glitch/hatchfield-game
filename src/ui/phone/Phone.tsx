@@ -72,7 +72,15 @@ export function Phone({
       cards={cards}
       shell={shell}
       belowCoach={game.showCoach()}
-      onOpen={() => setShell((cur) => phoneOpen(cur, flashTab(cards, cur.flashKey) ?? cur.tab))}
+      onOpen={() =>
+        setShell((cur) =>
+          phoneOpen(
+            cur,
+            flashTab(cards, cur.flashKey) ??
+              (cards.some((card) => card.id === 'contract') ? 'messages' : cur.tab),
+          ),
+        )
+      }
       onClose={() => setShell((cur) => phoneClose(cur))}
       onTab={(tab) => setShell((cur) => phoneSetTab(cur, tab))}
       onSwipe={(direction) => setShell((cur) => phoneSwipe(cur, direction))}
@@ -278,6 +286,22 @@ function kindLabel(kind: string): string {
   }
 }
 
+/**
+ * Contract Sign, Decline, Later, and Negotiate keep one id on the message and
+ * on the filed copy. The opening check clicks `phone-action-contract-sign`.
+ */
+function actionTestId(card: PhoneCard, button: { id: string; action: PhoneAction }): string {
+  switch (button.action.type) {
+    case 'sign-contract':
+    case 'decline-contract':
+    case 'negotiate-contract':
+    case 'later-contract':
+      return `phone-action-contract-${button.id}`
+    default:
+      return `phone-action-${card.id}-${button.id}`
+  }
+}
+
 function PhoneCardView({
   card,
   fresh,
@@ -324,7 +348,8 @@ function PhoneCardView({
               type="button"
               className={button.primary ? 'primary' : ''}
               disabled={button.disabled}
-              data-testid={`phone-action-${card.id}-${button.id}`}
+              data-testid={actionTestId(card, button)}
+              data-phone-action={button.action.type}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onAction(button.action)}
             >
