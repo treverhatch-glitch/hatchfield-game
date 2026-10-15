@@ -11,6 +11,7 @@ import type { BuildLayout } from '../terminalbuild/types.ts'
 import type { ResearchState } from '../research/types.ts'
 import type { Wave3State } from '../wave3/types.ts'
 import type { SpotInbound, SpotOffer } from '../fuel/offerData.ts'
+import type { CarbonSave } from '../sustainability/carbon.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -1190,6 +1191,8 @@ export interface GameSnapshot {
     progress: number
     profitDays: number
   }
+  /** Carbon day book, offsets, and Green Pioneer run. Missing on older saves. */
+  carbon?: CarbonSave
 }
 
 /** A placed building that is still a construction site. */

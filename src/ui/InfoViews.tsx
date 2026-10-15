@@ -12,6 +12,7 @@ import {
   toggleMapView,
 } from '../info/session.ts'
 import { MAP_VIEW_LABEL, MAP_VIEWS, type InfoViewModel, type MapViewId } from '../info/types.ts'
+import { CarbonInfoView } from './CarbonInfo.tsx'
 import { FuelPanel } from './FuelOverlay.tsx'
 import { LandsidePanel } from './LandsideOverlay.tsx'
 import { useDesktop } from './phone/useDesktop.ts'
@@ -234,6 +235,13 @@ function LinesPanel({ game, id, onClose }: { game: Game; id: string; onClose: ()
           >
             {repair.label}
           </button>
+        ) : null}
+        {id === 'carbon' ? (
+          <CarbonInfoView
+            view={game.carbonView()}
+            onStart={() => game.startGreenPioneer()}
+            onOffset={() => game.buyCarbonOffsets()}
+          />
         ) : null}
         {id.startsWith('tower:') && game.towerIIIUpgradeOffer() ? (
           <button
