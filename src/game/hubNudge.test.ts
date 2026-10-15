@@ -15,6 +15,7 @@ describe('hub warmth texts and maintenance ferries', () => {
     advanceDays(game, 1)
     const nudge = game.hubNudges.find((row) => row.airlineId === 'brisa')
     expect(nudge?.step).toBe('desk')
+    expect(nudge?.text).toContain("We'd love a dedicated desk pair — interested?")
     expect(nudge?.text).toContain('Focus city')
     const card = readPhoneCards(game).find((row) => row.kind === 'hub-nudge')
     expect(card?.actions.map((action) => action.label)).toEqual([
@@ -76,6 +77,7 @@ describe('hub warmth texts and maintenance ferries', () => {
     dispatchPhoneAction(phoneHost(game), { type: 'open-airlines', airlineId: 'brisa' })
     expect(game.airlineDeskAsk?.airlineId).toBe('brisa')
     expect(game.hubDeepLinkAirline).toBe('brisa')
+    expect(game.hubRelationsTick).toBe(1)
     dispatchPhoneAction(phoneHost(game), { type: 'open-assign', airlineId: 'brisa' })
     expect(game.assignPick?.kind).toBe('desk')
   })
