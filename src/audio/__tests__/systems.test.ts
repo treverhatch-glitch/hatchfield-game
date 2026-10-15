@@ -112,6 +112,7 @@ describe('ambience layers', () => {
     for (const id of AMBIENCE_LAYER_IDS) expect(z[id]).toBe(0);
     const t = ambienceTargets({ checkinOccupancy: 0.8, securityLanesOpen: 2, securityThroughputPerMin: 10, apusRunning: 3, fuelPumpsRunning: 1 });
     expect(t.checkinChatter).toBeGreaterThan(0.3); expect(t.securityBeeps).toBeGreaterThan(0.3);
+    expect(ambienceTargets({ securityLanesOpen: 2, securityThroughputPerMin: 0 }).securityBeeps).toBe(0);
     expect(t.apuHum).toBeGreaterThan(0); expect(t.fuelPump).toBeGreaterThan(0);
     expect(t.gpu).toBe(0); expect(t.beltLoader).toBe(0);
   });

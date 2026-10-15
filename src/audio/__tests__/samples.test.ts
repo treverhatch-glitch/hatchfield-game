@@ -118,6 +118,12 @@ describe('CC0 clips', () => {
       flights: [],
       trucks: [{ id: 't1', kind: 'fuel', x: 4, y: 4, returning: true, dwell: 0, preDwell: 0, path }],
     }, cam)
+    expect(mixer.active()).toBe(1)
+    mixer.sync({
+      view: 'apron',
+      flights: [],
+      trucks: [{ id: 't1', kind: 'fuel', x: 4, y: 4, returning: false, dwell: 0, preDwell: 0, path, reversing: true }],
+    }, cam)
     expect(mixer.active()).toBe(2)
     mixer.sync({
       view: 'apron',

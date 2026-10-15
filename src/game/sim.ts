@@ -8266,7 +8266,7 @@ export class Game {
       {
         checkinOccupancy: Math.min(1, this.hallGuests.filter((g) => !g.preview).length / 40),
         walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
-        securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
+        securityLanesOpen: this.fits[0]?.rooms.security ?? 0,
         securityThroughputPerMin: this.securityQueueCount(),
         apusRunning: parked,
         gpusConnected: this.flights.filter((f) => f.phase === 'parked').length,

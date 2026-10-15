@@ -16,8 +16,53 @@ import { writeAlertPoints, type AlertPoint } from './alerts/alertScreen'
 import { criticalAlertMarks } from './alerts/marks'
 import { ALERT_TUNING } from '../game/alertsData.ts'
 import { syncFlightCardClick } from './inspector/flightCard.ts'
-import { releaseApronAudio, syncApronAudio } from '../audio/stage'
+import { releaseApronAudio, syncApronAudio, type ApronTruck } from '../audio/stage'
+import { serviceStateOf } from '../render/vehicleAnim'
+import { METERS_PER_CELL } from '../render/aircraft/specs'
 import type { QualityLevel } from '../render/world/quality.ts'
+
+/** Apron voices. The reverse beep follows the same dock pose the mesh shows. */
+function apronAudioSnap(game: Game): { view: Game['view']; flights: Game['flights']; trucks: ApronTruck[] } {
+  const trucks: ApronTruck[] = game.trucks.map((t) => ({
+    id: t.id,
+    kind: t.kind,
+    x: t.x,
+    y: t.y,
+    returning: t.returning,
+    dwell: t.dwell,
+    preDwell: t.preDwell,
+    path: t.path,
+  }))
+  for (const pose of game.servicePoses()) {
+    if (serviceStateOf(pose.phase, pose.u) !== 'dock') continue
+    trucks.push({
+      id: pose.id,
+      kind: pose.type,
+      x: pose.drawX ?? pose.x,
+      y: pose.drawY ?? pose.y,
+      returning: false,
+      dwell: 0,
+      preDwell: 0,
+      path: [],
+      reversing: true,
+    })
+  }
+  for (const pose of game.cartPoses()) {
+    if (pose.phase !== 'dock' && pose.phase !== 'queue') continue
+    trucks.push({
+      id: pose.id,
+      kind: pose.kind,
+      x: pose.x / METERS_PER_CELL,
+      y: pose.y / METERS_PER_CELL,
+      returning: false,
+      dwell: 0,
+      preDwell: 0,
+      path: [],
+      reversing: true,
+    })
+  }
+  return { view: game.view, flights: game.flights, trucks }
+}
 
 export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -135,7 +180,7 @@ export function Field({ game }: { game: Game }) {
           writeTipPoints(tips)
           writeAlertPoints(projectAlertMarks(game, cam))
           const e = cam.matrixWorld.elements
-          syncApronAudio(game, {
+          syncApronAudio(apronAudioSnap(game), {
             position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
             right: { x: e[0], y: e[1], z: e[2] },
           })
