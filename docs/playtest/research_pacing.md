@@ -25,11 +25,13 @@ Published 90-day run in [morning_oct15.md](morning_oct15.md), previous tunables,
 | Lab (desk / board / bench) | 1 / 1 / 1 | — | 14 / 18 / 16 |
 | Flights turned | 463 | 394 | 431 |
 
-A rerun of those same previous tunables on this machine, same seeds and driver, still cleared the tree: Careful 59 nodes (57 left, 3,341 earned, 311 flights), Greedy 60 (52 left, 3,429 earned, 330 flights), Chaotic 62 (12,832 left, 16,395 earned, 15 / 19 / 9 furniture, 341 flights). The morning's hotter flight roll was not what finished the tree.
+A rerun of those same previous tunables on this machine, same seeds and driver, still cleared the tree: Careful 59 nodes (57 left, 3,341 earned, 311 flights), Greedy 60 (52 left, 3,429 earned, 330 flights), Chaotic 62 (12,832 left, 16,395 earned, 15 / 19 / 9 furniture, 341 flights). The morning's higher flight totals were not what finished the tree.
+
+Flight counts in both of these runs are low because a runway spacing regression was in the build and is being fixed separately. The morning Careful turned 463 flights; the same seeds on this machine turned about 310–340. The tier prices and room rates were not moved to make up for those missing turns. When the spacing fix lands, a careful airport will earn more points from flights than the tables below show.
 
 ## After
 
-Same three bots, same seeds and driver, tunables above. 90 sim days.
+Same three bots, same seeds and driver, tunables above. 90 sim days. These flight counts are the depressed ones from the runway spacing regression, not a retune target.
 
 | | Careful | Greedy | Chaotic |
 | --- | ---: | ---: | ---: |
