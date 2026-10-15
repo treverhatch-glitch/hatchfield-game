@@ -4,10 +4,12 @@ import { type AudioBus } from '../../features/settings/settings.ts'
 import type { Game } from '../../game/sim.ts'
 import {
   chooseGraphicsQuality,
+  dayNightCycleEnabled,
   graphicsAuto,
   graphicsNote,
   graphicsQuality,
   QUALITY_LABEL,
+  setDayNightCycleEnabled,
   subscribeGraphicsQuality,
   type QualityLevel,
 } from '../../render/graphicsPrefs.ts'
@@ -24,6 +26,7 @@ const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
 export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [audioMix, setAudioMix] = useState(() => audioSettings().get())
   const [gfx, setGfx] = useState<QualityLevel>(graphicsQuality)
+  const [cycle, setCycle] = useState(dayNightCycleEnabled)
   useEffect(() => subscribeGraphicsQuality(setGfx), [])
   return (
     <div data-testid="settings-game">
@@ -120,23 +123,23 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
       <p className="muted" data-testid="gfx-note">
         {graphicsNote(gfx, graphicsAuto())}
       </p>
-      <h3>Day and night</h3>
       <label className="sandbox-toggle">
         <input
           type="checkbox"
           data-testid="settings-day-night"
-          checked={audioMix.dayNightCycle}
+          checked={cycle}
           onChange={(e) => {
-            const next = audioSettings().update((s) => ({ ...s, dayNightCycle: e.target.checked }))
-            setAudioMix(next)
+            const on = e.target.checked
+            setDayNightCycleEnabled(on)
+            setCycle(on)
           }}
         />
-        <span>Day/night cycle: {audioMix.dayNightCycle ? 'On' : 'Off'}</span>
+        <span>Day/night cycle: {cycle ? 'On' : 'Off'}</span>
       </label>
-      <p className="muted">
-        {audioMix.dayNightCycle
-          ? 'Sun, moon, sky and the field lights follow the clock. Sunrise and sunset run warm.'
-          : 'Fixed daytime. The clock still runs, and the apron stays at late morning.'}
+      <p className="muted" data-testid="settings-day-night-note">
+        {cycle
+          ? 'On. The sun, moon, and field lights follow the clock.'
+          : 'Off. Always day. The clock still runs, and a photo hour still wins while the camera is frozen.'}
       </p>
       <h3>Hints</h3>
       <label className="sandbox-toggle">

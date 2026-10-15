@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { audioSettings } from '../audio/prefs.ts'
+import { dayNightCycleEnabled, setDayNightCycleEnabled } from '../render/graphicsPrefs.ts'
 import { Game } from '../game/sim.ts'
 import { GameSettings } from './PauseMenu.tsx'
 import { newGameHintPrefs } from '../game/hints.ts'
@@ -33,18 +33,23 @@ describe('GameSettings', () => {
     expect(html).toContain('2 hint types hidden. Tick the box to turn every type back on.')
   })
 
-  it('shows the day/night cycle toggle and remembers Off', () => {
-    audioSettings().update((s) => ({ ...s, dayNightCycle: true }))
+  it('shows the day/night cycle under graphics and remembers Off', () => {
+    setDayNightCycleEnabled(true)
     const game = new Game()
     const on = renderToStaticMarkup(<GameSettings game={game} />)
+    expect(on.indexOf('data-testid="gfx-note"')).toBeLessThan(on.indexOf('data-testid="settings-day-night"'))
+    expect(on.indexOf('data-testid="settings-day-night"')).toBeLessThan(on.indexOf('>Hints<'))
     expect(on).toContain('Day/night cycle: On')
     expect(on).toContain('data-testid="settings-day-night" checked=""')
-    audioSettings().update((s) => ({ ...s, dayNightCycle: false }))
+    expect(dayNightCycleEnabled()).toBe(true)
+    setDayNightCycleEnabled(false)
+    expect(dayNightCycleEnabled()).toBe(false)
     const off = renderToStaticMarkup(<GameSettings game={game} />)
     expect(off).toContain('Day/night cycle: Off')
-    expect(off).toContain('Fixed daytime')
+    expect(off).toContain('Always day')
     expect(off).not.toContain('data-testid="settings-day-night" checked=""')
-    audioSettings().update((s) => ({ ...s, dayNightCycle: true }))
+    setDayNightCycleEnabled(true)
+    expect(dayNightCycleEnabled()).toBe(true)
   })
 
   it('shows correct message when one hint type is muted', () => {

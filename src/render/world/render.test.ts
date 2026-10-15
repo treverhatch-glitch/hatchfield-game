@@ -9,8 +9,8 @@ import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
 import { contactSpots } from './contact'
-import { sharedSettings } from '../../features/settings/settings.ts'
-import { clockForHour, FIXED_DAY_HOUR } from './dayNight'
+import { ALWAYS_DAY } from '../graphicsPrefs'
+import { clockForHour } from './dayNight'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -253,26 +253,27 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
-  it('holds late morning when the day/night cycle is off, and still honours a photo hour', () => {
+  it('holds noon when the day/night cycle is off, and a photo hour still wins', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const game = starterGame()
     const cam = camAt(0, 0, 80)
-    sharedSettings().update((s) => ({ ...s, dayNightCycle: false }))
-    try {
-      wr.setDayNight(null)
-      game.clock = clockForHour(2, 23)
-      wr.update(game, cam, 1 / 60)
-      expect(wr.dayNightSample.hour).toBeCloseTo(FIXED_DAY_HOUR)
-      expect(wr.dayNightSample.lights).toBe(0)
-      expect(wr.dayNightSample.windows).toBe(0)
-      wr.setTimeOfDay(23)
-      wr.update(game, cam, 1 / 60)
-      expect(wr.dayNightSample.lights).toBe(1)
-    } finally {
-      sharedSettings().update((s) => ({ ...s, dayNightCycle: true }))
-      wr.dispose()
-    }
+    wr.setDayNight({ hour: ALWAYS_DAY.hour, daylight: ALWAYS_DAY.daylight, lights: ALWAYS_DAY.lights })
+    game.clock = clockForHour(2, 23)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(12)
+    expect(wr.dayNightSample.lights).toBe(0)
+    expect(wr.dayNightSample.windows).toBe(0)
+    expect(sun.intensity).toBeGreaterThan(2)
+    wr.setTimeOfDay(23)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(23)
+    expect(wr.dayNightSample.lights).toBe(1)
+    wr.setTimeOfDay(null)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(12)
+    expect(wr.dayNightSample.lights).toBe(0)
+    wr.dispose()
   })
 
   it('lights the terminal before the field at dusk, and snows the grass in winter', () => {

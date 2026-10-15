@@ -12,8 +12,21 @@
 import type { Weather } from '../../game/types'
 import { DAY_SECONDS, lerpHex, simClockToHour, smoothstep, type SkyState } from './daylight'
 
+/**
+ * Two sunrise/sunset pairs, on purpose. Do not collapse them.
+ *
+ * `DAY_NIGHT_CYCLE` (7.4 / 19.4) is the field-light window. It matches
+ * `lightsFactor`: runway edge, taxi edge, apron floods, and lamps finish
+ * their ramp on these hours.
+ *
+ * `DAY_NIGHT` (6.4 / 19.2) is the sun on the horizon. Sky photos and the
+ * dawn/dusk stills use it. The sun is up before the lamps go out, and the
+ * lamps come on as the sun meets the horizon again.
+ *
+ * `daySeconds` on both is `DAY_SECONDS` (180). That length stays put.
+ */
 export const DAY_NIGHT_CYCLE = {
-  /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
+  /** Field lights finish going out. Matches the dawn ramp in `lightsFactor`. */
   sunriseHour: 7.4,
   /** Field lights finish coming on. Matches the dusk ramp in `lightsFactor`. */
   sunsetHour: 19.4,
@@ -22,9 +35,9 @@ export const DAY_NIGHT_CYCLE = {
 } as const
 
 export const DAY_NIGHT = {
-  /** Sun clears the horizon. */
+  /** Sun clears the horizon. Earlier than the lamp window in `DAY_NIGHT_CYCLE`. */
   sunrise: 6.4,
-  /** Sun meets the horizon again. */
+  /** Sun meets the horizon again. Earlier than the lamp window in `DAY_NIGHT_CYCLE`. */
   sunset: 19.2,
   daySeconds: DAY_SECONDS,
   /** Hours used by the dawn / noon / dusk / night screenshots. */

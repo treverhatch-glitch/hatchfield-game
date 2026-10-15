@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Game } from '../game/sim'
+import { applyDayNightPref } from '../render/graphicsPrefs'
 import { toWorld, World } from '../render/world'
 
 type Bag = { local: [string, string][]; session: [string, string][] }
@@ -119,6 +120,7 @@ export function MenuFlyover() {
         world.dist = 98 + Math.sin(t * 0.05) * 6
       }
       world.placeCam()
+      applyDayNightPref(world)
       try {
         world.render(live)
       } catch (err) {

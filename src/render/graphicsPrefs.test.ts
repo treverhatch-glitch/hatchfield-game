@@ -2,10 +2,14 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { gradeMaterial } from './grade'
 import {
+  ALWAYS_DAY,
+  applyDayNightPref,
   chooseGraphicsQuality,
+  dayNightCycleEnabled,
   explainGraphics,
   graphicsNote,
   graphicsQuality,
+  setDayNightCycleEnabled,
   subscribeGraphicsQuality,
 } from './graphicsPrefs'
 
@@ -35,6 +39,25 @@ describe('graphics quality setting', () => {
     off()
     expect(graphicsNote('low', { level: 'low', reason: 'software graphics' })).toContain('Low')
     expect(graphicsNote('high', { level: 'low', reason: 'software graphics' })).toContain('Saved on High')
+  })
+
+  it('round-trips the day/night cycle, on by default', () => {
+    localStorage.removeItem('hatchfield-day-night')
+    expect(dayNightCycleEnabled()).toBe(true)
+    const seen: ({ hour: number; daylight: number; lights: number } | null)[] = []
+    const world = { setDayNight: (control: { hour: number; daylight: number; lights: number } | null) => seen.push(control) }
+    applyDayNightPref(world)
+    expect(seen.at(-1)).toBeNull()
+    setDayNightCycleEnabled(false)
+    expect(dayNightCycleEnabled()).toBe(false)
+    expect(localStorage.getItem('hatchfield-day-night')).toBe('off')
+    applyDayNightPref(world)
+    expect(seen.at(-1)).toEqual({ hour: ALWAYS_DAY.hour, daylight: ALWAYS_DAY.daylight, lights: ALWAYS_DAY.lights })
+    setDayNightCycleEnabled(true)
+    expect(dayNightCycleEnabled()).toBe(true)
+    expect(localStorage.getItem('hatchfield-day-night')).toBe('on')
+    applyDayNightPref(world)
+    expect(seen.at(-1)).toBeNull()
   })
 })
 

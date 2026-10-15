@@ -7,6 +7,7 @@ import { cameraSession } from '../camera/session.ts'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { inputMap } from '../input/map.ts'
+import { applyDayNightPref } from '../render/graphicsPrefs'
 import { toWorld, World } from '../render/world'
 import { mapViewSnapshot, openMapDetail } from '../info/session.ts'
 import { writeTipPoints, type TipPoint } from './tipScreen'
@@ -111,6 +112,7 @@ export function Field({ game }: { game: Game }) {
             const zoom = inputMap.analog('camera.zoomIn') - inputMap.analog('camera.zoomOut')
             if (zoom) cameraSession.noteWheel(-zoom * 80 * dt)
           }
+          applyDayNightPref(w)
           w.setTimeOfDay(cameraSession.frozen ? cameraSession.timeOfDay : null)
           if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)

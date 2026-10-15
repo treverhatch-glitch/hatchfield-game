@@ -7,6 +7,40 @@ import { parseQuality, QUALITY_LABEL, suggestQuality, type QualityLevel } from '
 export { QUALITY_LABEL, type QualityLevel }
 
 const KEY = 'hatchfield-gfx'
+/** Cycle switch. Missing or `on` follows the clock. `off` holds noon. */
+const CYCLE_KEY = 'hatchfield-day-night'
+
+/**
+ * Off pins the field here. Noon sky, lamps out.
+ * Photo mode still replaces the hour through `setTimeOfDay`.
+ */
+export const ALWAYS_DAY = { hour: 12, daylight: 1, lights: 0 } as const
+
+export function isAlwaysDayHold(control: { hour?: number | null; daylight?: number | null; lights?: number | null } | null): boolean {
+  return !!control && control.hour === ALWAYS_DAY.hour && control.daylight === ALWAYS_DAY.daylight && control.lights === ALWAYS_DAY.lights
+}
+
+/** On by default. Only the stored `off` value freezes the field. */
+export function dayNightCycleEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(CYCLE_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function setDayNightCycleEnabled(on: boolean) {
+  try {
+    globalThis.localStorage?.setItem(CYCLE_KEY, on ? 'on' : 'off')
+  } catch {
+    // Storage is unavailable in some private windows. The in-memory call still applies.
+  }
+}
+
+/** Push the saved switch onto a world. On clears the hold; Off pins noon. */
+export function applyDayNightPref(world: { setDayNight: (control: { hour: number; daylight: number; lights: number } | null) => void }) {
+  world.setDayNight(dayNightCycleEnabled() ? null : { hour: ALWAYS_DAY.hour, daylight: ALWAYS_DAY.daylight, lights: ALWAYS_DAY.lights })
+}
 
 type Listener = (level: QualityLevel) => void
 const listeners = new Set<Listener>()
