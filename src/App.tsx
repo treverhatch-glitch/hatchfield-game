@@ -21,7 +21,7 @@ import { PauseMenu } from './ui/PauseMenu'
 import { pauseState } from './ui/pauseState'
 import type { MenuSection } from './ui/menu/sections'
 import type { StartFocus } from './game/types'
-import { applyStoredAudio, bindUiClicks, preloadAudioClips } from './audio'
+import { applyStoredAudio, bindUiClicks, installGestureUnlock, preloadAudioClips, watchAudioSettings } from './audio'
 import { tickLiveFeedback } from './feedback/live.ts'
 import { FeedbackChrome } from './feedback/ui/FeedbackChrome.tsx'
 
@@ -333,9 +333,19 @@ export default function App() {
   }
 
   useEffect(() => {
-    applyStoredAudio()
+    const stopWatch = watchAudioSettings()
+    const disarm = installGestureUnlock(window, undefined, () => {
+      applyStoredAudio()
+      void preloadAudioClips()
+    })
     void preloadAudioClips()
-    return bindUiClicks()
+    const unclicks = bindUiClicks()
+    return () => {
+      stopWatch()
+      disarm()
+      unclicks()
+      game.releaseAudio()
+    }
   }, [])
 
   // Keep screen aligned with game ownership; never dump a saved field to title.
@@ -372,7 +382,10 @@ export default function App() {
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelAnimationFrame(raf)
+      game.releaseAudio()
+    }
   }, [screen])
 
   const openNewGame = (focus: StartFocus) => {

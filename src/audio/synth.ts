@@ -181,8 +181,8 @@ export function buildSound(ctx: BaseAudioContext, id: SoundId, out: AudioNode): 
       burst(ctx, out, t, 'highpass', 3000, 1, 0.1, 0.02);
       return oneShot(0.08);
     case 'buildThunk':
-      tone(ctx, out, 'sine', 140, t, 0.004, 0.9, 0.25, 45);
-      burst(ctx, out, t, 'lowpass', 600, 1, 0.5, 0.15);
+      tone(ctx, out, 'sine', 140, t, 0.004, 0.4, 0.25, 45);
+      burst(ctx, out, t, 'lowpass', 600, 1, 0.22, 0.15);
       return oneShot(0.35);
     case 'cashRegister':
       burst(ctx, out, t, 'bandpass', 1500, 2, 0.3, 0.06);
@@ -199,10 +199,10 @@ export function buildSound(ctx: BaseAudioContext, id: SoundId, out: AudioNode): 
     case 'baggageTug': return engineLoop(ctx, out, 70, 900, 0.4, 0.5);
     case 'pushbackTug': return engineLoop(ctx, out, 26, 140, 0.4, 1.3);
     case 'airBrake':
-      burst(ctx, out, t, 'highpass', 2500, 0.7, 0.6, 0.9);
+      burst(ctx, out, t, 'highpass', 2500, 0.7, 0.28, 0.9);
       burst(ctx, out, t, 'bandpass', 5000, 2, 0.25, 0.4);
       return oneShot(1);
-    case 'reverseBeeper': return beepLoop(ctx, out, 1050, 1, 0.25);
+    case 'reverseBeeper': return beepLoop(ctx, out, 1050, 1, 0.14);
     case 'craneBeep': return beepLoop(ctx, out, 1400, 2, 0.18);
     case 'fuelPump': return noiseLoop(ctx, out, 'bandpass', 320, 1.5, 0.35, 22, 0.5, 60);
     case 'beltLoader': return noiseLoop(ctx, out, 'bandpass', 800, 2, 0.25, 11, 0.6, 48);

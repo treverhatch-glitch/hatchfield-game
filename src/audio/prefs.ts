@@ -9,8 +9,7 @@ export function audioSettings(): SettingsStore {
   return sharedSettings();
 }
 
-export function applyAudioSettings(s: Settings): void {
-  const audio = getAudio();
+export function applyAudioSettings(s: Settings, audio = getAudio()): void {
   audio.setMasterVolume(s.masterVolume);
   audio.setMuted(s.audioMuted);
   for (const bus of AUDIO_BUSES) audio.setCategoryVolume(bus as Category, s.busVolume[bus]);
@@ -20,4 +19,11 @@ export function applyStoredAudio(): Settings {
   const s = audioSettings().get();
   applyAudioSettings(s);
   return s;
+}
+
+/** Push the saved mix now, and again whenever a slider writes the store. */
+export function watchAudioSettings(): () => void {
+  const store = audioSettings();
+  applyAudioSettings(store.get());
+  return store.subscribe((s) => applyAudioSettings(s));
 }

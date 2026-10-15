@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { applyAudioSettings, audioSettings } from '../../audio/prefs.ts'
-import { type AudioBus } from '../../features/settings/settings.ts'
+import { AUDIO_BUSES, type AudioBus } from '../../features/settings/settings.ts'
 import type { Game } from '../../game/sim.ts'
 import {
   chooseGraphicsQuality,
@@ -12,18 +12,22 @@ import {
   type QualityLevel,
 } from '../../render/graphicsPrefs.ts'
 
-const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
-  { id: 'aircraft', label: 'Jets' },
-  { id: 'vehicles', label: 'Vehicles' },
-  { id: 'ambient', label: 'Terminal' },
-  { id: 'ambience', label: 'Outdoors' },
-  { id: 'ui', label: 'Interface' },
-  { id: 'sfx', label: 'Effects' },
-]
+const AUDIO_LABEL: Record<AudioBus, string> = {
+  aircraft: 'Jets',
+  vehicles: 'Vehicles',
+  buildings: 'Buildings',
+  ambient: 'Terminal',
+  ambience: 'Outdoors',
+  ui: 'Interface',
+  sfx: 'Effects',
+}
+
+const AUDIO_ROWS: { id: AudioBus; label: string }[] = AUDIO_BUSES.map((id) => ({ id, label: AUDIO_LABEL[id] }))
 
 export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [audioMix, setAudioMix] = useState(() => audioSettings().get())
   const [gfx, setGfx] = useState<QualityLevel>(graphicsQuality)
+  useEffect(() => audioSettings().subscribe(setAudioMix), [])
   useEffect(() => subscribeGraphicsQuality(setGfx), [])
   return (
     <div data-testid="settings-game">

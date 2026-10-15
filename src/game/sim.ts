@@ -310,7 +310,7 @@ import {
   type Tier3TickContext,
 } from '../tier3/index.ts'
 import type { TaxiPoint } from '../tier3/taxi.ts'
-import { getAudio, soundForEvent } from '../audio/index.ts'
+import { eventAction, getAudio, releaseApronAudio, soundForEvent } from '../audio/index.ts'
 import {
   createDiplomacyBridge,
   diplomacyFieldLevel,
@@ -512,7 +512,7 @@ import {
   type SeatBook,
 } from './dining.ts'
 import { DINING_TUNING } from './diningData.ts'
-import { AmbienceMixer } from '../audio/ambience.ts'
+import { type AmbienceMixer, claimAmbience, isOwnedLoop, releaseAmbience, silenceOwnedEventLoops } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
@@ -1998,8 +1998,7 @@ export class Game {
     this.economyState = null
     this.economyView = null
     this.branding = defaultBranding()
-    this.ambience?.stopAll(0)
-    this.ambience = null
+    this.releaseAudio()
     this.crashCool = 8
     this.crashes = 0
     this.fireIncidentCool = 60
@@ -8047,16 +8046,25 @@ export class Game {
         beltLoadersRunning: this.trucks.filter((t) => t.kind === 'bags').length,
         fuelPumpsRunning: this.trucks.filter((t) => t.kind === 'fuel').length,
         outdoorMix: this.view === 'hall' ? 0.1 : 0.85,
+        serviceOwner: this.view === 'apron' ? 'apron' : 'ambience',
       },
       dt,
     )
   }
 
+  /** Stop ambience and apron loops. View changes and leaving play both call this. */
+  releaseAudio(): void {
+    this.ambience?.stopAll(0)
+    this.ambience = null
+    releaseAmbience()
+    releaseApronAudio()
+    silenceOwnedEventLoops()
+  }
+
   private ensureAmbience(): AmbienceMixer {
     if (!this.ambience) {
-      const audio = getAudio()
-      this.ambience = new AmbienceMixer({
-        playSfx: (id, options) => audio.playSfx(id, options),
+      this.ambience = claimAmbience({
+        playSfx: (id, options) => getAudio().playSfx(id, options),
       })
     }
     return this.ambience
@@ -8482,6 +8490,7 @@ export class Game {
     }
     const prev = this.view
     this.view = view
+    if (view !== 'apron') releaseApronAudio()
     if (view === 'hall') {
       this.focusHallForDesk()
       this.tool = 'pan'
@@ -13570,6 +13579,8 @@ export class Game {
     if (this.soundCues.length > 24) this.soundCues.shift()
     if (typeof window === 'undefined') return
     try {
+      const action = eventAction(name)
+      if (action?.kind === 'start' && isOwnedLoop(action.sound)) return
       getAudio().playEvent(name, { position })
     } catch {
       // Headless tests have no audio device.
