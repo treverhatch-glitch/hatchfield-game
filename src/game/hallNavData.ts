@@ -85,13 +85,17 @@ export const HALL_CROWD_TUNING = {
   maxVisible: 600,
   /** Walkers farther than this from the camera, metres, are not drawn. */
   drawDistM: 140,
-  /** Past this distance, metres, walkers drop the head and bag and draw as a body only. */
-  lodDistM: 55,
+  /**
+   * Past this distance, metres, walkers drop the head and bag and draw as a body only.
+   * The default hall camera sits near 66 m, so this stays past that shot.
+   */
+  lodDistM: 120,
   /**
    * Inside this distance, metres, the nearest `nearCap` walkers use the shared
    * low-poly body (sheet outfit and props). Farther walkers stay the cheap limbs.
+   * Wide enough that the opening hall camera still shows a walk cycle.
    */
-  nearDistM: 22,
+  nearDistM: 90,
   nearCap: 96,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
@@ -99,8 +103,10 @@ export const HALL_CROWD_TUNING = {
 
 /** Clicking a nav-grid walker in the Terminal view: ray height (mid body) and how close counts, metres. */
 export const HALL_WALKER_PICK = {
-  bodyY: 0.9,
-  radiusM: 0.7,
+  bodyY: 1.1,
+  radiusM: 1.6,
+  /** Screen-space pick radius, pixels. A click this close to a walker selects them. */
+  screenPx: 36,
 }
 
 /**

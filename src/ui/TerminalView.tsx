@@ -296,7 +296,7 @@ export function TerminalView({ game }: { game: Game }) {
           Terminal · roof off · WASD pan · Q/E rotate · scroll zoom · click a person or a desk
           {game.hasSecurityChoke() ? ' · security choke live' : ' · NO SECURITY LANE'}
           {' · '}
-          {game.hallGuests.length} pax
+          {game.terminalPaxCount()} pax
           <button
             type="button"
             className={sheet ? 'on' : ''}
@@ -488,9 +488,16 @@ export function TerminalView({ game }: { game: Game }) {
             <li>{guest.clearedSec ? 'Cleared security' : 'Before security'}</li>
           </ul>
           <WalkerCard game={game} id={guest.id} />
+          <button type="button" data-testid="guest-follow" onClick={() => worldRef.current?.setFollow(guest.id)}>
+            Follow
+          </button>
         </aside>
       ) : (
-        <WalkerOnlyCard game={game} id={game.selectedGuest} />
+        <WalkerOnlyCard
+          game={game}
+          id={game.selectedGuest}
+          onFollow={(id) => worldRef.current?.setFollow(id)}
+        />
       )}
     </div>
   )

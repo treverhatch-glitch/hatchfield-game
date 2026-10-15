@@ -71,21 +71,24 @@ Research pace moved by a few days, on a tree that grew from 62 nodes to 63. `res
 
 Same careful decisions and the same seed, with `signFuelTerm` left out. Ninety days each.
 
-| | Term (the careful row above) | (a) Accept every spot card | (b) Ignore every spot card |
+| | Term (spot probe) | (a) Accept every spot card | (b) Ignore every spot card |
 | --- | ---: | ---: | ---: |
-| Flights | 306 | 313 | 1 |
-| Fuel groundings | 0 | 0 | 310 |
+| Flights | 307 | 302 | 1 |
+| Fuel groundings | 0 | 0 | 287 |
 | First grounding day | — | — | 0 |
-| Fuel $ / day | $425 term | $457 spot | $0 |
-| Fuel $ total | $38,208 | $41,148 | $0 |
-| Cash day 90 | $1,197,497 | $1,210,500 | $1,302,718 |
+| Fuel $ / day | $415 term | $435 spot | $0 |
+| Fuel $ total | $37,312 | $39,132 | $0 |
+| Cash day 30 | $344,977 | $347,020 | $29,032 |
+| Cash day 90 | $1,190,398 | $1,190,659 | $102,664 |
 | Tree complete | day 88 | day 88 | — (12 of 63) |
 | Field level | FL7 | FL7 | FL1 |
 | Copy on screen before the first hold | term-signed news | spot cards, then tankers | `Spot card for LIF104` |
 
-**(a) The 90 game-minute lead covered this bank.** Zero fuel holds in 90 days. Spot fuel cost $32/day more than the term ($41,148 versus $38,208). Flights stayed in the same band (313 versus 306). Flag (a), “accept-all still grounds flights,” stays down.
+Same seed, after a grounded departure stops keeping the slot fee. An unfixed run of this build had the ignore airport at $389,148 on day 30 and $1,283,871 on day 90 with one flight. Unfixed term and accept on that run were $1,217,569 and $1,206,402 on day 90.
 
-**(b) The first hold is on day 0, and the spot card is already up.** 310 flights were held and one turn completed. The messages body says the named flight stays grounded if the offer is ignored (`src/phone/feed.ts`). Flag (b), “grounds before day 2 with no readable warning,” stays down. Cash still reached $1,302,718, with the field stuck at FL1, the tree stuck at 12 nodes, and a penalty total of -$12,200. The regional carrier was still signed.
+**(a) The 90 game-minute lead covered this bank.** Zero fuel holds in 90 days. Spot fuel cost $20/day more than the term ($39,132 versus $37,312). Flights stayed in the same band (302 versus 307). Flag (a), “accept-all still grounds flights,” stays down.
+
+**(b) The first hold is on day 0, and the spot card is already up.** 287 flights were held and one turn completed. The messages body says the named flight stays grounded if the offer is ignored (`src/phone/feed.ts`). Flag (b), “grounds before day 2 with no readable warning,” stays down. Cash is $29,032 on day 30 and $102,664 on day 90, under the term at both marks. The field stays FL1 and the tree stays at 12 nodes. Penalties are -$733,088, the cancel-refund line, and the phone names the passenger fees and the slot fee on the cancellation. The regional carrier was still signed.
 
 ## Expanded careful, day 150
 

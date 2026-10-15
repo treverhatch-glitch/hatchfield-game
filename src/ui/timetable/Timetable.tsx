@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { LiveText } from '../LiveText'
 import { axisTicks, barNote, boardRows, buildGantt, filterFlights, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type GanttBar, type RunwayLaneModel, type ViewSpan } from './layout'
 import { gameMinToSim, SCHEDULE } from './scheduleConfig'
 import { schedulePillOpen, setSchedulePill, sheetShown, subscribeScheduleSheet } from './scheduleSheet'
@@ -179,7 +180,10 @@ export function Timetable({
         >
           <b>Timetable</b>
           <span>
-            Day {dayIndex(now, day)} {clockLabel(now, day)}
+            <LiveText
+              testId="tt-pill-clock"
+              read={() => `Day ${dayIndex(adapter.now(), adapter.dayLength)} ${clockLabel(adapter.now(), adapter.dayLength)}`}
+            />
           </span>
           {nextArr ? <span>↘ {nextArr.flightNo} {clockLabel(nextArr.time, day)}</span> : null}
           {nextDep ? <span>↗ {nextDep.flightNo} {clockLabel(nextDep.time, day)}</span> : null}
@@ -196,7 +200,14 @@ export function Timetable({
               ))}
             </nav>
             <span className="tt-clock">
-              Day {dayIndex(now, day)} · {clockLabel(now, day)} · <em>{adapter.source}</em>
+              <LiveText
+                testId="tt-dock-clock"
+                read={() =>
+                  `Day ${dayIndex(adapter.now(), adapter.dayLength)} · ${clockLabel(adapter.now(), adapter.dayLength)}`
+                }
+              />
+              {' · '}
+              <em>{adapter.source}</em>
             </span>
             <span className="tt-zoom">
               <button type="button" onClick={() => setDayShift((d) => d - 1)} title="Previous day">

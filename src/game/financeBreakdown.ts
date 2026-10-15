@@ -14,11 +14,11 @@ export interface FinanceLine {
 const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   landing_fees: {
     label: 'Landing',
-    why: 'Posted when a turnaround books the landing. The flight ledger and this line use the same fee.',
+    why: 'Posted when a turnaround books the landing. The flight ledger and this line use the same fee. A grounded departure does not keep the slot fee — it comes back on Penalties.',
   },
   passenger_fees: {
     label: 'Passengers',
-    why: 'Per passenger on the turn, plus fast-track. Only passengers who were processed are billed.',
+    why: 'Per passenger on the turn, plus fast-track. Only passengers who were processed are billed. A grounded or cancelled flight refunds them on Penalties.',
   },
   baggage_fees: {
     label: 'Bags',
@@ -34,7 +34,7 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   },
   retail_sales: {
     label: 'Food and shops',
-    why: 'Cash a guest actually paid at a counter. An empty shelf records lost spend and does not post a sale.',
+    why: 'Cash a guest actually paid at a counter. An empty shelf records lost spend and does not post a sale. Spend tapers when that flight is grounded and nobody boards.',
   },
   cargo_fees: {
     label: 'Cargo',
@@ -146,7 +146,7 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   },
   penalties: {
     label: 'Penalties',
-    why: 'Other fines: abandon, overstay, fire, and breaches that are not a named shock, task, refuse, inbound, connection, cargo miss, or crash.',
+    why: 'Other fines: abandon, overstay, fire, and breaches that are not a named shock, task, refuse, inbound, connection, cargo miss, or crash. A fuel cancellation refunds passenger fees here, and the airline withholds the slot fee on the same line.',
   },
   diplomacy: {
     label: 'Diplomacy',

@@ -150,7 +150,9 @@ describe('negotiated terms on the live sim', () => {
     expect(flight.ledger.map((line) => line.amount)).toEqual(
       expect.arrayContaining([expectedLanding, expectedPax, expectedParking]),
     )
-    expect(game.cash).toBe(before + expectedLanding + expectedPax + expectedParking)
+    // No fuel on this field, so the slot fee and passenger fees are withheld until a wing is fueled.
+    expect(game.cash).toBe(before + expectedParking)
+    expect((game.bank.ledger().byCategory.landing_fees ?? 0) + (game.bank.ledger().byCategory.passenger_fees ?? 0) + (game.bank.ledger().byCategory.penalties ?? 0)).toBe(0)
     const day = game.bank.ledgerForGameDay(0)
     expect(day.entries.filter((entry) => entry.category === 'landing_fees').map((entry) => entry.amount)).toContain(
       expectedLanding,

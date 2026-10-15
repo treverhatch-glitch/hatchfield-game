@@ -10,6 +10,7 @@ import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from '../economy/seasons.ts'
 import type { Weather } from '../game/types.ts'
 import { daylightFactor } from '../render/world/dayNight.ts'
 import {
+  capReadableFog,
   DAY_SECONDS,
   lerpHex,
   lightsFactor,
@@ -277,8 +278,9 @@ export function paintSky(hour: number, weather: Weather, day: number, quality: G
   sky.hemiGround = lerpHex(sky.hemiGround, palette.ground, k)
   sky.sunIntensity *= palette.sunScale
   if (seasonalExtras(quality)) {
-    sky.fogFar = Math.max(70, sky.fogFar * palette.fogScale)
-    sky.fogNear = Math.max(12, Math.min(sky.fogNear, sky.fogFar * 0.45))
+    const fog = capReadableFog(sky.fogNear, sky.fogFar * palette.fogScale)
+    sky.fogFar = fog.fogFar
+    sky.fogNear = fog.fogNear
   }
   return sky
 }

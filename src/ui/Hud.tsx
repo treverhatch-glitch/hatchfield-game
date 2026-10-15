@@ -83,6 +83,7 @@ import { lateIdForTool } from '../game/lateBuildings.ts'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
+import { formatPanelNumber } from '../core/formatNumber.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import { inputMap } from '../input/map'
 import { pauseState } from './pauseState'
@@ -404,7 +405,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           ) : null}
         </div>
         <div className="stat" title="One day is a 180-second cycle">
-          <LiveText read={() => formatSimDate(game.clock)} />
+          <LiveText testId="hud-clock" read={() => formatSimDate(game.clock)} />
         </div>
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <FieldBadge
@@ -520,7 +521,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 <span>
                   {goal.title}{' '}
                   <em>
-                    {goal.value}/{goal.target}
+                    {formatPanelNumber(Math.min(goal.value, goal.target))}/{formatPanelNumber(goal.target)}
                   </em>
                 </span>
               </li>
@@ -2295,8 +2296,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                               }`
                             : 'Bulldoze refunds 40%.'}
               {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
-              {game.hallGuests.length
-                ? ` · ${game.hallGuests.length} in hall${
+              {game.terminalPaxCount()
+                ? ` · ${game.terminalPaxCount()} in hall${
                     game.hallGuests.some((g) => g.transfer)
                       ? ` (${game.hallGuests.filter((g) => g.transfer).length} transfer)`
                       : ''

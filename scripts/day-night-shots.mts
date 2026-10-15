@@ -5,7 +5,8 @@
  */
 import { existsSync, mkdirSync } from 'node:fs'
 import { chromium, type Page } from 'playwright'
-import { clockForHour, DAY_NIGHT } from '../src/render/world/dayNight.ts'
+import { clockForFaceHour } from '../src/core/faceClock.ts'
+import { DAY_NIGHT } from '../src/render/world/dayNight.ts'
 
 const OUT = 'docs/devlog/media/day-night'
 mkdirSync(OUT, { recursive: true })
@@ -74,7 +75,7 @@ async function ready(page: Page) {
 }
 
 async function show(page: Page, day: number, hour: number, yaw: number, cycle = true) {
-  const clock = clockForHour(day, hour)
+  const clock = clockForFaceHour(day, hour)
   await page.evaluate(
     ((arg: { stamp: number; yaw: number; cycle: boolean }) => {
       const g = (window as unknown as {

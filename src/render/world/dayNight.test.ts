@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { faceHour } from '../../core/faceClock'
 import { simClockToHour, skyState } from './daylight'
 import {
   applyDayNight,
@@ -51,9 +52,18 @@ describe('day/night hooks', () => {
   it('lets a photo hour win over the control hour, and the control hour win over the clock', () => {
     expect(resolveHour(0, 15, { hour: 23 })).toBe(15)
     expect(resolveHour(0, null, { hour: 23 })).toBe(23)
-    expect(resolveHour(0, null, null)).toBe(8)
+    expect(resolveHour(0, null, null)).toBe(0)
+    expect(resolveHour(22.5, null, null)).toBeCloseTo(faceHour(22.5))
+    expect(resolveHour(22.5, null, null)).toBeCloseTo(3)
     expect(resolveHour(0, null, null, false)).toBe(FIXED_DAY_HOUR)
     expect(resolveHour(0, 23, null, false)).toBe(23)
+    const night = skyState(3)
+    const morning = skyState(FIXED_DAY_HOUR)
+    expect(night.lights).toBe(1)
+    expect(morning.lights).toBe(0)
+    expect(night.sunIntensity).toBeLessThan(0.08)
+    expect(night.exposure).toBeLessThan(0.75)
+    expect(morning.sunIntensity).toBeGreaterThan(night.sunIntensity * 20)
   })
 
   it('holds late morning when the cycle is off, and still lets a photo hour win', () => {
@@ -61,7 +71,7 @@ describe('day/night hooks', () => {
     expect(resolvePlayHour(clockForHour(4, 23), null, null, false)).toBe(DAY_NIGHT.hold)
     expect(resolvePlayHour(0, 18.5, null, false)).toBe(18.5)
     expect(resolvePlayHour(0, null, { hour: 23 }, false)).toBe(23)
-    expect(resolvePlayHour(0, null, null, true)).toBe(8)
+    expect(resolvePlayHour(0, null, null, true)).toBe(0)
     const dawn = skyState(DAY_NIGHT.shots.dawn)
     const dusk = skyState(DAY_NIGHT.shots.dusk)
     const noon = skyState(DAY_NIGHT.shots.noon)
