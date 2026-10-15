@@ -27,7 +27,10 @@ export function tryStamp(
       continue
     }
     const clicked = api.clickTile(cell)
-    if (clicked.ok) return { ok: true, command: 'stamp', detail: `${tool} @ ${cell.c},${cell.r}` }
+    if (clicked.ok) {
+      if (tool === 'runway' || tool === 'runway_short' || tool === 'runway_heavy') api.connectRunway()
+      return { ok: true, command: 'stamp', detail: `${tool} @ ${cell.c},${cell.r}` }
+    }
     last = clicked.detail
     if (HARD_STOP.test(clicked.detail)) break
   }

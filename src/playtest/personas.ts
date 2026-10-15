@@ -6,6 +6,17 @@ import type { AirportView, Intent, PersonaDecision, PersonaMemory } from './type
 
 const CAREFUL_CASH_BUFFER = 8_000
 const CURB_CASH_BUFFER = 12_000
+const RUNWAY_RESERVE = 30_000
+
+/** Second strip once the airfield is deferring demand and the till clears the stamp plus a reserve. */
+function wantsSecondStrip(view: AirportView): boolean {
+  return (
+    view.runwayDeferred > 0 &&
+    view.runway < 2 &&
+    !view.runwayBuilding &&
+    view.cash >= view.runwayCost + RUNWAY_RESERVE
+  )
+}
 
 /** Build when the bonus covers the stamp, or the till still clears the cash floor. Otherwise decline. */
 function fieldAskIntent(view: AirportView, cashFloor: number): Intent | null {
@@ -117,6 +128,15 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   const tree = takeTree(view, next, true)
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, CAREFUL_CASH_BUFFER)) intents.push({ do: 'desk' })
+  // Deferred demand can show up after the day's other stamp. Read the airfield
+  // figure on every decision, including a day that already built something else.
+  if (wantsSecondStrip(view)) {
+    intents.push({ do: 'stamp', tool: 'runway' })
+    return {
+      intents,
+      memory: { builtOnDay: view.day, stampsToday: next.stampsToday + 1, treeOnDay: tree.memory.treeOnDay },
+    }
+  }
   const lab = nextLabRoom(view)
   if (lab) {
     intents.push({ do: 'room', id: lab })
@@ -199,6 +219,17 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, 0)) intents.push({ do: 'desk' })
   if (view.nextResearch) intents.push({ do: 'research', id: view.nextResearch.id })
+  if (wantsSecondStrip(view)) {
+    intents.push({ do: 'stamp', tool: 'runway' })
+    return {
+      intents,
+      memory: {
+        builtOnDay: view.day,
+        stampsToday: (view.day === next.builtOnDay ? next.stampsToday : 0) + 1,
+        treeOnDay: tree.memory.treeOnDay,
+      },
+    }
+  }
   if (view.day !== next.builtOnDay || next.stampsToday < 4) {
     const built: PersonaMemory = {
       builtOnDay: view.day,

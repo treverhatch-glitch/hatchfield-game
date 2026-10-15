@@ -17,6 +17,14 @@ export interface AirportView {
   kitAvailable: boolean
   kitCost: number
   runway: number
+  /** Slots pushed later than requested today because the strip was already taken. */
+  runwayDeferred: number
+  /** Same count across the whole run. Resets only on a new game. */
+  runwayDeferredTotal: number
+  /** Cash to stamp the regional strip. */
+  runwayCost: number
+  /** A strip is already under construction, so it is not stamped again. */
+  runwayBuilding: boolean
   stands: number
   terminals: number
   snacks: number
@@ -120,6 +128,8 @@ export interface PlayerCommands {
   /** Mouse-over ghost. Null means the stamp looks legal. */
   preview(tool: Tool, cell: Vec): string | null
   clickTile(cell: Vec): CommandResult
+  /** Paid taxi from a new runway site to the apron, so the strip can be used. */
+  connectRunway(): CommandResult
   /** Grass a player might click, pavement-adjacent cells first. */
   candidates(): Vec[]
   buyRoom(id: RoomId): CommandResult

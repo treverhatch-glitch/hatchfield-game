@@ -1,7 +1,10 @@
 import { finiteAmount } from '../disruptions/engine.ts'
 import { GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
 import {
+  ARRIVAL_LOCK_LEAD_SEC,
+  DEPARTURE_OCCUPANCY_SEC,
   RUNWAY_GENTLE_SLIP_SEC,
+  RUNWAY_SLOT_SLACK_SEC,
   RUNWAY_LATE_SLACK_SEC,
   runwayArrivalGapSec,
   runwayMovementCapacity,
@@ -1369,6 +1372,32 @@ export class Game {
   crashCool = 8
   /** Ground traffic control: taxi reservations and runway locks. */
   atc = new GroundControl()
+  /**
+   * Slots the seeder pushed later than the airline asked for today, because
+   * the strip's arrival gap was already taken. Resets each sim day.
+   */
+  runwayDeferred = 0
+  /** Same count, never reset, so a playtest can report the whole run. */
+  runwayDeferredTotal = 0
+  /** Slots the seeder tried to book today. */
+  runwayRequested = 0
+  /** Slots that kept the time the airline asked for today. */
+  runwayBooked = 0
+  private runwayDeferDay = 0
+  /** Valid only while `runwayLoadOpen` is set, for the current tick. */
+  private runwayLoadOpen = false
+  private runwayLoadCache: {
+    strips: number
+    lanes: number
+    capacity: number
+    scheduled: number
+    gapSec: number
+    overbooked: boolean
+    deferred: number
+    requested: number
+    booked: number
+  } | null = null
+  private operableStripCache: { rev: number; indexes: number[] } | null = null
   /** Path each aircraft was last cleared along (by identity). */
   private atcPaths = new Map<string, Vec[]>()
   private atcYields = new Map<string, number>()
@@ -1917,6 +1946,12 @@ export class Game {
     this.parkingCool = 65
     this.parkRateCool = 0
     this.schedule = []
+    this.runwayDeferred = 0
+    this.runwayDeferredTotal = 0
+    this.runwayRequested = 0
+    this.runwayBooked = 0
+    this.runwayDeferDay = 0
+    this.runwayLoadCache = null
     this.showUps = []
     this.paxAdapter = createPaxShowUpAdapter(0x5382)
     this.scheduleAuto = true
@@ -6247,19 +6282,71 @@ export class Game {
   }
 
   /**
-   * Movements on the open timetable against what the strips can start in a day.
-   * One slot is an arrival and, when it falls in the day, its departure.
+   * Movements on the open timetable against what the linked strips can start
+   * in a day. One slot is an arrival and, when it falls in the day, its departure.
+   * Computed once per tick until the bank or the pavement changes.
    */
   runwayLoad(): {
     strips: number
+    lanes: number
     capacity: number
     scheduled: number
     gapSec: number
     overbooked: boolean
+    deferred: number
+    requested: number
+    booked: number
   } {
-    const strips = Math.max(1, this.runwayStripCount())
-    const gapSec = runwayArrivalGapSec(strips)
-    const capacity = runwayMovementCapacity(strips)
+    if (this.runwayLoadOpen && this.runwayLoadCache) return this.runwayLoadCache
+    const value = this.computeRunwayLoad()
+    if (this.runwayLoadOpen) this.runwayLoadCache = value
+    return value
+  }
+
+  private invalidateRunwayLoad() {
+    this.runwayLoadCache = null
+  }
+
+  private rollRunwayDeferDay() {
+    const day = this.gameDay()
+    if (day === this.runwayDeferDay) return
+    this.runwayDeferDay = day
+    this.runwayDeferred = 0
+    this.runwayRequested = 0
+    this.runwayBooked = 0
+    this.invalidateRunwayLoad()
+  }
+
+  /** The seeder asked for `requested` and had to book `booked`. A later time counts. */
+  private noteRunwayDeferral(requested: number, booked: number) {
+    this.rollRunwayDeferDay()
+    this.runwayRequested += 1
+    if (booked > requested + 0.5) {
+      this.runwayDeferred += 1
+      this.runwayDeferredTotal += 1
+    } else {
+      this.runwayBooked += 1
+    }
+    this.invalidateRunwayLoad()
+  }
+
+  private computeRunwayLoad(): {
+    strips: number
+    lanes: number
+    capacity: number
+    scheduled: number
+    gapSec: number
+    overbooked: boolean
+    deferred: number
+    requested: number
+    booked: number
+  } {
+    this.rollRunwayDeferDay()
+    const strips = Math.max(0, this.runwayStripCount())
+    const operable = this.operableStripIndexes()
+    const lanes = operable.length > 0 ? operable.length : Math.max(1, strips || 1)
+    const gapSec = runwayArrivalGapSec(lanes)
+    const capacity = runwayMovementCapacity(lanes)
     const start = this.clock
     const end = this.clock + REAL_SECONDS_PER_GAME_DAY
     let scheduled = 0
@@ -6269,11 +6356,15 @@ export class Game {
       if (slot.eta >= start - RUNWAY_LATE_SLACK_SEC && slot.eta < end) scheduled += 2
     }
     return {
-      strips,
+      strips: Math.max(strips, lanes),
+      lanes,
       capacity,
       scheduled,
       gapSec,
       overbooked: runwayOverbooked(scheduled, capacity),
+      deferred: this.runwayDeferred,
+      requested: this.runwayRequested,
+      booked: this.runwayBooked,
     }
   }
 
@@ -6292,9 +6383,19 @@ export class Game {
     if (!slot.delayReason) slot.delayReason = 'Runway sequence'
   }
 
-  /** Warn while signed contracts have more movements booked than the strips can turn. */
+  /** Warn while the bank is over the strips, or the seeder had to push demand later. */
   private noteRunwayContractAlert() {
     const load = this.runwayLoad()
+    if (load.deferred > 0) {
+      const deferred = Math.max(1, Math.round(load.deferred))
+      this.raiseAlert({
+        key: 'runway-capacity',
+        severity: 'warning',
+        title: 'Runway overbooked',
+        detail: `Airlines wanted ${deferred} more movements today. Add a strip.`,
+      })
+      return
+    }
     if (!load.overbooked) {
       this.alerts.clear('runway-capacity')
       return
@@ -7150,6 +7251,8 @@ export class Game {
   bumpMap() {
     this.mapRev += 1
     this.adviceDirty = true
+    this.operableStripCache = null
+    this.invalidateRunwayLoad()
   }
 
   spend(amount: number, label: string, category: MoneyCategory = 'construction', source = 'sim'): boolean {
@@ -15752,7 +15855,10 @@ export class Game {
     const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
     const helo = planned ? isHeloAirframe(planned) : this.carrierNeedsPad(airlineId)
     const openingLimit = a.kind === 'cargo' || helo ? null : openingSlotCap(this.clock)
-    const stripGap = runwayArrivalGapSec(Math.max(1, this.runwayStripCount()))
+    // Each strip keeps its own measured gap. A second strip does not shrink it.
+    // The opening ten minutes stay on the wider headway so the prefab sees one
+    // turn at a time. After that, the gap is arrival occupancy plus a departure slot.
+    const stripGap = runwayArrivalGapSec(1)
     const physicalGap =
       this.clock < OPENING_SEC ? Math.max(stripGap, OPENING_ARRIVAL_GAP_SEC) : stripGap
     const gate = this.leadGateClock(airlineId)
@@ -15761,13 +15867,13 @@ export class Game {
     const hub = this.isHub(airlineId)
     const mods = this.specMods()
     const lcc = a.bizModel === 'lcc' || a.persona === 'budget'
+    // The airline's cadence. The physical gap is enforced per strip in etaClearOfRunway,
+    // so a second strip can take the next flight without waiting out a full turn.
+    // A helicopter does not use the strip.
     const spacing = helo
       ? 22
-      : Math.max(
-          physicalGap,
-          bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
-            (inOpeningBank ? openingSpacingBonus(this.clock) : 0),
-        )
+      : bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
+        (inOpeningBank ? openingSpacingBonus(this.clock) : 0)
     let n = bankSlotCount(count, {
       hub,
       lcc,
@@ -15793,8 +15899,26 @@ export class Game {
     if (n <= 0) return
     let eta = t
     const plannedId = planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null
+    const prior = new Set(this.schedule.map((row) => row.id))
     for (let i = 0; i < n; i++) {
-      eta = helo ? this.etaClearOfPad(eta) : this.etaClearOfRunway(eta, physicalGap)
+      const strip = helo ? null : this.pickBalancedRunway()
+      if (helo) {
+        eta = this.etaClearOfPad(eta)
+      } else {
+        const requested = eta
+        eta = this.etaClearOfRunway(eta, physicalGap, strip)
+        const mine = strip == null ? this.slotStripIndex(null) : strip
+        const forcedByPrior = this.schedule.some(
+          (row) =>
+            prior.has(row.id) &&
+            (row.status === 'scheduled' || row.status === 'delayed' || row.status === 'inbound') &&
+            this.stripsConflict(this.slotStripIndex(row.runwayPref), mine) &&
+            Math.abs(row.eta - requested) < physicalGap - 1e-6,
+        )
+        // A slot this call spaced out to the physical gap is the bank's own cadence.
+        // Deferred demand is a time an airline asked for that an existing slot already held.
+        this.noteRunwayDeferral(forcedByPrior ? requested : eta, eta)
+      }
       this.flightSeq += 1
       const slot: ScheduleSlot = {
         id: uid('slot'),
@@ -15807,26 +15931,35 @@ export class Game {
         manual: false,
         flightId: null,
         standPref: null,
-        // Spread auto bank across every stamped strip. Pads do not take a strip.
-        runwayPref: helo ? null : this.pickBalancedRunway(),
+        // Spread auto bank across every linked strip. Pads do not take a strip.
+        // One strip stays unassigned.
+        runwayPref: helo ? null : strip,
         claimLane: null,
         airframeId: plannedId,
       }
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
       if (!helo) this.noteSlotBanked(slot)
-      eta += helo
-        ? 22
-        : spacing * arrivalSpacingScale(eta, {
-            nightBank: this.hasResearch('night_bank'),
-            holidayPeak: this.holidayPeakHook,
-          })
+      if (helo) {
+        eta += 22
+      } else {
+        const scale = arrivalSpacingScale(eta, {
+          nightBank: this.hasResearch('night_bank'),
+          holidayPeak: this.holidayPeakHook,
+        })
+        // One strip steps by the strip gap, stretched overnight. Two strips keep
+        // the commercial step so the next flight can use the other strip.
+        const lanes = Math.max(1, this.operableStripIndexes().length || this.runwayStripCount() || 1)
+        eta += (lanes > 1 ? spacing : Math.max(spacing, physicalGap)) * scale
+      }
     }
+    this.invalidateRunwayLoad()
   }
 
-  /** Soonest time at or after `eta` that keeps `gap` from every open slot. */
-  private etaClearOfRunway(eta: number, gap: number): number {
+  /** Soonest time at or after `eta` that keeps `gap` from open slots on the same strip. */
+  private etaClearOfRunway(eta: number, gap: number, strip: number | null): number {
     let t = eta
+    const mine = strip == null ? this.slotStripIndex(null) : strip
     const open = this.schedule.filter(
       (s) =>
         (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
@@ -15852,8 +15985,9 @@ export class Game {
         (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
         this.slotUsesPad(s),
     )
-    for (let guard = 0; guard < 32; guard++) {
+    for (let guard = 0; guard < 48; guard++) {
       const blocker = open
+        .filter((s) => this.stripsConflict(this.slotStripIndex(s.runwayPref), mine))
         .map((s) => s.eta)
         .filter((at) => Math.abs(at - t) < gap - 1e-6)
         .sort((a, b) => b - a)[0]
@@ -15904,6 +16038,7 @@ export class Game {
     }
     this.assignSlotClaimLane(slot)
     this.schedule.push(slot)
+    this.invalidateRunwayLoad()
     if (!planned || !isHeloAirframe(planned)) this.noteSlotBanked(slot)
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
@@ -15918,6 +16053,7 @@ export class Game {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || s.status === 'inbound' || s.status === 'done') return
     s.status = 'cancelled'
+    this.invalidateRunwayLoad()
     this.abandonShowUp(s.id)
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
     this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2, 'schedule')
@@ -16181,6 +16317,7 @@ export class Game {
     slot.delayReason = reason
     const share = Math.min(1, Math.max(0, slot.delaySec - before) / DELAY_HEAT_REF_SEC)
     this.adjustHeat(slot.airline, -0.45 * share)
+    this.invalidateRunwayLoad()
   }
 
   /**
@@ -16243,6 +16380,7 @@ export class Game {
       )
       this.cascadeNewsCool = 22
     }
+    this.invalidateRunwayLoad()
     return cascaded
   }
 
@@ -16261,6 +16399,7 @@ export class Game {
     slot.delaySec = Math.min(120, slot.delaySec + add)
     slot.status = 'delayed'
     slot.delayReason = reason
+    this.invalidateRunwayLoad()
   }
 
   tickSchedule(dt: number) {
@@ -16390,6 +16529,7 @@ export class Game {
       this.schedule = this.schedule.filter(
         (s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound',
       )
+      this.invalidateRunwayLoad()
     }
     this.noteRunwayContractAlert()
   }
@@ -20951,73 +21091,233 @@ export class Game {
   }
 
   /**
-   * The strip is busy only while a jet holds the runway lock or is still in the
-   * takeoff roll. Taxi to the stand and taxi out to the hold line are not runway time.
+   * Strips a stand can actually reach. An unlinked second strip is not a lane:
+   * traffic would fall back onto the first and the banks would collide.
    */
-  private runwayStripBusy(): boolean {
+  private operableStripIndexes(): number[] {
+    if (this.operableStripCache && this.operableStripCache.rev === this.mapRev) {
+      return this.operableStripCache.indexes
+    }
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const stands = tilesOf(this.tiles, 'stand')
+    const indexes: number[] = []
+    for (let i = 0; i < strips.length; i++) {
+      if (stands.some((stand) => nearestPath(this.tiles, stand, strips[i], 'jet'))) indexes.push(i)
+    }
+    this.operableStripCache = { rev: this.mapRev, indexes }
+    return indexes
+  }
+
+  /** Assigned strip, or the only strip when the slot has no preference. */
+  private slotStripIndex(pref: number | null | undefined): number | null {
+    const n = this.runwayStripCount()
+    if (pref != null && pref >= 0 && pref < n) return pref
+    if (n <= 1) return n === 1 ? 0 : null
+    return null
+  }
+
+  /** An unassigned slot shares the field with every strip. Assigned strips only meet themselves. */
+  private stripsConflict(a: number | null, b: number | null): boolean {
+    if (a == null || b == null) return true
+    return a === b
+  }
+
+  private runwayStripId(index: number): string | null {
+    const st = runwayStrips(this.tiles, MIN_RUNWAY)[index]
+    if (!st?.length) return null
+    return `rw${index}:${st[0].c},${st[0].r}`
+  }
+
+  /** Strip indexes whose centerline cells sit on a path. */
+  private stripsOnPath(path: readonly Vec[] | null | undefined): number[] {
+    if (!path?.length) return []
+    const map = this.atcRunwayMap()
+    const hit = new Set<number>()
+    for (const p of path) {
+      const ids = map.get(`${Math.round(p.c)},${Math.round(p.r)}`)
+      if (!ids) continue
+      for (const id of ids) {
+        const match = /^rw(\d+):/.exec(id)
+        if (match) hit.add(Number(match[1]))
+      }
+    }
+    return [...hit]
+  }
+
+  /** Schedule preference, else the strip on the path. Null blocks every strip. */
+  private flightStrip(f: Flight): number | null {
+    if (f.scheduleId) {
+      const slot = this.schedule.find((row) => row.id === f.scheduleId)
+      const pref = this.slotStripIndex(slot?.runwayPref)
+      if (pref != null) return pref
+    }
+    const onPath = this.stripsOnPath(f.path)
+    if (onPath.length >= 1) return onPath[0]
+    const n = this.runwayStripCount()
+    if (n === 1) return 0
+    return null
+  }
+
+  /** Strips this departure must cross. Taxi-out uses the live path so a crossing yields. */
+  private stripsForDeparture(f: Flight): number[] {
+    if (f.phase === 'taxi_out' || f.phase === 'takeoff') {
+      const on = this.stripsOnPath(f.path)
+      if (on.length) return on
+    }
+    const assigned = this.flightStrip(f)
+    if (assigned != null) return [assigned]
+    const n = this.runwayStripCount()
+    if (n === 1) return [0]
+    const operable = this.operableStripIndexes()
+    return operable.length ? operable : n > 0 ? [0] : []
+  }
+
+  /** First linked strip a special flight can use without cutting a scheduled bank. */
+  private openSpecialStrip(): number | null {
+    const operable = this.operableStripIndexes()
+    const candidates = operable.length
+      ? operable
+      : Array.from({ length: this.runwayStripCount() }, (_, i) => i)
+    for (const index of candidates) {
+      if (!this.scheduleOwnsRunway(index)) return index
+    }
+    return null
+  }
+
+  /**
+   * The strip is busy only while a jet holds that runway's lock or is still in
+   * the takeoff roll. Taxi to the stand and taxi out to the hold line are not runway time.
+   * An aircraft with no strip blocks every strip.
+   */
+  private runwayStripBusy(index?: number, exceptId?: string): boolean {
+    const id = index == null ? null : this.runwayStripId(index)
     return this.flights.some((f) => {
+      if (exceptId && f.id === exceptId) return false
       if ((f.craft ?? 'jet') !== 'jet') return false
-      if (this.atc.holdsRunway(f.id)) return true
+      const strip = this.flightStrip(f)
+      const onThis = index == null || strip == null || strip === index
+      if (!onThis) return false
+      if (id) {
+        if (this.atc.holdsRunway(f.id, id)) return true
+      } else if (this.atc.holdsRunway(f.id)) {
+        return true
+      }
       return f.phase === 'takeoff' && f.phaseTime < 4
     })
   }
 
   /**
-   * Short final owns the strip. The approach is inside the final window, and a
-   * landing roll keeps it until the runway lock is handed back. Taxi to the
-   * stand after that is not an approach.
+   * A spawned arrival owns its strip from the approach through the landing roll.
+   * The lead is airborne, but the departure roll is longer than that lead, so a
+   * departure cannot finish once this arrival has spawned. Other strips stay open.
+   * An arrival with no strip blocks every strip.
    */
-  private arrivalOnApproach(): boolean {
+  private arrivalOnApproach(index?: number): boolean {
     return this.flights.some((f) => {
       if ((f.craft ?? 'jet') !== 'jet') return false
-      if (f.phase === 'approach') return true
-      return f.phase === 'landing' && this.atc.holdsRunway(f.id)
+      const onFinal = f.phase === 'approach' || (f.phase === 'landing' && this.atc.holdsRunway(f.id))
+      if (!onFinal) return false
+      if (index == null) return true
+      const strip = this.flightStrip(f)
+      return strip == null || strip === index
     })
   }
 
-  /** True when a scheduled arrival or a departure already has a claim on the strip. */
-  private scheduleOwnsRunway(): boolean {
-    if (this.arrivalOnApproach() || this.runwayStripBusy()) return true
-    const rolling = this.flights.some(
-      (f) =>
-        (f.craft ?? 'jet') === 'jet' &&
-        (f.phase === 'board' ||
-          f.phase === 'pushback' ||
-          f.phase === 'taxi_out' ||
-          f.phase === 'takeoff'),
-    )
+  /**
+   * True when this strip already has an arrival on final, a roll holding the lock,
+   * or a scheduled arrival inside 40s. Boarding and pushback at the stand do not own it.
+   */
+  private scheduleOwnsRunway(index: number): boolean {
+    if (this.arrivalOnApproach(index) || this.runwayStripBusy(index)) return true
+    const id = this.runwayStripId(index)
+    const rolling = this.flights.some((f) => {
+      if ((f.craft ?? 'jet') !== 'jet') return false
+      if (f.phase !== 'takeoff' && f.phase !== 'taxi_out') return false
+      return Boolean(id && this.atc.holdsRunway(f.id, id))
+    })
     if (rolling) return true
-    const next = this.openSchedule().find((s) => s.status === 'scheduled' || s.status === 'delayed')
-    return Boolean(next && next.eta <= this.clock + 40)
-  }
-
-  /** A scheduled arrival is close enough that an ambulance or a Guard jet should stay off the strip. */
-  private scheduledArrivalSoon(withinSec = 50): boolean {
-    return this.openSchedule().some(
-      (s) =>
-        (s.status === 'scheduled' || s.status === 'delayed') &&
-        s.eta <= this.clock + withinSec,
-    )
+    // A packed bank is one gap apart. The old 40s horizon was longer than that gap,
+    // so a strip with room for a landing never looked free.
+    return this.scheduledArrivalSoon(this.specialStripWindow(), index)
   }
 
   /**
-   * True when `self` can take the strip without cutting off an arrival or a
-   * takeoff roll. Pushback and taxi to the hold line are not strip time — holding
-   * a second stand for them parks a gate that could be turning.
+   * Seconds a special flight keeps off the strip before a scheduled arrival.
+   * The departure roll plus the slot slack. A longer horizon, one that covers
+   * the whole arrival gap, never sees a hole in a full bank and parks the
+   * ambulance on a stand for the rest of the day.
+   */
+  private specialStripWindow(): number {
+    return DEPARTURE_OCCUPANCY_SEC + RUNWAY_SLOT_SLACK_SEC
+  }
+
+  /** A scheduled arrival is close enough that an ambulance or a Guard jet should stay off that strip. */
+  private scheduledArrivalSoon(withinSec = 50, index?: number): boolean {
+    return this.openSchedule().some((s) => {
+      if (s.status !== 'scheduled' && s.status !== 'delayed') return false
+      if (s.eta > this.clock + withinSec) return false
+      if (index == null) return true
+      const strip = this.slotStripIndex(s.runwayPref)
+      return strip == null || strip === index
+    })
+  }
+
+  /** Next step would roll onto a strip this departure still has to cross. */
+  private aboutToEnterStrip(f: Flight): boolean {
+    if (f.seg >= f.path.length - 1) return false
+    const next = f.path[f.seg + 1]
+    if (!next) return false
+    const ahead = this.stripsOnPath([next])
+    if (!ahead.length) return false
+    const mine = this.stripsForDeparture(f)
+    return ahead.some((index) => mine.includes(index))
+  }
+
+  /** Soonest open ETA that still owes this strip a landing. Null when the bank has none. */
+  private nextArrivalEta(index: number): number | null {
+    let best: number | null = null
+    for (const slot of this.schedule) {
+      if (slot.status !== 'scheduled' && slot.status !== 'delayed') continue
+      const strip = this.slotStripIndex(slot.runwayPref)
+      if (!this.stripsConflict(strip, index)) continue
+      if (best == null || slot.eta < best) best = slot.eta
+    }
+    return best
+  }
+
+  /**
+   * The roll fits before the next arrival locks. Taxi to the hold line is
+   * separate: a departure that is still short of the pavement can keep moving.
+   */
+  private departureFitsHole(f: Flight): boolean {
+    for (const index of this.stripsForDeparture(f)) {
+      if (this.arrivalOnApproach(index) || this.runwayStripBusy(index, f.id)) return false
+      const eta = this.nextArrivalEta(index)
+      if (eta == null) continue
+      // No stand means the arrival cannot spawn. Holding the departure here
+      // keeps that stand full, so the overdue slot never moves.
+      if (!this.assignStand()) continue
+      const lockAt = eta + ARRIVAL_LOCK_LEAD_SEC
+      if (lockAt < this.clock + DEPARTURE_OCCUPANCY_SEC) return false
+    }
+    return true
+  }
+
+  /**
+   * True when `self` can take its own strip without cutting off an arrival or a
+   * takeoff roll on that strip. A landing on the other strip does not count.
+   * Pushback and taxi to the hold line are not strip time. Military and
+   * ambulance still yield when their strip has an arrival inside the departure window.
    */
   private departureMayEnterStrip(self: Flight): boolean {
-    if (this.arrivalOnApproach()) return false
+    const mine = this.stripsForDeparture(self)
     if (
       (self.kind === 'air_ambulance' || self.kind === 'military') &&
-      this.scheduledArrivalSoon()
+      mine.some((index) => this.scheduledArrivalSoon(this.specialStripWindow(), index))
     ) {
       return false
     }
-    return !this.flights.some((f) => {
-      if (f === self || (f.craft ?? 'jet') !== 'jet') return false
-      if (this.atc.holdsRunway(f.id)) return true
-      return f.phase === 'takeoff' && f.phaseTime < 4
-    })
+    return !mine.some((index) => this.arrivalOnApproach(index) || this.runwayStripBusy(index, self.id))
   }
 
   freeStands(): Vec[] {
@@ -21137,30 +21437,27 @@ export class Game {
     return Math.min(10, n)
   }
 
-  /** Least-busy strip index for auto bank; null if only one strip. */
+  /** Least-busy linked strip. Null when fewer than two strips can be reached. */
   pickBalancedRunway(): number | null {
+    const operable = this.operableStripIndexes()
+    if (operable.length < 2) return null
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
-    if (strips.length < 2) return null
     const load = strips.map(() => 0)
     for (const s of this.openSchedule()) {
       const pref = s.runwayPref
-      if (pref != null && pref >= 0 && pref < load.length) load[pref] += 1
+      if (pref != null && pref >= 0 && pref < load.length && operable.includes(pref)) load[pref] += 1
       else {
-        // Unassigned count as soft load on every strip (tower will pick).
-        for (let i = 0; i < load.length; i++) load[i] += 0.35
+        for (const i of operable) load[i] += 0.35
       }
     }
     for (const f of this.flights) {
       if (f.phase === 'gone' || f.craft === 'helo') continue
-      // Prefer strip their landing path used if we stored pref on schedule.
-      const slot = f.scheduleId
-        ? this.schedule.find((x) => x.id === f.scheduleId)
-        : null
+      const slot = f.scheduleId ? this.schedule.find((x) => x.id === f.scheduleId) : null
       const pref = slot?.runwayPref
-      if (pref != null && pref >= 0 && pref < load.length) load[pref] += 1.2
+      if (pref != null && pref >= 0 && pref < load.length && operable.includes(pref)) load[pref] += 1.2
     }
-    let best = 0
-    for (let i = 1; i < load.length; i++) {
+    let best = operable[0]
+    for (const i of operable) {
       if (load[i] < load[best]) best = i
     }
     return best
@@ -21272,8 +21569,16 @@ export class Game {
         this.delaySlot(slot, 6 + Math.random() * 5, 'Tower sequencing')
         return
       }
-      // A bank that fits the runway does not sit out the tower cool once the strip is free.
-      const stripFree = !this.runwayStripBusy() && !this.arrivalOnApproach()
+      // A bank that fits the runway does not sit out the tower cool once its own strip is free.
+      if (slot && slot.runwayPref == null) {
+        const picked = this.pickBalancedRunway()
+        if (picked != null) slot.runwayPref = picked
+      }
+      const coolStrip = slot ? this.slotStripIndex(slot.runwayPref) : null
+      const stripFree =
+        coolStrip == null
+          ? !this.runwayStripBusy() && !this.arrivalOnApproach()
+          : !this.runwayStripBusy(coolStrip) && !this.arrivalOnApproach(coolStrip)
       if (!stripFree || !slot || slot.eta > this.clock + 1) return
     }
     if (!slot) {
@@ -21296,13 +21601,25 @@ export class Game {
     }
     if (this.holdLead(slot)) return
 
-    // One approach per strip. Taxi to the stand does not keep the next arrival on the ground.
-    const strips = Math.max(1, this.runwayStripCount())
-    const onFinal = inbound.filter(
-      (f) => f.phase === 'hold' || f.phase === 'approach' || f.phase === 'landing',
-    ).length
-    // No gate, or a final already up — slip an overbooked bank, otherwise wait.
-    if (onFinal >= strips || (this.groundBusy() && !this.assignStand())) {
+    // One approach per strip. A landing on the other strip does not hold this slot.
+    if (slot.runwayPref == null) {
+      const picked = this.pickBalancedRunway()
+      if (picked != null) slot.runwayPref = picked
+    }
+    const approachStrip = this.slotStripIndex(slot.runwayPref)
+    const onThis = inbound.filter((f) => {
+      // Taxi to the stand is not strip time. The lock drops at the exit.
+      const ownsStrip =
+        f.phase === 'hold' ||
+        f.phase === 'approach' ||
+        (f.phase === 'landing' && this.atc.holdsRunway(f.id))
+      if (!ownsStrip) return false
+      const theirs = this.flightStrip(f)
+      if (approachStrip == null) return true
+      return theirs == null || theirs === approachStrip
+    }).length
+    // No gate, or a final already up on this strip — slip an overbooked bank, otherwise wait.
+    if (onThis >= 1 || (this.groundBusy() && !this.assignStand())) {
       if (!this.runwayOverbooked()) {
         this.spawnCool = Math.max(this.spawnCool, 1.5)
         return
@@ -21361,10 +21678,14 @@ export class Game {
       this.spawnContractHelo(slot, def, af)
       return
     }
-    if (slot.runwayPref == null) slot.runwayPref = this.pickBalancedRunway()
-    // The strip is rolling a landing or a departure. Taxi-in to a free stand does not count.
+    if (slot.runwayPref == null) {
+      const picked = this.pickBalancedRunway()
+      if (picked != null) slot.runwayPref = picked
+    }
+    // This strip is rolling a landing or a departure. The other strip does not count.
     // Inside capacity the next arrival waits; an overbooked bank books the lateness.
-    if (this.runwayStripBusy()) {
+    const busyStrip = this.slotStripIndex(slot.runwayPref)
+    if (busyStrip == null ? this.runwayStripBusy() : this.runwayStripBusy(busyStrip)) {
       if (!this.runwayOverbooked()) {
         this.spawnCool = Math.max(this.spawnCool, 1.5)
         return
@@ -21696,30 +22017,44 @@ export class Game {
   releaseHold() {
     const hasTower = tilesOf(this.tiles, 'tower').length > 0
     if (this.groundBusy() && !hasTower) return
-    // One arrival on the approach. A second final is what go-arounds are made of.
-    if (this.arrivalOnApproach() || this.runwayStripBusy()) return
-    // Tower: allow a held jet to commit if no landing/takeoff in progress.
-    if (
-      hasTower &&
-      this.flights.some((f) =>
-        (['landing', 'takeoff'] as Phase[]).includes(f.phase),
-      )
-    ) {
-      return
-    }
     if (!hasTower && this.groundBusy()) return
-    // Ground control: departures stuck at the hold line get a gap first.
-    if (this.atcDeparturesStarved()) return
-    // Prefer holds that already reserved a stand — those were deadlocking
-    // assignStand() because freeStands() treated the reservation as occupied.
     const held = this.flights.filter(
       (x) => x.phase === 'hold' && (x.craft ?? 'jet') === 'jet',
     )
-    const f = held.find((x) => x.stand) ?? held[0]
+    const ranked = [...held].sort((a, b) => (a.stand ? 0 : 1) - (b.stand ? 0 : 1))
+    let f: Flight | null = null
+    let slot: ScheduleSlot | null = null
+    for (const cand of ranked) {
+      const booked = cand.scheduleId
+        ? (this.schedule.find((row) => row.id === cand.scheduleId) ?? null)
+        : null
+      if (booked && booked.runwayPref == null) {
+        const picked = this.pickBalancedRunway()
+        if (picked != null) booked.runwayPref = picked
+      }
+      const index = this.slotStripIndex(booked?.runwayPref)
+      const blocked =
+        index == null
+          ? this.arrivalOnApproach() || this.runwayStripBusy()
+          : this.arrivalOnApproach(index) || this.runwayStripBusy(index)
+      if (blocked) continue
+      if (
+        hasTower &&
+        this.flights.some((g) => {
+          if (g.phase !== 'landing' && g.phase !== 'takeoff') return false
+          if (index == null) return true
+          const theirs = this.flightStrip(g)
+          return theirs == null || theirs === index
+        })
+      ) {
+        continue
+      }
+      if (this.atcDeparturesStarved(index)) continue
+      f = cand
+      slot = booked
+      break
+    }
     if (!f) return
-    const slot = f.scheduleId
-      ? this.schedule.find((s) => s.id === f.scheduleId)
-      : null
     const stand = f.stand ?? this.assignStand(slot?.standPref ?? null, undefined, f.airline, f.airframeId)
     if (!stand) return
     const route =
@@ -22433,10 +22768,15 @@ export class Game {
   }
 
   /** Departures stuck at a hold line long enough that arrivals should wait in the stack. */
-  atcDeparturesStarved(): boolean {
-    return this.atc
-      .waiting()
-      .some((w) => w.reason === 'runway' && this.clock - w.since > ATC_DEPARTURE_STARVE_SEC)
+  atcDeparturesStarved(index?: number | null): boolean {
+    return this.atc.waiting().some((w) => {
+      if (w.reason !== 'runway' || this.clock - w.since <= ATC_DEPARTURE_STARVE_SEC) return false
+      if (index == null) return true
+      const flight = this.flights.find((row) => row.id === w.id)
+      if (!flight) return true
+      const strips = this.stripsForDeparture(flight)
+      return strips.length === 0 || strips.includes(index)
+    })
   }
 
   /** Short label for an aircraft held by ground control, or null. */
@@ -22721,8 +23061,8 @@ export class Game {
     if (!this.milAgreement) return
     this.milCool = Math.max(0, this.milCool)
     if (this.milCool > 0) return
-    if (this.scheduleOwnsRunway()) return
-    if (this.groundBusy()) return
+    const strip = this.openSpecialStrip()
+    if (strip == null) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     // Prefer dedicated mil ramp; never steal a busy pax jetway if a hardstand exists.
     const stand = this.assignMilStand()
@@ -22736,8 +23076,8 @@ export class Game {
       }
       return
     }
-    const route = this.landingRoute(stand)
-    if (!route) {
+    const route = this.landingRoute(stand, strip)
+    if (!route || !this.stripsOnPath(route).includes(strip)) {
       this.milCool = 15
       return
     }
@@ -22772,8 +23112,8 @@ export class Game {
     let path = route
     if (!this.standFitsAirframe(gate, af.id)) {
       const alt = this.assignStand(null, undefined, undefined, af.id)
-      const altRoute = alt ? this.landingRoute(alt) : null
-      if (!alt || !altRoute) {
+      const altRoute = alt ? this.landingRoute(alt, strip) : null
+      if (!alt || !altRoute || !this.stripsOnPath(altRoute).includes(strip)) {
         this.milCool = 20
         return
       }
@@ -22845,8 +23185,8 @@ export class Game {
     if (this.ambuCool > 0) return
     if (this.budgetOf('ambulance') < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
-    if (this.scheduleOwnsRunway()) return
-    if (this.groundBusy()) return
+    const strip = this.openSpecialStrip()
+    if (strip == null) return
     const af = pickAirframe(
       'air_ambulance',
       this.longestRunway(),
@@ -22859,8 +23199,8 @@ export class Game {
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     const stand = this.assignStand(null, undefined, undefined, af.id)
     if (!stand) return
-    const route = this.landingRoute(stand)
-    if (!route) return
+    const route = this.landingRoute(stand, strip)
+    if (!route || !this.stripsOnPath(route).includes(strip)) return
     this.flightSeq += 1
     const call = `LIF${this.flightSeq}`
     const inbound = this.armApproach(route)
@@ -23377,7 +23717,7 @@ export class Game {
 
   departurePath(f: Flight): Vec[] | null {
     if (!f.stand) return null
-    const inbound = this.landingRoute(f.stand)
+    const inbound = this.landingRoute(f.stand, this.flightStrip(f))
     if (!inbound) return null
     const path = [...inbound].reverse()
     return jetRouteOnGraph(this.tiles, path) ? path : null
@@ -24419,6 +24759,8 @@ export class Game {
     if (!this.site || this.speed === 0) return
     this.suppressEmit++
     try {
+    this.runwayLoadOpen = true
+    this.runwayLoadCache = null
     const step = dt * this.speed
     this.clock += step
     this.scanAlerts(step)
@@ -24720,10 +25062,13 @@ export class Game {
               (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
               f.phaseTime > 28
             const ramp = this.rampCall(f, f.phaseTime > 80)
+            const stripClear = !this.stripsForDeparture(f).some((index) => this.arrivalOnApproach(index))
             if (
               deiceOk &&
               ramp !== 'hold' &&
-              (this.departureMayEnterStrip(f) || (this.runwayOverbooked() && f.phaseTime > 24)) &&
+              (this.departureMayEnterStrip(f) ||
+                (f.phaseTime > this.specialStripWindow() && stripClear) ||
+                (this.runwayOverbooked() && f.phaseTime > 24)) &&
               (!this.groundBusy() || f.phaseTime > 24)
             ) {
               if (ramp === 'short') {
@@ -24910,15 +25255,20 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
-        // Own pushback counts as ground-busy, so the strip check excludes self.
-        // An arrival on approach keeps the departure at the stand's exit.
+        // The strip stays open for this shove: the roll waits at the hold line.
         if (this.taxiRouteReady(f)) this.atcFollow(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           const clear = out != null && this.departureMayEnterStrip(f)
+          const departStrips = this.stripsForDeparture(f)
           const yieldToSchedule =
-            (f.kind === 'air_ambulance' || f.kind === 'military') && this.scheduledArrivalSoon()
-          const force = out != null && f.phaseTime > 45 && !this.arrivalOnApproach() && !yieldToSchedule
+            (f.kind === 'air_ambulance' || f.kind === 'military') &&
+            departStrips.some((index) => this.scheduledArrivalSoon(this.specialStripWindow(), index))
+          const force =
+            out != null &&
+            f.phaseTime > 45 &&
+            !departStrips.some((index) => this.arrivalOnApproach(index)) &&
+            !yieldToSchedule
           if (out && (clear || force)) {
             f.path = out
             f.seg = 0
@@ -24933,15 +25283,20 @@ export class Game {
       } else if (f.phase === 'taxi_out') {
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (
-          this.arrivalOnApproach() &&
-          !this.atc.holdsRunway(f.id) &&
-          !this.runwayOverbooked()
-        ) {
-          // Hold short. Rolling onto the strip now would cut off the arrival.
-        } else if (this.atcFollow(f, 1.2, step)) {
-          f.phase = 'takeoff'
-          f.phaseTime = 0
+        } else {
+          // Hold short of the pavement. Taxi up to that line is still allowed.
+          // One roll has to finish before the next arrival locks.
+          if (
+            !this.atc.holdsRunway(f.id) &&
+            !this.runwayOverbooked() &&
+            this.aboutToEnterStrip(f) &&
+            !this.departureFitsHole(f)
+          ) {
+            /* stay on the taxi side */
+          } else if (this.atcFollow(f, 1.2, step)) {
+            f.phase = 'takeoff'
+            f.phaseTime = 0
+          }
         }
       } else if (f.phase === 'takeoff') {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
@@ -25298,6 +25653,8 @@ export class Game {
       this.emit()
     }
     } finally {
+      this.runwayLoadOpen = false
+      this.runwayLoadCache = null
       this.endEmitHold()
     }
   }

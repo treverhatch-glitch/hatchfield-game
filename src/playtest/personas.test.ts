@@ -12,6 +12,10 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     kitAvailable: false,
     kitCost: 48_000,
     runway: 1,
+    runwayDeferred: 0,
+    runwayDeferredTotal: 0,
+    runwayCost: 38_000,
+    runwayBuilding: false,
     stands: 2,
     terminals: 9,
     snacks: 0,
@@ -295,6 +299,30 @@ describe('playtest personas', () => {
       freshMemory(),
     )
     expect(ready.intents).toContainEqual({ do: 'accept' })
+  })
+
+  it('stamps a second strip when the airfield deferred demand and cash clears the reserve', () => {
+    const pressed = board({
+      runway: 1,
+      runwayDeferred: 4,
+      runwayCost: 38_000,
+      cash: 38_000 + 30_000,
+      stands: 4,
+    })
+    const careful = carefulIntents(pressed, freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+    const greedy = greedyIntents(pressed, freshMemory())
+    expect(greedy.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+    const short = carefulIntents(board({ runwayDeferred: 4, cash: 50_000, runwayCost: 38_000 }), freshMemory())
+    expect(short.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'runway')).toBe(false)
+    const quiet = carefulIntents(board({ runwayDeferred: 0, cash: 120_000 }), freshMemory())
+    expect(quiet.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'runway')).toBe(false)
+    const later = carefulIntents(pressed, { builtOnDay: pressed.day, stampsToday: 1, treeOnDay: -1 })
+    expect(later.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
+    const site = carefulIntents(board({ ...pressed, runwayBuilding: true }), freshMemory())
+    expect(site.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'runway')).toBe(false)
+    const greedyLater = greedyIntents(pressed, { builtOnDay: pressed.day, stampsToday: 4, treeOnDay: -1 })
+    expect(greedyLater.intents).toContainEqual({ do: 'stamp', tool: 'runway' })
   })
 
   it('chaotic clicks are stable for a seed', () => {

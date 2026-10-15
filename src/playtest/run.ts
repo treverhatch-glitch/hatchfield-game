@@ -143,6 +143,9 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
     if (heldSpeed) {
       notes.push('Driver put the clock back to 5× after the persona touched the speed buttons.')
     }
+    notes.push(`deferred ${view.runwayDeferredTotal}`)
+    notes.push(`guests ${view.guestCount}`)
+    if (!notes.some((line) => line.startsWith('strip 2'))) notes.push('strip 2 not built')
     const taxiOutCleared = recovered.filter((row) => row.detail.includes('taxi_out')).length
     notes.push(taxiOutRecoveryNote(taxiOutCleared, api.probe().jumps))
     return {
@@ -285,6 +288,10 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
     noteNan(nanFlags, after)
     if (after.day !== sampledDay) {
       sampledDay = after.day
+      const opened = api.view()
+      if (opened.runway >= 2 && !notes.some((line) => line.startsWith('strip 2'))) {
+        notes.push(`strip 2 open on day ${opened.day}`)
+      }
       cashCurve.push({ day: after.day, cash: Math.round(after.cash) })
       satisfaction.push({
         day: after.day,

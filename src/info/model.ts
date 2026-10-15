@@ -214,9 +214,15 @@ export interface AirfieldLoad {
   capacity: number
   /** Arrival and departure movements booked in that day. */
   scheduled: number
-  /** Sim-seconds between arrivals on this field. */
+  /** Sim-seconds between arrivals on one strip. */
   gapSec: number
   overbooked: boolean
+  /** Slots the seeder pushed later than the airline asked for today. */
+  deferred: number
+  /** Slots the seeder tried to book today. */
+  requested: number
+  /** Slots that kept the time the airline asked for today. */
+  booked: number
 }
 
 export function airfieldModel(
@@ -228,6 +234,10 @@ export function airfieldModel(
   const shownCapacity = Math.max(1, Math.round(capacity))
   const color = powerColor(scheduled, capacity)
   const gap = Number.isFinite(load.gapSec) ? load.gapSec : 0
+  const deferred = Number.isFinite(load.deferred) ? Math.max(0, Math.round(load.deferred)) : 0
+  const requested = Number.isFinite(load.requested) ? Math.max(0, Math.round(load.requested)) : 0
+  const booked = Number.isFinite(load.booked) ? Math.max(0, Math.round(load.booked)) : 0
+  const strained = load.overbooked || deferred > 0
   return {
     id: 'airfield',
     title: 'Airfield',
@@ -248,16 +258,26 @@ export function airfieldModel(
     ],
     details: [
       {
+        id: 'deferred',
+        label: 'Deferred',
+        value: String(deferred),
+        why: `Inputs: requested ${requested} vs booked ${booked}.`,
+      },
+      {
         id: 'contracts',
         label: 'Contracts',
         value: load.overbooked ? 'Over the runway' : 'Inside capacity',
-        why: load.overbooked
-          ? `Inputs: signed contracts booked ${Math.round(scheduled)} movements and the strips turn ${shownCapacity} a day.`
-          : `Inputs: signed contracts booked ${Math.round(scheduled)} movements and the strips turn ${shownCapacity} a day.`,
+        why: `Inputs: signed contracts booked ${Math.round(scheduled)} movements and the strips turn ${shownCapacity} a day.`,
       },
     ],
-    fixes: load.overbooked ? ['Contracts exceed the runway — add a strip or spread the bank.'] : [],
-    tint: strips.map((spot, index) => cell(`runway:${index}:${spot.c},${spot.r}`, spot.c, spot.r, color, load.overbooked)),
+    fixes: strained
+      ? [
+          deferred > 0
+            ? `Airlines wanted ${deferred} more movements today. Add a strip.`
+            : 'Contracts exceed the runway — add a strip or spread the bank.',
+        ]
+      : [],
+    tint: strips.map((spot, index) => cell(`runway:${index}:${spot.c},${spot.r}`, spot.c, spot.r, color, strained)),
   }
 }
 

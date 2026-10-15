@@ -3,7 +3,7 @@
  * Bot modules import this file and nothing from the renderer.
  */
 import type { MoneyCategory } from '../core/bank.ts'
-import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE, HELIPAD_COST } from '../game/catalog.ts'
+import { MIN_RUNWAY, RESEARCH_NODES, RUNWAY_PREFAB_COST, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE, HELIPAD_COST } from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
@@ -139,6 +139,79 @@ class GamePlayer implements PlayerCommands {
     this.game.setTool(tool)
     this.game.setHover(cell)
     return this.game.placementGhostReason()
+  }
+
+  connectRunway(): CommandResult {
+    const site = this.game.sites.find((row) => row.kind === 'runway')
+    if (!site) return result(false, 'connectRunway', 'no runway site')
+    const siteKeys = new Set(site.cells.map((cell) => `${cell.c},${cell.r}`))
+    const inside = (c: number, r: number) => c >= 0 && r >= 0 && c < SIZE && r < SIZE
+    const tileAt = (c: number, r: number) => this.game.tiles[r][c]
+    const pavement = (c: number, r: number) => {
+      if (!inside(c, r) || siteKeys.has(`${c},${r}`)) return false
+      const tile = tileAt(c, r)
+      return tile === 'taxi' || tile === 'stand' || tile === 'runway' || tile === 'hangar'
+    }
+    const neigh = (c: number, r: number) =>
+      [
+        { c: c + 1, r },
+        { c: c - 1, r },
+        { c, r: r + 1 },
+        { c, r: r - 1 },
+      ].filter((cell) => inside(cell.c, cell.r))
+    if (site.cells.some((cell) => neigh(cell.c, cell.r).some((next) => pavement(next.c, next.r)))) {
+      return result(true, 'connectRunway', 'already linked')
+    }
+    const prev = new Map<string, string | null>()
+    const queue: Vec[] = []
+    for (const cell of site.cells) {
+      for (const next of neigh(cell.c, cell.r)) {
+        const key = `${next.c},${next.r}`
+        if (prev.has(key) || siteKeys.has(key) || tileAt(next.c, next.r) !== 'grass') continue
+        prev.set(key, null)
+        queue.push(next)
+      }
+    }
+    let goal: Vec | null = null
+    while (queue.length) {
+      const cur = queue.shift()
+      if (!cur) break
+      const key = `${cur.c},${cur.r}`
+      let depth = 0
+      let walk: string | null = key
+      while (walk) {
+        depth += 1
+        walk = prev.get(walk) ?? null
+      }
+      if (neigh(cur.c, cur.r).some((next) => pavement(next.c, next.r))) {
+        goal = cur
+        break
+      }
+      if (depth >= 20) continue
+      for (const next of neigh(cur.c, cur.r)) {
+        const nextKey = `${next.c},${next.r}`
+        if (prev.has(nextKey) || siteKeys.has(nextKey) || tileAt(next.c, next.r) !== 'grass') continue
+        prev.set(nextKey, key)
+        queue.push(next)
+      }
+    }
+    if (!goal) return result(false, 'connectRunway', 'no taxi link')
+    const path: Vec[] = []
+    let walk: string | null = `${goal.c},${goal.r}`
+    while (walk) {
+      const [c, r] = walk.split(',').map(Number)
+      path.push({ c, r })
+      walk = prev.get(walk) ?? null
+    }
+    path.reverse()
+    this.game.setTool('taxi')
+    let laid = 0
+    for (const cell of path) {
+      const clicked = this.clickTile(cell)
+      if (!clicked.ok) return result(laid > 0, 'connectRunway', clicked.detail)
+      laid += 1
+    }
+    return result(true, 'connectRunway', `taxi x${laid}`)
   }
 
   clickTile(cell: Vec): CommandResult {
@@ -528,6 +601,10 @@ class GamePlayer implements PlayerCommands {
       kitAvailable: game.showStarterKit(),
       kitCost: STARTER_KIT_COST,
       runway: runwayStrips(game.tiles, MIN_RUNWAY).length,
+      runwayDeferred: game.runwayDeferred,
+      runwayDeferredTotal: game.runwayDeferredTotal,
+      runwayCost: RUNWAY_PREFAB_COST,
+      runwayBuilding: game.sites.some((site) => site.kind === 'runway'),
       stands: tilesOf(game.tiles, 'stand').length,
       terminals: tilesOf(game.tiles, 'terminal').length,
       snacks: tilesOf(game.tiles, 'snack').length,

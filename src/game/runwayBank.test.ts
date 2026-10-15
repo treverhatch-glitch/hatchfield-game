@@ -79,7 +79,8 @@ describe('runway bank', () => {
     const game = field()
     game.clock = 1_000
     game.spawnCool = 5
-    for (let i = 0; i < 8; i++) game.schedule.push(slot(`late-${i}`, game.clock - 10 + i * 4))
+    game.schedule.push(slot('late-due', game.clock - 10))
+    for (let i = 0; i < 8; i++) game.schedule.push(slot(`late-${i}`, game.clock + 6 + i * 4))
     expect(game.runwayLoad().overbooked).toBe(true)
     game.tick(0.2)
     expect(game.schedule.some((row) => row.delaySec >= 6)).toBe(true)
