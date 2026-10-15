@@ -24608,7 +24608,8 @@ export class Game {
   /**
    * Waiting at the hold line because the roll does not fit before the next
    * arrival. That is the departure slot, not a taxi stall. The first
-   * `authorizedHoldMin` does not age `phaseTime` and does not start the ladder.
+   * `authorizedHoldMin` does not age `phaseTime`, so the stuck alert does not
+   * fire. The aircraft still sits where it is; the watchdog is unchanged.
    */
   private holdingShortForArrival(flight: Flight): boolean {
     return (
@@ -24636,8 +24637,6 @@ export class Game {
 
   /** A live ground-control hold inside the legal window is progress, not a stall. */
   private holdIsAuthorized(flight: Flight, hard: ReadonlySet<string>): boolean {
-    const hole = this.holeHoldSec(flight)
-    if (hole != null && hole * SIM_MINUTES_PER_REAL_SECOND < STUCK_WATCH.authorizedHoldMin) return true
     const wait = this.atc.waitFor(flight.id)
     if (!wait) return false
     const ageMin = Math.max(0, this.clock - wait.since) * SIM_MINUTES_PER_REAL_SECOND
