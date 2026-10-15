@@ -6898,6 +6898,7 @@ export class Game {
       this.progressionBuilt = (s.progressionBuilt ?? []).filter(
         (id) => id !== 'hydrant' && Boolean(progressionBuildable(id)),
       )
+      const legacyPits = s.standPits == null
       this.standPits = { ...(s.standPits ?? {}) }
       this.hydrantArm = false
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
@@ -6988,6 +6989,7 @@ export class Game {
       this.wave3.load(foldedWave)
       this.researchTree.load(foldedTree, this.fieldLevel())
       this.noteTreeGrants()
+      if (legacyPits && this.hasResearch('hydrant_fuel')) this.grantLegacyPits()
       this.missedConnections = s.missedConnections ?? 0
       this.linkWear = {
         mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
@@ -18474,7 +18476,9 @@ export class Game {
                   : cls === 'S'
                     ? 'Small stand'
                     : 'Medium stand'
-      const upkeep = (size && rung != null ? rungUpkeep(size, rung) : 0) + this.fittingUpkeepAt(hostKey('stand', v.c, v.r))
+      const pitBill = this.standPits[key] ? (progressionBuildable('hydrant')?.upkeepPerDay ?? 0) : 0
+      const upkeep =
+        (size && rung != null ? rungUpkeep(size, rung) : 0) + this.fittingUpkeepAt(hostKey('stand', v.c, v.r)) + pitBill
       return { name, upkeep, tier, plan: 'stand' }
     }
     if (tile === 'hangar') {
@@ -20338,6 +20342,11 @@ export class Game {
       this.buyStandRung(id.slice('rung:'.length))
       return
     }
+    if (id.startsWith('pit:')) {
+      const [c, r] = id.slice('pit:'.length).split(',').map(Number)
+      if (Number.isFinite(c) && Number.isFinite(r)) this.stampHydrantPit({ c, r })
+      return
+    }
     const fit = /^(fitbuy|fitdrop):((?:stand|fire|hangar|fuel):\d+,\d+):([a-z0-9_]+)$/.exec(id)
     if (!fit) return
     const fitting = this.asFittingId(fit[3] ?? '')
@@ -20480,8 +20489,35 @@ export class Game {
         rows.push({ id: `fitdrop:${host}:${id}`, label: `Remove ${name.toLowerCase()}`, disabled: false })
       }
     }
+    const pit = progressionBuildable('hydrant')
+    const pitRefusal = this.hydrantRefusal(v)
+    const pitCost = pit?.cost ?? 0
+    rows.push({
+      id: `pit:${key}`,
+      label: pitRefusal ?? `${pit?.name ?? 'Hydrant pit'} · $${pitCost.toLocaleString('en-US')}`,
+      disabled: pitRefusal != null,
+    })
     if (!rows.length) return null
     return { id: 'attachments', title: 'Attachments', rows }
+  }
+
+  /** Same gates as stampHydrantPit. The pit stays in standPits, not the fitting list. */
+  private hydrantRefusal(v: Vec): string | null {
+    const key = `${v.c},${v.r}`
+    if (this.standPits[key]) return 'This stand already has a pit.'
+    const row = progressionBuildable('hydrant')
+    const name = row?.name ?? 'Hydrant pit'
+    const need = unlockLevel('hydrant')
+    if (this.fieldLevel() < need) return `${name} needs Field level ${need}.`
+    if (!this.hasResearch('hydrant_fuel')) return 'Research the hydrant system. Then stamp the pit on a stand.'
+    const cost = row?.cost ?? 0
+    if (this.cash < cost) return `Need $${cost.toLocaleString('en-US')}.`
+    return null
+  }
+
+  /** Old saves that predate standPits and already researched hydrants keep a pit on each stand. */
+  private grantLegacyPits() {
+    for (const stand of tilesOf(this.tiles, 'stand')) this.standPits[`${stand.c},${stand.r}`] = true
   }
 
   private standUpgradeSection(v: Vec): CardSection | null {
