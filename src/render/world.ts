@@ -79,6 +79,7 @@ import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass
 import { helipadTurnOnPad } from './world/padHeli'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
+import { addBatteryBank, addSolarArray } from './world/opsTechBuildings'
 import {
   addAtcApproach,
   addPrefabPier,
@@ -793,7 +794,9 @@ export class World {
    */
   private syncProgressionBuildings(game: Game) {
     const pits = Object.keys(game.standPits).sort().join(';')
-    const sig = `${game.mapRev}|${game.progressionBuilt.join(',')}|${pits}`
+    const solar = game.hasOpsTech('sustainability.t1')
+    const battery = game.hasOpsTech('sustainability.t2')
+    const sig = `${game.mapRev}|${game.progressionBuilt.join(',')}|${pits}|${solar}|${battery}`
     if (sig === this.progressionSig) return
     this.progressionSig = sig
     const geos = new Set<THREE.BufferGeometry>()
@@ -809,8 +812,8 @@ export class World {
     for (const mat of mats) mat.dispose()
     this.progressionGroup.clear()
     const used = new Set<string>()
-    const place = (id: string, build: (g: THREE.Group) => void, anchors: Tile[]) => {
-      if (!game.progressionBuilt.includes(id)) return
+    const place = (id: string, build: (g: THREE.Group) => void, anchors: Tile[], owned?: boolean) => {
+      if (!(owned ?? game.progressionBuilt.includes(id))) return
       const cell = grassBeside(game, anchors, used)
       if (!cell) return
       used.add(`${cell.c},${cell.r}`)
@@ -824,6 +827,8 @@ export class World {
     place('tilt_tray', addTiltTray, ['cargo', 'bags'])
     place('atc_approach', addAtcApproach, ['tower'])
     place('remote_screening', addRemoteScreening, ['bus', 'termbus'])
+    place('ops_solar', addSolarArray, ['terminal'], solar)
+    place('ops_battery', addBatteryBank, ['terminal'], battery)
     for (const key of Object.keys(game.standPits)) {
       const [c, r] = key.split(',').map(Number)
       if (!Number.isFinite(c) || !Number.isFinite(r)) continue

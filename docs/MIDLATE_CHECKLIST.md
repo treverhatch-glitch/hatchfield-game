@@ -91,7 +91,7 @@ Tier III rows that are data only (`pier_iii`, garage, remote screening, de-icing
 | Item | Status | Evidence |
 | --- | --- | --- |
 | Growth tree, including spec branches | PLAYABLE | `src/research/nodes.ts` `5b91d76` and `src/ui/research/ResearchTree.tsx`. Costs are 0 / 26 / 38 / 54 / 76 / 108 (`src/research/config.ts`, `docs/RESEARCH.md`). The careful bot finished all 62 nodes on day 90. |
-| Economy tech tree | SIM ONLY | Nine branches, tiers at FL 1 / 3 / 5 / 8 (`src/economy/techTree.ts` `6205cb9`). `ensureEconomy().tick` runs. `unlockTech` is only called from tests and the adapter. No sheet spends those points. |
+| Economy tech tree | PLAYABLE (partly) | Growth > Ops wallet (`src/ui/OpsWalletPanel.tsx`, `src/economy/wallet.ts`). Nodes the sim reads (`src/economy/wiring.ts` `LIVE_TECH`) and their prerequisites can be bought; the rest are held back so points are not spent on nothing. Solar array and battery bank appear on the apron. Economy state is saved. |
 | Research tier 4 and 5 lists | SIM ONLY | `src/content/research_tier4.ts` and `research_tier5.ts` `4a49a28`. Tests check the ids. The live tree does not import them. Prerequisites are old desk ids. |
 | Hub connections and banks | PLAYABLE | From FL3 (`src/hub/share.ts`). `buildBanks` (`src/hub/banks.ts` `6205cb9`) feeds `tickHubConnections`. The flight card and the info views name Connections and Links. |
 | Hub-tier checklist | PLAYABLE | Airlines desk and the Hubs sheet (`src/ui/hub/HubPanels.tsx`, `20e829d`). Progress, the next tier’s rewards, and a common-use showcase are on the card. Desk and lane lines stay on “Waiting on the desk allocator” until a lease exists, and dedicating a desk stays disabled. |
@@ -111,6 +111,6 @@ Green Pioneer’s net-zero goal cannot be met. `src/sustainability/carbon.ts` is
 Left alone on purpose:
 
 - Tier III catalog buildings stay data until their effects exist.
-- The economy tech wallet stays unwired. A second point shop would sit beside the Growth tree.
+- Economy wallet nodes no system reads stay held back in the wallet. Add a `LIVE_TECH` row in the same change that wires a modifier.
 - The hub checklist is already on the airlines desk. Desk lines wait on the allocator. A second lease table would fight that design.
 - Airport Council and the spotters deck have no code to schedule.
