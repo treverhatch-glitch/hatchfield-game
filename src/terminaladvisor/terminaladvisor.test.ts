@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blankPlan, paintRoom, autoWalls, adviseTerminal, type TerminalPlan } from './index.ts';
+import { blankPlan, paintRoom, autoWalls, adviseTerminal, roomDef, EQUIP_PLATE, type TerminalPlan } from './index.ts';
 
 // Layout (one floor, 10x4): row 0 curb-side. checkin | security | gates, claim + restrooms + baghall.
 function good(): TerminalPlan {
@@ -30,6 +30,14 @@ function good(): TerminalPlan {
 const ids = (p: TerminalPlan, load?: Parameters<typeof adviseTerminal>[1]) => adviseTerminal(p, load).map((h) => h.id);
 
 describe('terminal advisor', () => {
+  it('pins the immigration and claim plates to the concept art', () => {
+    expect(roomDef('immigration')?.plate).toBe('passport_control')
+    expect(roomDef('bagclaim')?.plate).toBe('baggage_claim')
+    expect(EQUIP_PLATE.passport_booth).toBe('passport_control')
+    expect(EQUIP_PLATE.carousel).toBe('baggage_claim')
+    expect(EQUIP_PLATE.bagdrop).toBe('bag_drop_kiosk')
+  })
+
   it('a sound layout has no blockers or warnings', () => {
     expect(adviseTerminal(good()).filter((h) => h.severity !== 'tip')).toEqual([]);
   });

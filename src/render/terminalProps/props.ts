@@ -650,8 +650,20 @@ function carousel(): Part[] {
   // centre island + feed hood with strip curtain
   out.push(box([L, 0.32, 1.6], [0, 0.16, 0], 'darkSteel'), box([L + 0.2, 0.04, 1.7], [0, 0.34, 0], 'brushed'))
   out.push(box([2.2, 2.4, 1.6], [-L / 2 - 2.2, 1.2, 0], 'greyPanel'), box([1.6, 0.9, 0.02], [-L / 2 - 1.39, 0.8, 0], 'rubber', [0, H, 0]))
-  out.push(box([2.6, 0.8, 0.1], [0, 2.9, 0], 'black'), box([2.5, 0.7, 0.02], [0, 2.9, 0.06], 'sgnBelt'), box([2.5, 0.7, 0.02], [0, 2.9, -0.06], 'sgnBelt', [0, Math.PI, 0]))
-  out.push(cyl([0.12, 2.5, 0.12], [0, 1.4, 0], 'darkSteel'))
+  // Closed rubber loop over the slats, then the concept plate on the overhead board.
+  out.push(part('torus', [11.2, 3.5, 0.18], [0, 0.5, 0], 'rubber', [H, 0, 0]))
+  out.push(box([2.8, 1.56, 0.08], [0, 3.2, 0], 'black'))
+  out.push(box([2.7, 1.5, 0.015], [0, 3.2, 0.05], 'plateClaim'))
+  out.push(box([2.7, 1.5, 0.015], [0, 3.2, -0.05], 'plateClaim', [0, Math.PI, 0]))
+  out.push(box([2.8, 0.06, 0.1], [0, 2.38, 0], 'signYellow'))
+  out.push(cyl([0.12, 3.5, 0.12], [0, 1.75, 0], 'darkSteel'))
+  // Glass barrier on the public straight run (carousel lip is -Z).
+  for (let i = 0; i < 5; i++) {
+    const x = -2.8 + i * 1.4
+    out.push(cyl([0.045, 1.05, 0.045], [x - 0.65, 0.55, -2.4], 'chrome'))
+    out.push(box([1.25, 0.72, 0.02], [x, 0.85, -2.4], 'glass'))
+  }
+  out.push(cyl([0.045, 1.05, 0.045], [2.8 + 0.65, 0.55, -2.4], 'chrome'))
   out.push(box([0.3, 0.3, 0.3], [-L / 2 - 1.5, 2.6, 0.9], 'amber'), cyl([0.2, 0.1, 0.2], [-L / 2 - 1.5, 2.8, 0.9], 'amber'))
   // bags on the belt
   const mats = ['bagBlack', 'bagRed', 'bagTeal', 'bagSilver', 'bagBlack', 'navy']
@@ -1111,6 +1123,61 @@ function staffOffice(): Part[] {
   return out
 }
 
+/**
+ * Self-service bag drop: kiosk screen, weigh scale, and a short injection belt.
+ * The screen and the fascia are the Gemini plate, not a downscaled stand-in.
+ */
+function bagDropKiosk(): Part[] {
+  return [
+    rb([0.78, 1.12, 0.46], [0, 0.66, -0.05], 'lacquerWhite'),
+    rb([0.82, 0.1, 0.5], [0, 1.26, -0.05], 'lacquerBlue'),
+    rb([0.7, 0.52, 0.08], [0, 1.58, 0.02], 'lacquerWhite', [-0.32, 0, 0]),
+    box([0.62, 0.36, 0.012], [0, 1.6, 0.07], 'plateBagDrop', [-0.32, 0, 0]),
+    box([0.22, 0.06, 0.1], [-0.12, 1.08, 0.2], 'black'),
+    box([0.08, 0.03, 0.01], [-0.12, 1.12, 0.25], 'screenGreen'),
+    rb([1.05, 0.22, 0.78], [0, 0.14, 0.78], 'stainless'),
+    box([0.9, 0.03, 0.62], [0, 0.27, 0.78], 'belt'),
+    box([0.95, 0.02, 0.04], [0, 0.29, 1.12], 'signYellow'),
+    box([0.03, 0.16, 0.7], [-0.5, 0.36, 0.78], 'brushed'),
+    box([0.03, 0.16, 0.7], [0.5, 0.36, 0.78], 'brushed'),
+    cyl([0.06, 0.9, 0.06], [0, 0.27, 0.48], 'chrome', [0, 0, H]),
+    cyl([0.06, 0.9, 0.06], [0, 0.27, 1.08], 'chrome', [0, 0, H]),
+    box([0.72, 0.04, 0.55], [0, 0.46, -0.42], 'belt', [0.45, 0, 0]),
+    cyl([0.04, 1.15, 0.04], [-0.85, 1.85, 0.15], 'chrome'),
+    cyl([0.04, 1.15, 0.04], [0.85, 1.85, 0.15], 'chrome'),
+    rb([1.9, 0.12, 0.16], [0, 2.42, 0.15], 'signDark'),
+    box([1.7, 0.95, 0.02], [0, 1.85, 0.28], 'plateBagDrop'),
+    ...place(bagFlat('bagRed', 0.55, 0.36), 0.05, 0.78, 0.15, 0.32),
+  ]
+}
+
+/** Three passport booths. The overhead board is the immigration concept plate. */
+function passportBooth(): Part[] {
+  const pitch = 1.35
+  const out: Part[] = []
+  for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * pitch
+    out.push(
+      rb([1.15, 1.05, 0.55], [x, 0.525, -0.2], 'lacquerWhite'),
+      rb([1.2, 0.045, 0.62], [x, 1.07, -0.2], 'granite'),
+      box([0.04, 1.2, 0.62], [x - pitch / 2, 1.55, -0.05], 'glass'),
+      box([0.95, 0.62, 0.02], [x, 1.55, 0.12], 'glassTint'),
+      ...place(monitor(0.32, 0.2), x - 0.15, -0.35, Math.PI, 1.22),
+      ...place(person(OFFICER, { arms: 'forward' }), x, -0.72),
+    )
+  }
+  out.push(box([0.04, 1.2, 0.62], [pitch, 1.55, -0.05], 'glass'))
+  const w = 3 * pitch + 0.2
+  out.push(
+    rb([w, 0.16, 0.7], [0, 2.28, -0.05], 'signDark'),
+    box([w - 0.1, 0.08, 0.08], [0, 2.18, 0.28], 'signYellow'),
+    box([2.7, 1.5, 0.04], [0, 3.15, 0.05], 'black'),
+    box([2.6, 1.42, 0.015], [0, 3.15, 0.08], 'platePassport'),
+  )
+  out.push(...queue(3.4, 1, 0.95, 1.25, beltPost))
+  return out
+}
+
 /** Arrivals / check-in wayfinding totem. */
 function arrivalsSign(): Part[] {
   return [
@@ -1173,6 +1240,8 @@ export const TERMINAL_PROP_TYPES = [
   'lounge_cluster',
   'staff_office',
   'arrivals_sign',
+  'bag_drop_kiosk',
+  'passport_booth',
 ] as const
 export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
@@ -1225,6 +1294,8 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   lounge_cluster: loungeCluster,
   staff_office: staffOffice,
   arrivals_sign: arrivalsSign,
+  bag_drop_kiosk: bagDropKiosk,
+  passport_booth: passportBooth,
 }
 
 /**

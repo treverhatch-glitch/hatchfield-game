@@ -154,6 +154,12 @@ export function buildInteriorDressing(plan: RoomPlan, worldPerMeter: number, flo
     const claim = end(0.82)
     const carousel = fitScale('baggage_carousel', (along / worldPerMeter) * 0.38, (across / worldPerMeter) * 0.72)
     push('baggage_carousel', claim.x, claim.z, alongX ? 0 : Math.PI / 2, Math.min(0.7, carousel), 'claim')
+    const dropAt = end(0.46)
+    const dropFit = fitScale('bag_drop_kiosk', (along / worldPerMeter) * 0.22, (across / worldPerMeter) * 0.4)
+    push('bag_drop_kiosk', dropAt.x, dropAt.z, alongX ? Math.PI : 0, Math.min(1, dropFit), 'bagdrop')
+    const passAt = end(0.64)
+    const passFit = fitScale('passport_booth', (along / worldPerMeter) * 0.28, (across / worldPerMeter) * 0.48)
+    push('passport_booth', passAt.x, passAt.z, alongX ? Math.PI : 0, Math.min(1, passFit), 'passport')
   }
   const airside = biggestRoom(plan, 'airside')
   if (airside) {
@@ -202,6 +208,8 @@ export function buildInteriorDressing(plan: RoomPlan, worldPerMeter: number, flo
     wayfinding_sign: 'checkin',
     wayfinding_totem: 'checkin',
     baggage_trolley: 'checkin',
+    bag_drop_kiosk: 'checkin',
+    passport_booth: 'checkin',
     restroom_block: 'checkin',
     security_lane: 'security',
     security_lane_ct: 'security',
