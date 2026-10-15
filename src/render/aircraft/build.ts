@@ -259,7 +259,7 @@ function addFuselage(frame: Frame) {
 /** Crown, airline band and belly colours for the fuselage loft. */
 function fuselagePaint(livery: Livery): { crown: string; body: string; belly: string } {
   const belly = `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
-  const crown = livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown
+  const crown = livery.crown ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown)
   return { crown, body: livery.body, belly }
 }
 

@@ -18,7 +18,8 @@ SRC = ROOT / 'assets' / 'liveries'
 OUT = ROOT / 'public' / 'textures' / 'liveries'
 
 # Keep in step with src/render/aircraft/liveryFiles.ts
-LONG_SIDE = {'low': 320, 'med': 640, 'high': 1280}
+# High is a ceiling. A crop under 4096 is stored at its own pixels.
+LONG_SIDE = {'low': 320, 'med': 640, 'high': 4096}
 
 LIVERIES = [
     {

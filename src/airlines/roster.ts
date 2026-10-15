@@ -24,6 +24,8 @@ export type TailMotif =
   | 'stripes'
   | 'triangle'
   | 'crescent'
+  /** No drawn motif. A photographed emblem sits on the fin instead. */
+  | 'none'
 
 export interface RosterAirline {
   id: string
@@ -39,6 +41,16 @@ export interface RosterAirline {
   fleet: string[]
   /** Palette ref image, when the airline has one. */
   ref?: string
+  /** Side colour when it is not the default white crown or the solid primary. */
+  fuselage?: string
+  belly?: string
+  cheatline?: string
+  /** Fin colour when it is not the primary. */
+  tail?: string
+  /** Roof colour. The isometric camera sees this on the crown. */
+  crown?: string
+  /** Wing colour. The isometric camera sees this from above. */
+  wing?: string
 }
 
 interface Seed {
@@ -129,15 +141,91 @@ interface BasePaint {
   primary: string
   secondary: string
   accent: string
+  fuselage?: string
+  belly?: string
+  cheatline?: string
+  tail?: string
+  crown?: string
+  wing?: string
 }
 
-/** The 5 base airlines have no ref art; their paint is set here. */
+/**
+ * The 5 base airlines. Colours are sampled from docs/art/livery-concepts
+ * (side views for the palette, top views for crown and wing). The fin mark
+ * is the tail decal in public/assets/airline-logos, not a photographed plate.
+ * National Airways and HeavyLift have no top view, so National keeps the
+ * default grey wing and HeavyLift's wing matches its grey fuselage.
+ */
 const BASE: Record<string, BasePaint> = {
-  air_regional_1: { code: 'PDJ', type: 'regional', motif: 'bar', primary: '#2f7d4f', secondary: '#f0f0f0', accent: '#282830' },
-  air_lowcost_1: { code: 'SKC', type: 'budget', motif: 'swoosh', primary: '#f2c200', secondary: '#f0f0f0', accent: '#282830' },
-  air_fullservice_1: { code: 'PRS', type: 'flag', motif: 'diamond', primary: '#5b2a86', secondary: '#d9b45b', accent: '#282830' },
-  air_flag_1: { code: 'NAW', type: 'flag', motif: 'star', primary: '#143c7a', secondary: '#f0f0f0', accent: '#c8102e' },
-  air_cargo_1: { code: 'HLC', type: 'cargo', motif: 'chevron', primary: '#e8590c', secondary: '#f0f0f0', accent: '#282830' },
+  air_regional_1: {
+    code: 'PDJ',
+    type: 'regional',
+    motif: 'none',
+    primary: '#149e96',
+    secondary: '#f0c030',
+    accent: '#f0c030',
+    fuselage: '#f4f7f6',
+    belly: '#e7eeec',
+    cheatline: '#149e96',
+    tail: '#0f8f88',
+    crown: '#f7faf8',
+    wing: '#2eb4b0',
+  },
+  air_lowcost_1: {
+    code: 'SKC',
+    type: 'budget',
+    motif: 'none',
+    primary: '#f25c00',
+    secondary: '#fff7f2',
+    accent: '#1a1a1a',
+    fuselage: '#f7f6f4',
+    belly: '#f3f0ec',
+    cheatline: '#f25c00',
+    tail: '#f25c00',
+    crown: '#f7f6f4',
+    wing: '#a3a7ae',
+  },
+  air_fullservice_1: {
+    code: 'PRS',
+    type: 'flag',
+    motif: 'none',
+    primary: '#192749',
+    secondary: '#c6a35a',
+    accent: '#c6a35a',
+    fuselage: '#192749',
+    belly: '#f2f4f6',
+    cheatline: '#c6a35a',
+    tail: '#192749',
+    crown: '#192749',
+    wing: '#a0a4aa',
+  },
+  air_flag_1: {
+    code: 'NAW',
+    type: 'flag',
+    motif: 'none',
+    primary: '#003060',
+    secondary: '#f4f7fb',
+    accent: '#c41230',
+    fuselage: '#f7f8fa',
+    belly: '#e8eef4',
+    cheatline: '#c41230',
+    tail: '#003060',
+    crown: '#f7f8fa',
+  },
+  air_cargo_1: {
+    code: 'HLC',
+    type: 'cargo',
+    motif: 'none',
+    primary: '#5e686e',
+    secondary: '#e6c800',
+    accent: '#1c1c1c',
+    fuselage: '#5e686e',
+    belly: '#4a5258',
+    cheatline: '#e6c800',
+    tail: '#e6c800',
+    crown: '#5e686e',
+    wing: '#5e686e',
+  },
 }
 
 interface PaletteFile {
@@ -161,6 +249,12 @@ function build(): RosterAirline[] {
       accent: paint.accent,
       motif: paint.motif,
       fleet: [...base.fleet],
+      fuselage: paint.fuselage,
+      belly: paint.belly,
+      cheatline: paint.cheatline,
+      tail: paint.tail,
+      crown: paint.crown,
+      wing: paint.wing,
     })
   }
   for (const seed of SEEDS) {

@@ -670,6 +670,8 @@ export const CONTRACT_FLEET: Partial<Record<string, readonly string[]>> = {
   harbor: ['a320neo', 'b738'],
   summit: ['b789', 'a359'],
   crown: ['a380', 'b77w'],
+  /** Same narrowbodies as the zoomjet plate, so a signed aircraft wears that livery. */
+  zoomjet: ['a320neo', 'b738', 'b38m'],
 }
 /** Cash + reputation needed before Wall Street will list you. */
 export const IPO_MIN_CASH = 40_000

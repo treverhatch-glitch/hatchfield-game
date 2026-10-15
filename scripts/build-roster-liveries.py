@@ -33,6 +33,16 @@ LOGO_SIDE = {'low': 64, 'med': 128, 'high': 256}
 
 GROK_IDS = ('bushline_local', 'zoomjet', 'crown_pacific', 'siam_breeze', 'northstar_cargo')
 
+# Concept tail decals already live under public/assets/airline-logos.
+# A rebuild must not replace them with the three-letter code square.
+CONCEPT_LOGO = {
+    'air_regional_1': ROOT / 'docs/art/livery-concepts/puddle_jumper.jpeg',
+    'air_lowcost_1': ROOT / 'docs/art/livery-concepts/skycheap.jpeg',
+    'air_fullservice_1': ROOT / 'docs/art/livery-concepts/prestige_air.jpeg',
+    'air_flag_1': ROOT / 'docs/art/livery-concepts/national_airways.jpeg',
+    'air_cargo_1': ROOT / 'docs/art/livery-concepts/heavylift.jpeg',
+}
+
 
 def parse_pools(text: str) -> dict[str, list[list[str]]]:
     block = text.split('export const FLEET_POOLS', 1)[1].split('const SEEDS', 1)[0]
@@ -292,6 +302,9 @@ def main() -> None:
         })
         print(row['id'], row['types'])
     for row in base:
+        if CONCEPT_LOGO[row['id']].exists():
+            print('emblem kept', row['id'])
+            continue
         save_levels(code_logo(row['code'], row['primary']), LOGOS, f"{row['id']}.jpg", LOGO_SIDE)
         print('logo-only', row['id'], row['code'])
     pack4 = ROOT / 'public' / 'assets' / 'pack4'
