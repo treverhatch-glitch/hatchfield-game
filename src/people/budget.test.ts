@@ -32,6 +32,6 @@ describe('people budget', () => {
 })
 
 // Baseline from the #231 blocky figures in this exact scene: 26 draws, 58,372 triangles.
-// The shared body spends one more draw on a richer variant set (strollers, shorts, ear
-// defenders) and stays under the triangle count.
-const BUDGET = { draws: 27, triangles: 58372 }
+// Check-in and catering turn on two accessory meshes (peaked-cap family and a jacket)
+// that this camera's near band did not already have. Draws stay fixed with headcount.
+const BUDGET = { draws: 29, triangles: 58372 }

@@ -32,7 +32,7 @@ const AIRLINE = {
   checkin: { primary: 0x1f3a8a, secondary: 0xf8fafc },
   gate: { primary: 0xb91c1c, secondary: 0xf8fafc },
 } as const
-const CREW_FOR: Partial<Record<Role, CrewKind>> = { checkin: 'cabin', gate: 'cabin', security: 'security', cleaner: 'maintenance' }
+const CREW_FOR: Partial<Record<Role, CrewKind>> = { checkin: 'checkin', gate: 'cabin', security: 'security', cleaner: 'maintenance' }
 
 /**
  * Terminal staff wear the crew uniforms; shop and R&D staff are people looks

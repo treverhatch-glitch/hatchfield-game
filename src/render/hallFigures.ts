@@ -6,6 +6,7 @@
  * Sim guests stay plain data. This file only poses meshes.
  */
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0)
 const WHITE = new THREE.Color('#ffffff')
@@ -20,6 +21,7 @@ export interface FigureDraw {
   head: THREE.Object3D
   carry: THREE.Object3D
   showCarry: boolean
+  bag?: THREE.Color
   shirt: THREE.Color
   trousers: THREE.Color
   skin: THREE.Color
@@ -54,16 +56,16 @@ export class HallFigureBatch {
   head: THREE.InstancedMesh
   carry: THREE.InstancedMesh
   private capacity: number
-  private readonly legGeo = new THREE.BoxGeometry(0.18, 0.86, 0.18)
-  private readonly armGeo = new THREE.BoxGeometry(0.12, 0.48, 0.12)
-  private readonly torsoGeo = new THREE.BoxGeometry(0.46, 0.56, 0.26)
-  private readonly headGeo = new THREE.SphereGeometry(0.2, 14, 10)
-  private readonly carryGeo = new THREE.BoxGeometry(0.18, 0.24, 0.1)
+  private readonly legGeo = doorwayLeg()
+  private readonly armGeo = doorwayArm()
+  private readonly torsoGeo = doorwayTorso()
+  private readonly headGeo = doorwayHead()
+  private readonly carryGeo = doorwayBag()
   private readonly legMat = lambert()
   private readonly armMat = lambert()
   private readonly torsoMat = lambert()
   private readonly headMat = lambert()
-  private readonly carryMat = new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false })
+  private readonly carryMat = lambert()
   private ids: string[] = []
 
   constructor(capacity = 2048) {
@@ -92,7 +94,7 @@ export class HallFigureBatch {
       this.pose(this.arm, i * 2 + 1, d.armR, d.shirt)
       this.pose(this.torso, i, d.torso, d.shirt)
       this.pose(this.head, i, d.head, d.skin)
-      if (d.showCarry) this.pose(this.carry, i, d.carry, WHITE)
+      if (d.showCarry) this.pose(this.carry, i, d.carry, d.bag ?? WHITE)
       else this.carry.setMatrixAt(i, HIDDEN)
     }
     this.leg.count = n * 2
@@ -167,4 +169,49 @@ export class HallFigureBatch {
 /** How many color draws a crowd of separate figure meshes costs (no shadows). */
 export function separateFigureDraws(guests: number): number {
   return Math.max(0, guests) * FIGURE_MESHES_PER_GUEST
+}
+
+function joined(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const geo = mergeGeometries(parts, false)
+  if (!geo) throw new Error('hall figure parts failed to merge')
+  return geo
+}
+
+/** Leg centred on the hip pivot the hall already swings. */
+function doorwayLeg(): THREE.BufferGeometry {
+  const limb = new THREE.CylinderGeometry(0.09, 0.055, 0.78, 5, 1, true)
+  limb.translate(0, 0.02, 0)
+  const shoe = new THREE.BoxGeometry(0.12, 0.07, 0.2)
+  shoe.translate(0, -0.38, 0.04)
+  return joined([limb, shoe])
+}
+
+function doorwayArm(): THREE.BufferGeometry {
+  const limb = new THREE.CylinderGeometry(0.05, 0.035, 0.42, 5, 1, true)
+  limb.translate(0, -0.02, 0)
+  const hand = new THREE.SphereGeometry(0.04, 5, 4)
+  hand.translate(0, -0.24, 0.02)
+  return joined([limb, hand])
+}
+
+function doorwayTorso(): THREE.BufferGeometry {
+  const chest = new THREE.CylinderGeometry(0.22, 0.15, 0.5, 6, 1, true)
+  chest.translate(0, 0.04, 0)
+  const shoulders = new THREE.BoxGeometry(0.5, 0.1, 0.16)
+  shoulders.translate(0, 0.22, 0)
+  return joined([chest, shoulders])
+}
+
+function doorwayHead(): THREE.BufferGeometry {
+  const skull = new THREE.SphereGeometry(0.13, 8, 6)
+  const hair = new THREE.SphereGeometry(0.14, 7, 4, 0, Math.PI * 2, 0, Math.PI * 0.5)
+  hair.translate(0, 0.04, -0.01)
+  return joined([skull, hair])
+}
+
+function doorwayBag(): THREE.BufferGeometry {
+  const shell = new THREE.BoxGeometry(0.28, 0.42, 0.16)
+  const grip = new THREE.BoxGeometry(0.12, 0.04, 0.03)
+  grip.translate(0, 0.24, 0)
+  return joined([shell, grip])
 }

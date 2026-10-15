@@ -63,6 +63,14 @@ export const CREW_OUTFITS: Record<CrewKind, CrewOutfit> = {
     outfit: 'uniform', top: 0x2563eb, bottom: 0x2563eb, hat: 'helmet', hatColor: 0xf8fafc, vest: 0, jacket: 0, accent: 0xf5c400,
     shoes: 0x3f3f46, gear: ['headset', 'boots', 'lanyard'], gearColor: 0x1f2937, hairUp: false, roller: false,
   },
+  checkin: {
+    outfit: 'uniform', top: 0xf8fafc, bottom: 0x1e3a5f, hat: 'none', hatColor: 0x1e3a8a, vest: 0, jacket: 0x1e3a8a, accent: 0x1d4ed8,
+    shoes: 0x0a0a0a, gear: ['lanyard'], gearColor: 0xf5c400, hairUp: false, roller: false,
+  },
+  catering: {
+    outfit: 'uniform', top: 0xfff7ed, bottom: 0x292524, hat: 'cap', hatColor: 0xfff7ed, vest: 0, jacket: 0, accent: 0xea580c,
+    shoes: 0x292524, gear: ['lanyard'], gearColor: 0xea580c, hairUp: true, roller: false,
+  },
 }
 
 export function resolveTone(tone: Tone, airline: { primary: number; secondary?: number }, fallbackSecondary = 0xf8fafc): number {

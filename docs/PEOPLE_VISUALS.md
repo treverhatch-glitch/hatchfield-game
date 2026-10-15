@@ -4,7 +4,7 @@ Issue #231. Presentation only: sim logic is untouched.
 
 ## API for terminal work
 - `createPassengerMesh(seed, { age?, carry?, pose?, phase?, speed?, lod?, scale? })` returns a `THREE.Group` (feet at y = 0, faces +z, metres).
-- `createCrewMesh(kind, seed, { airline?, pose?, ... })`, kinds: `pilot | cabin | ground | marshaller | security | fuel | maintenance`.
+- `createCrewMesh(kind, seed, { airline?, pose?, ... })`, kinds: `pilot | cabin | ground | marshaller | security | fuel | maintenance | checkin | catering`.
 - Crowds: `new PeopleRenderer(parent, { capacity, unitsPerMeter })` then `update(agents, camera, dt, lite)`. `camera` may be `null` to draw everyone.
 - The hall and pax crowd (`src/render/people`) is an adapter over `PeopleRenderer`; see `docs/PEOPLE.md`.
   One `InstancedMesh` per body part / accessory, per-instance colour, so draw calls do not grow with headcount.

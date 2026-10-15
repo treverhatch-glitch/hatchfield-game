@@ -16,6 +16,8 @@ export function crewKindFor(service: CrewService, role: CrewRole): CrewKind {
   switch (service) {
     case 'fuel':
       return 'fuel'
+    case 'catering':
+      return 'catering'
     case 'gpu':
       return 'maintenance'
     default:

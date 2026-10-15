@@ -1155,15 +1155,28 @@ export class HallWorld {
     root.userData.trouserColor = new THREE.Color(trousers)
     root.userData.skinColor = new THREE.Color(skin)
 
+    const build = 0.9 + (salt % 6) * 0.025
+    const width = 0.9 + ((salt >>> 8) % 5) * 0.04
+    root.userData.bodyH = build
+    root.userData.bodyW = width
+    const luggage = (salt >>> 16) % 5
+    root.userData.luggage = luggage === 0 ? 'none' : luggage < 3 ? 'roller' : 'backpack'
     const pin = new THREE.Mesh(this.figPin, this.sharedMat('lambert', '#e23b2f', 0.2))
     pin.position.y = 1.98
     root.add(pin)
     root.userData.pin = pin
 
     const carry = new THREE.Object3D()
-    carry.position.set(0.36, 0.98, 0.06)
+    if (root.userData.luggage === 'backpack') {
+      carry.position.set(0, 1.22, -0.22)
+      carry.scale.set(1.15, 0.75, 0.5)
+    } else {
+      carry.position.set(0.36, 0.36, 0.16)
+    }
     root.add(carry)
     root.userData.carry = carry
+    const bags = ['#1f2937', '#7f1d1d', '#1e3a8a', '#065f46', '#9a3412']
+    root.userData.bagColor = new THREE.Color(bags[salt % bags.length])
 
     const checked = new THREE.Mesh(this.figBag, this.sharedMat('basic', '#ffb703'))
     checked.position.set(-0.32, 0.22, 0.04)
@@ -1277,7 +1290,9 @@ export class HallWorld {
       const desk = g.atBagDesk ? nodeWorld('claim') : null
       mesh.position.set(desk ? desk.x - 3.4 + (slot % 3) * 0.7 : x, 0, desk ? desk.z + 2.4 : z)
       const figure = this.interiorFit ? hallGuestScale(this.interiorFit) : 1
-      mesh.scale.set(figure, figure, figure)
+      const bodyH = (mesh.userData.bodyH as number) || 1
+      const bodyW = (mesh.userData.bodyW as number) || 1
+      mesh.scale.set(figure * bodyW, figure * bodyH, figure * bodyW)
       if (g.meal) {
         // Walk the tray from the counter to the booked seat, then sit: lower and squat.
         const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
@@ -1286,10 +1301,11 @@ export class HallWorld {
         const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
         mesh.position.x += (sx - mesh.position.x) * k
         mesh.position.z += (sz - mesh.position.z) * k
-        if (g.seated) mesh.scale.y = figure * 0.72
+        if (g.seated) mesh.scale.y = figure * bodyH * 0.72
       }
       const walking = Boolean(next) && !g.seated
-      const swing = walking ? Math.sin(game.clock * 6.5 + (guestSalt(g.id) % 628) / 100) * 0.7 : 0
+      const phase = (guestSalt(g.id) % 628) / 100
+      const swing = walking ? Math.sin(game.clock * 6.5 + phase) * 0.65 : Math.sin(game.clock * 1.25 + phase) * 0.08
       const left = mesh.userData.leftLeg as THREE.Object3D
       const right = mesh.userData.rightLeg as THREE.Object3D
       left.rotation.x = swing
@@ -1300,7 +1316,7 @@ export class HallWorld {
         leftArm.rotation.x = -swing * 0.65
         rightArm.rotation.x = swing * 0.65
       }
-      if (walking) mesh.position.y = Math.abs(Math.sin(game.clock * 6.5)) * 0.045
+      mesh.position.y = Math.abs(Math.sin(game.clock * (walking ? 6.5 : 1.25) + phase)) * (walking ? 0.045 : 0.012)
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
       const checked = mesh.userData.checked as THREE.Mesh
@@ -1319,7 +1335,8 @@ export class HallWorld {
         torso: mesh.userData.torso as THREE.Object3D,
         head: mesh.userData.head as THREE.Object3D,
         carry: mesh.userData.carry as THREE.Object3D,
-        showCarry: g.carryOn !== false,
+        showCarry: g.carryOn !== false && mesh.userData.luggage !== 'none',
+        bag: mesh.userData.bagColor as THREE.Color,
         shirt: mesh.userData.shirtColor as THREE.Color,
         trousers: mesh.userData.trouserColor as THREE.Color,
         skin: mesh.userData.skinColor as THREE.Color,

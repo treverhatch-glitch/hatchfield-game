@@ -100,9 +100,11 @@ export function samplePose(pose: PersonPose, phase: number, speedMps: number, ou
       break
     }
     case 'idle':
-      out.armL = s * 0.03
-      out.armR = -s * 0.03
-      out.bob = s * 0.004
+      out.armL = s * 0.08
+      out.armR = -s * 0.06
+      out.bob = s * 0.012
+      out.legL = s * 0.04
+      out.legR = -s * 0.03
       break
     case 'queue': {
       // Slow weight shift from foot to foot, small forward shuffle.

@@ -56,7 +56,7 @@ interface Lane {
   busy: boolean
 }
 
-const STAFF_KIND: Partial<Record<CrewRole, CrewKind>> = { agent: 'cabin', screener: 'security', gate: 'cabin' }
+const STAFF_KIND: Partial<Record<CrewRole, CrewKind>> = { agent: 'checkin', screener: 'security', gate: 'cabin' }
 
 export interface HallServiceStats {
   desks: number

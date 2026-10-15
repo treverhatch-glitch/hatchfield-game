@@ -7,8 +7,8 @@ export type OutfitKind = 'casual' | 'business' | 'tourist' | 'uniform'
 /** Worn accessories that ride on the shared body. */
 export type GearKind = 'headset' | 'earDefenders' | 'lanyard' | 'boots'
 
-export type CrewKind = 'pilot' | 'cabin' | 'ground' | 'marshaller' | 'security' | 'fuel' | 'maintenance'
-export const CREW_KINDS: readonly CrewKind[] = ['pilot', 'cabin', 'ground', 'marshaller', 'security', 'fuel', 'maintenance']
+export type CrewKind = 'pilot' | 'cabin' | 'ground' | 'marshaller' | 'security' | 'fuel' | 'maintenance' | 'checkin' | 'catering'
+export const CREW_KINDS: readonly CrewKind[] = ['pilot', 'cabin', 'ground', 'marshaller', 'security', 'fuel', 'maintenance', 'checkin', 'catering']
 
 export type PersonPose =
   | 'walk'

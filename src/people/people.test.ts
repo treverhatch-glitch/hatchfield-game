@@ -38,6 +38,11 @@ describe('variants', () => {
     expect(crewLook('marshaller', 1).wands).toBe(true)
     expect(crewLook('ground', 1).vest).not.toBe(0)
     expect(crewLook('pilot', 1).vest).toBe(0)
+    expect(crewLook('checkin', 1).jacket).not.toBe(0)
+    expect(crewLook('checkin', 1).hat).toBe('none')
+    expect(crewLook('catering', 1).hat).toBe('cap')
+    expect(crewLook('catering', 1).vest).toBe(0)
+    expect(crewLook('fuel', 1).vest).not.toBe(0)
   })
 
   it('paints cabin crew in the airline colours', () => {
@@ -215,6 +220,7 @@ describe('ramp crew adapter', () => {
     expect(crewKindFor('gpu', 'helper')).toBe('maintenance')
     expect(crewKindFor('pushback', 'walker')).toBe('marshaller')
     expect(crewKindFor('bags', 'driver')).toBe('ground')
+    expect(crewKindFor('catering', 'helper')).toBe('catering')
     const base = { id: 'm1', role: 'walker' as const, service: 'pushback' as const, heading: 0 }
     const at = { x: 0, y: 0, z: 0 }
     expect(crewAgent({ ...base, pose: 'idle' }, at).pose).toBe('wave')

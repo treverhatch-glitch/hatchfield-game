@@ -44,6 +44,7 @@ describe('turnaround crew', () => {
     expect(fueler.look.crew).toBe('fuel')
     expect(fueler.z).toBeGreaterThan(5)
     const cat = vehicleCrew({ id: 'c', kind: 'catering', x: 0, z: 0, yaw: 0, ext: 1, moving: false }, 0, [])
+    expect(cat.find((a) => a.id === 'c:cater')!.look.crew).toBe('catering')
     expect(cat.find((a) => a.id === 'c:cater')!.y).toBeGreaterThan(3)
   })
 

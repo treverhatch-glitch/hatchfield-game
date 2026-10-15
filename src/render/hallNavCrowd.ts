@@ -14,6 +14,7 @@
  * preallocated buffers and allocates nothing.
  */
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import type { HallNav } from '../game/hallNav'
 import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
@@ -35,12 +36,13 @@ const BOTTLENECK_COLOR = '#e23b2f'
 /** Crew uniforms by role, after the passenger shirts in the palette. */
 const CREW_ROLES: readonly CrewRole[] = ['agent', 'screener', 'gate', 'retail', 'cleaner']
 const CREW_SHIRTS: Record<CrewRole, string> = {
-  agent: '#1f3a68',
-  screener: '#22262c',
-  gate: '#1f3a68',
-  retail: '#7a4a1e',
-  cleaner: '#c9d43a',
+  agent: '#1e3a8a',
+  screener: '#1c1917',
+  gate: '#b91c1c',
+  retail: '#166534',
+  cleaner: '#eab308',
 }
+const TROUSERS = ['#1e293b', '#334155', '#1d4ed8', '#57534e', '#3f6212', '#7c2d12', '#111827']
 /** Body centre height, for the frustum test. */
 const MID_Y = 0.85
 
@@ -80,9 +82,11 @@ export class HallNavCrowd {
   readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0, marks: 0 }
   /** Crew roles another layer draws as full figures (desk agents, officers); skipped here. */
   skipRole: ((role: CrewRole | null) => boolean) | null = null
-  private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
-  private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
-  private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
+  private readonly bodyGeo = walkerBodyGeo()
+  private readonly legGeo = walkerLegGeo()
+  private readonly armGeo = walkerArmGeo()
+  private readonly headGeo = new THREE.SphereGeometry(0.12, 8, 6)
+  private readonly bagGeo = walkerBagGeo()
   private readonly dotGeo = new THREE.CircleGeometry(0.16, 10)
   private readonly bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
@@ -96,7 +100,10 @@ export class HallNavCrowd {
   private readonly markSad = palette(['#e0413a'])
   private readonly shirts = palette([...SHIRTS, ...CREW_ROLES.map((r) => CREW_SHIRTS[r])])
   private readonly skins = palette(SKINS)
+  private readonly trousers = palette(TROUSERS)
   private body: THREE.InstancedMesh | null = null
+  private legs: THREE.InstancedMesh | null = null
+  private arms: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
   private bag: THREE.InstancedMesh | null = null
   private mark: THREE.InstancedMesh | null = null
@@ -113,7 +120,11 @@ export class HallNavCrowd {
   private walkCap = 0
   private poses = new Float32Array(0)
   private bobSeed = new Float32Array(0)
-  private hasBag = new Uint8Array(0)
+  /** 0 none, 1 roller, 2 backpack. */
+  private bagKind = new Uint8Array(0)
+  private heightOf = new Float32Array(0)
+  private widthOf = new Float32Array(0)
+  private trouserOf = new Uint8Array(0)
   private skip = new Uint8Array(0)
   private shirtOf = new Uint8Array(0)
   private skinOf = new Uint8Array(0)
@@ -207,12 +218,18 @@ export class HallNavCrowd {
     this.ensureMeshes(capN)
 
     const body = this.body!
+    const legs = this.legs!
+    const arms = this.arms!
     const head = this.head!
     const bag = this.bag!
     const bm = body.instanceMatrix.array as Float32Array
+    const lm = legs.instanceMatrix.array as Float32Array
+    const am = arms.instanceMatrix.array as Float32Array
     const hm = head.instanceMatrix.array as Float32Array
     const gm = bag.instanceMatrix.array as Float32Array
     const bc = body.instanceColor!.array as Float32Array
+    const lc = legs.instanceColor!.array as Float32Array
+    const ac = arms.instanceColor!.array as Float32Array
     const hc = head.instanceColor!.array as Float32Array
     const mark = this.mark!
     const mm = mark.instanceMatrix.array as Float32Array
@@ -230,31 +247,59 @@ export class HallNavCrowd {
       const x = poses[i * 4] + ox
       const z = poses[i * 4 + 2] + oz
       const yaw = poses[i * 4 + 3]
+      const h = this.heightOf[i] || 1
+      const w = this.widthOf[i] || 1
       const bob = Math.abs(Math.sin(time * 7 + this.bobSeed[i])) * 0.03
       const sn = Math.sin(yaw)
       const cs = Math.cos(yaw)
       const serving = this.phases[i] === 2
+      const walking = this.phases[i] === 0
+      const wave = Math.sin(time * (walking ? 6.4 : 1.35) + this.bobSeed[i])
+      const legSwing = wave * (walking ? 0.55 : 0.07)
       const pose = serving ? servePose(time + this.bobSeed[i], 'serve') : servePose(0, 'other')
-      if (pose.lean > 0) writeLean(bm, k, x, 0.65 + bob, z, sn, cs, pose.lean)
-      else writeYaw(bm, k, x, 0.65 + bob, z, sn, cs)
-      if (serving && hmnd && pose.reach > 0) {
-        writeYaw(hmnd, nhand, x + sn * (0.34 + pose.reach), 1.05 + bob, z + cs * (0.34 + pose.reach), sn, cs)
-        nhand++
+      const bodyY = 0.65 * h + bob
+      if (pose.lean > 0) writeLean(bm, k, x, bodyY, z, sn, cs, pose.lean, w, h)
+      else writeYawScale(bm, k, x, bodyY, z, sn, cs, w, h)
+      const hipY = 0.86 * h + bob
+      const shoulderY = 1.34 * h + bob
+      const side = 0.13 * w
+      const armX = 0.24 * w
+      for (const s of [1, -1] as const) {
+        const slot = k * 2 + (s > 0 ? 0 : 1)
+        writeLimb(lm, slot, x + cs * side * s, hipY, z - sn * side * s, sn, cs, s * legSwing, w, h)
+        writeLimb(am, slot, x + cs * armX * s, shoulderY, z - sn * armX * s, sn, cs, -s * legSwing * 0.85, w, h)
       }
       const sh = this.shirtOf[i] * 3
+      const tr = this.trouserOf[i] * 3
       bc[k * 3] = this.shirts[sh]
       bc[k * 3 + 1] = this.shirts[sh + 1]
       bc[k * 3 + 2] = this.shirts[sh + 2]
+      for (const slot of [k * 2, k * 2 + 1]) {
+        ac[slot * 3] = this.shirts[sh]
+        ac[slot * 3 + 1] = this.shirts[sh + 1]
+        ac[slot * 3 + 2] = this.shirts[sh + 2]
+        lc[slot * 3] = this.trousers[tr]
+        lc[slot * 3 + 1] = this.trousers[tr + 1]
+        lc[slot * 3 + 2] = this.trousers[tr + 2]
+      }
+      if (serving && hmnd && pose.reach > 0) {
+        writeYaw(hmnd, nhand, x + sn * (0.34 + pose.reach), 1.05 * h + bob, z + cs * (0.34 + pose.reach), sn, cs)
+        nhand++
+      }
       if (visD[k] > lod2) continue
-      writeYaw(hm, nh, x, 1.57 + bob, z, sn, cs)
+      writeYawScale(hm, nh, x, 1.58 * h + bob, z, sn, cs, h, h)
       const sk = this.skinOf[i] * 3
       hc[nh * 3] = this.skins[sk]
       hc[nh * 3 + 1] = this.skins[sk + 1]
       hc[nh * 3 + 2] = this.skins[sk + 2]
       nh++
       // Roller bag trails behind and to the side.
-      if (this.hasBag[i]) {
-        writeYaw(gm, ng, x - sn * 0.38 + cs * 0.2, 0.25, z - cs * 0.38 - sn * 0.2, sn, cs)
+      const kind = this.bagKind[i]
+      if (kind === 1) {
+        writeYawScale(gm, ng, x - sn * 0.42 + cs * 0.24, 0, z - cs * 0.42 - sn * 0.24, sn, cs, 1, 1)
+        ng++
+      } else if (kind === 2) {
+        writeYawScale(gm, ng, x - sn * 0.26, 0.78 * h + bob, z - cs * 0.26, sn, cs, 1.05, 0.72)
         ng++
       }
       // Thought bubble over lost, rebooking and unhappy guests.
@@ -269,6 +314,8 @@ export class HallNavCrowd {
       }
     }
     this.flush(body, capN, true)
+    this.flush(legs, capN * 2, true)
+    this.flush(arms, capN * 2, true)
     this.flush(head, nh, true)
     this.flush(bag, ng, false)
     this.flush(mark, nm, true)
@@ -296,6 +343,8 @@ export class HallNavCrowd {
   dispose() {
     this.group.removeFromParent()
     this.body?.dispose()
+    this.legs?.dispose()
+    this.arms?.dispose()
     this.head?.dispose()
     this.bag?.dispose()
     this.mark?.dispose()
@@ -304,6 +353,8 @@ export class HallNavCrowd {
     this.handGeo.dispose()
     this.handMat.dispose()
     this.bodyGeo.dispose()
+    this.legGeo.dispose()
+    this.armGeo.dispose()
     this.headGeo.dispose()
     this.bagGeo.dispose()
     this.markGeo.dispose()
@@ -369,7 +420,11 @@ export class HallNavCrowd {
       this.shirtOf[i] = role ? SHIRTS.length + CREW_ROLES.indexOf(role) : h % SHIRTS.length
       this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
-      this.hasBag[i] = !role && (h >>> 16) % 3 !== 0 ? 1 : 0
+      const luggage = (h >>> 16) % 5
+      this.bagKind[i] = role ? 0 : luggage === 0 ? 0 : luggage < 3 ? 1 : 2
+      this.heightOf[i] = 0.94 + (h % 6) * 0.02
+      this.widthOf[i] = 0.9 + ((h >>> 4) % 5) * 0.04
+      this.trouserOf[i] = role ? (h >>> 12) % 3 : (h >>> 12) % TROUSERS.length
       this.skip[i] = this.skipRole?.(role) ? 1 : 0
     }
   }
@@ -438,7 +493,10 @@ export class HallNavCrowd {
     this.walkCap = cap
     this.poses = new Float32Array(cap * 4)
     this.bobSeed = new Float32Array(cap)
-    this.hasBag = new Uint8Array(cap)
+    this.bagKind = new Uint8Array(cap)
+    this.heightOf = new Float32Array(cap)
+    this.widthOf = new Float32Array(cap)
+    this.trouserOf = new Uint8Array(cap)
     this.skip = new Uint8Array(cap)
     this.shirtOf = new Uint8Array(cap)
     this.skinOf = new Uint8Array(cap)
@@ -455,26 +513,28 @@ export class HallNavCrowd {
       this.ensureHands(n)
       return
     }
-    for (const mesh of [this.body, this.head, this.bag, this.mark]) {
+    for (const mesh of [this.body, this.legs, this.arms, this.head, this.bag, this.mark]) {
       mesh?.removeFromParent()
       mesh?.dispose()
     }
     this.cap = Math.max(256, Math.ceil((n * 1.5) / 256) * 256)
-    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string, colour: boolean) => {
-      const mesh = new THREE.InstancedMesh(geo, mat, this.cap)
+    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string, colour: boolean, slots = 1) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, this.cap * slots)
       mesh.name = name
       mesh.count = 0
       // Culled per walker above; the mesh-level test would only see the whole crowd.
       mesh.frustumCulled = false
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       if (colour) {
-        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * 3).fill(1), 3)
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * slots * 3).fill(1), 3)
         mesh.instanceColor.setUsage(THREE.DynamicDrawUsage)
       }
       this.group.add(mesh)
       return mesh
     }
     this.body = make(this.bodyGeo, this.bodyMat, 'hall-nav-body', true)
+    this.legs = make(this.legGeo, this.bodyMat, 'hall-nav-leg', true, 2)
+    this.arms = make(this.armGeo, this.bodyMat, 'hall-nav-arm', true, 2)
     this.head = make(this.headGeo, this.headMat, 'hall-nav-head', true)
     this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag', false)
     this.mark = make(this.markGeo, this.markMat, 'hall-nav-thought', true)
@@ -502,26 +562,116 @@ export class HallNavCrowd {
  * Same yaw as `writeYaw`, then a forward lean (rotation about local X).
  * Lean 0 matches `writeYaw`.
  */
-function writeLean(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number, lean: number) {
+function writeLean(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number, lean: number, sx = 1, sy = 1) {
   const sl = Math.sin(lean)
   const cl = Math.cos(lean)
   const o = k * 16
-  arr[o] = cs
-  arr[o + 1] = sn * sl
-  arr[o + 2] = -sn * cl
+  arr[o] = cs * sx
+  arr[o + 1] = sn * sl * sx
+  arr[o + 2] = -sn * cl * sx
   arr[o + 3] = 0
   arr[o + 4] = 0
-  arr[o + 5] = cl
-  arr[o + 6] = sl
+  arr[o + 5] = cl * sy
+  arr[o + 6] = sl * sy
   arr[o + 7] = 0
-  arr[o + 8] = sn
-  arr[o + 9] = -cs * sl
-  arr[o + 10] = cs * cl
+  arr[o + 8] = sn * sx
+  arr[o + 9] = -cs * sl * sx
+  arr[o + 10] = cs * cl * sx
   arr[o + 11] = 0
   arr[o + 12] = x
   arr[o + 13] = y
   arr[o + 14] = z
   arr[o + 15] = 1
+}
+
+function writeYawScale(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number, sx: number, sy: number) {
+  const o = k * 16
+  arr[o] = cs * sx
+  arr[o + 1] = 0
+  arr[o + 2] = -sn * sx
+  arr[o + 3] = 0
+  arr[o + 4] = 0
+  arr[o + 5] = sy
+  arr[o + 6] = 0
+  arr[o + 7] = 0
+  arr[o + 8] = sn * sx
+  arr[o + 9] = 0
+  arr[o + 10] = cs * sx
+  arr[o + 11] = 0
+  arr[o + 12] = x
+  arr[o + 13] = y
+  arr[o + 14] = z
+  arr[o + 15] = 1
+}
+
+/** Limb hanging from its joint. `swing` rotates about local X before the yaw. */
+function writeLimb(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number, swing: number, sx: number, sy: number) {
+  const s = Math.sin(swing)
+  const c = Math.cos(swing)
+  const o = k * 16
+  arr[o] = cs * sx
+  arr[o + 1] = 0
+  arr[o + 2] = sn * sx
+  arr[o + 3] = 0
+  arr[o + 4] = -sn * s * sy
+  arr[o + 5] = c * sy
+  arr[o + 6] = cs * s * sy
+  arr[o + 7] = 0
+  arr[o + 8] = -sn * c * sx
+  arr[o + 9] = -s * sx
+  arr[o + 10] = cs * c * sx
+  arr[o + 11] = 0
+  arr[o + 12] = x
+  arr[o + 13] = y
+  arr[o + 14] = z
+  arr[o + 15] = 1
+}
+
+function joined(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const geo = mergeGeometries(parts, false)
+  if (!geo) throw new Error('walker parts failed to merge')
+  geo.computeBoundingSphere()
+  return geo
+}
+
+/** Torso and shoulders. Origin is the waist, which the crowd places near y = 0.65. */
+export function walkerBodyGeo(): THREE.BufferGeometry {
+  const chest = new THREE.CylinderGeometry(0.2, 0.14, 0.5, 6, 1, true)
+  chest.translate(0, 0.34, 0)
+  const shoulders = new THREE.BoxGeometry(0.48, 0.1, 0.18)
+  shoulders.translate(0, 0.52, 0)
+  const neck = new THREE.CylinderGeometry(0.055, 0.065, 0.14, 5, 1, true)
+  neck.translate(0, 0.66, 0)
+  return joined([chest, shoulders, neck])
+}
+
+/** One leg, joint at the origin, foot near y = -0.84. */
+export function walkerLegGeo(): THREE.BufferGeometry {
+  const limb = new THREE.CylinderGeometry(0.075, 0.048, 0.76, 5, 1, true)
+  limb.translate(0, -0.38, 0)
+  const shoe = new THREE.BoxGeometry(0.12, 0.07, 0.22)
+  shoe.translate(0, -0.78, 0.04)
+  return joined([limb, shoe])
+}
+
+/** One arm, shoulder at the origin. */
+export function walkerArmGeo(): THREE.BufferGeometry {
+  const limb = new THREE.CylinderGeometry(0.045, 0.032, 0.48, 5, 1, true)
+  limb.translate(0, -0.24, 0)
+  const hand = new THREE.SphereGeometry(0.04, 5, 4)
+  hand.translate(0, -0.5, 0.02)
+  return joined([limb, hand])
+}
+
+/** Roller case. A backpack is the same mesh, scaled and worn on the back. */
+export function walkerBagGeo(): THREE.BufferGeometry {
+  const shell = new THREE.BoxGeometry(0.32, 0.46, 0.2)
+  shell.translate(0, 0.26, 0)
+  const lid = new THREE.BoxGeometry(0.18, 0.04, 0.04)
+  lid.translate(0, 0.52, 0)
+  const grip = new THREE.BoxGeometry(0.02, 0.18, 0.02)
+  grip.translate(0, 0.6, 0)
+  return joined([shell, lid, grip])
 }
 
 function writeYaw(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number) {

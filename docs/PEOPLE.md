@@ -17,7 +17,7 @@ crowd.setCamera(cam); crowd.dispose()
 - `heading`: radians around +Y. 0 faces +Z.
 - `state`: a free-form sim string mapped to a pose by `poseFor()`: `seat/sit/waiting/lounge` gives seated, `research/desk` gives seated (typing), `queue/line` gives the queue shuffle, `walk/move/to_*` gives walk. Anything else is idle, or walk if the position changed since the last frame. A walking passenger with a roller bag uses the bag-pull pose.
 - A passenger with `bagIds.length > 0` who has not dropped them (and whose state is not past check-in) is guaranteed to carry a roller or duffel. Everything else about a passenger (skin, hair, hat, clothes, backpack, carry-on) is deterministic from `id`.
-- Staff wear crew uniforms from `src/people`: check-in is cabin-style in navy, gate in red, security in the security uniform, cleaners in maintenance coveralls. Shop staff are in green and R&D in white coats.
+- Staff wear crew uniforms from `src/people`: check-in is a navy jacket and lanyard, gate is cabin crew in red, security is the security uniform, cleaners are in maintenance coveralls. Shop staff are in green and R&D in white coats. Ramp crew in hi-vis, fuel, and catering each have their own uniform.
 
 ## Scale and detail
 - `unitsPerMeter` converts world units to metres: bodies, bubbles and LOD distances all use metres. `lod` (`[nearM, midM]`) and `cull` (metres) override the defaults in `src/people/config.ts`.

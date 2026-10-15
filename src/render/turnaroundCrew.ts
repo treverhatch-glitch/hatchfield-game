@@ -135,7 +135,7 @@ export function vehicleCrew(v: CrewVehicle, clock: number, out: PeopleAgent[], u
     }
     case 'catering_hilift': {
       const h = cateringHinge(L)
-      place(out, `${v.id}:cater`, 'ground', 'push', v, h.x - 0.5 + Math.sin(clock * 0.8) * 0.4, h.y + 0.12 + e * 2.4, 0.3, 0, upm)
+      place(out, `${v.id}:cater`, 'catering', 'push', v, h.x - 0.5 + Math.sin(clock * 0.8) * 0.4, h.y + 0.12 + e * 2.4, 0.3, 0, upm)
       break
     }
     case 'deice': {

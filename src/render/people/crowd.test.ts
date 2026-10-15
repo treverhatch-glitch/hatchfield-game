@@ -48,7 +48,7 @@ describe('people crowd', () => {
   })
   it('dresses staff in crew uniforms and keeps looks stable per id', () => {
     expect(lookFor('s', 'security').crew).toBe('security')
-    expect(lookFor('c', 'checkin').crew).toBe('cabin')
+    expect(lookFor('c', 'checkin').crew).toBe('checkin')
     expect(lookFor('c', 'cleaner').crew).toBe('maintenance')
     expect(lookFor('r', 'researcher').top).toBe(0xf1f5f9)
     expect(lookFor('r', 'shop').carry).toBe('none')
