@@ -23,7 +23,18 @@ describe('apron props', () => {
     const geos: THREE.BufferGeometry[] = []
     const mats: THREE.Material[] = []
     const sock = makeWindsock(geos, mats)
-    expect(sock.getObjectByName('sock')?.children.length).toBeGreaterThanOrEqual(4)
+    const cloth = sock.getObjectByName('sock-cloth')
+    expect(cloth).toBeTruthy()
+    const colors = (cloth as THREE.Mesh).geometry.getAttribute('color')
+    expect(colors.count).toBeGreaterThan(20)
+    let orange = 0
+    let white = 0
+    for (let i = 0; i < colors.count; i++) {
+      if (colors.getX(i) > 0.8 && colors.getY(i) < 0.6) orange++
+      if (colors.getX(i) > 0.8 && colors.getY(i) > 0.8) white++
+    }
+    expect(orange).toBeGreaterThan(0)
+    expect(white).toBeGreaterThan(0)
     expect(sock.getObjectByName('beacon-lamp')).toBeTruthy()
     elevated.dispose()
     inset.dispose()

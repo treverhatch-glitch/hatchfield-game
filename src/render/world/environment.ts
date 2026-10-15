@@ -301,7 +301,7 @@ export function buildLandscape(
   if (link) link.repeat.set(Math.max(1, Math.round((e * 2) / (3 * WORLD_PER_METER))), 1)
   const meshM = new THREE.MeshLambertMaterial({
     color: PROP_LOOK.chainlink,
-    map: link ?? undefined,
+    ...(link ? { map: link } : {}),
     transparent: true,
     alphaTest: link ? 0.4 : 0,
     opacity: link ? 1 : 0.22,

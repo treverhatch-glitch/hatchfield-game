@@ -330,7 +330,7 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
   }
   const ribs = propTexture('corrugation')
   if (ribs) ribs.repeat.set(3, 14)
-  const bodyM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridge, map: ribs ?? undefined })
+  const bodyM = new THREE.MeshLambertMaterial(ribs ? { color: PROP_LOOK.bridge, map: ribs } : { color: PROP_LOOK.bridge })
   const darkM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bellows })
   const glassM = new THREE.MeshBasicMaterial({ color: 0x9cc8e6 })
   const rotM = new THREE.MeshLambertMaterial({ color: 0xaab2bb })
@@ -382,55 +382,75 @@ export function insetLightGeo(): THREE.BufferGeometry {
   return g
 }
 
+function paintVerts(geo: THREE.BufferGeometry, hex: string): THREE.BufferGeometry {
+  const n = geo.getAttribute('position').count
+  const c = new THREE.Color(hex)
+  const col = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) {
+    col[i * 3] = c.r
+    col[i * 3 + 1] = c.g
+    col[i * 3 + 2] = c.b
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  return geo
+}
+
 /** Banded windsock plus a rotating aerodrome beacon. The sock group keeps the name `sock`. */
 export function makeWindsock(geos: THREE.BufferGeometry[], mats: THREE.Material[]): THREE.Group {
   const g = new THREE.Group()
   g.name = 'windsock'
   const pole = new THREE.CylinderGeometry(0.045, 0.055, 3.1, 6)
   pole.translate(0, 1.55, 0)
-  const pm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
-  geos.push(pole)
+  const bPole = new THREE.CylinderGeometry(0.04, 0.05, 2.4, 6)
+  bPole.translate(1.4, 1.2, 0.4)
+  const poles = mergeGeometries([paintVerts(pole, PROP_LOOK.chainlink), paintVerts(bPole, PROP_LOOK.chainlink)], false)
+  pole.dispose()
+  bPole.dispose()
+  if (!poles) throw new Error('windsock pole merge failed')
+  const pm = new THREE.MeshLambertMaterial({ vertexColors: true })
+  geos.push(poles)
   mats.push(pm)
-  const p = new THREE.Mesh(pole, pm)
+  const p = new THREE.Mesh(poles, pm)
+  p.name = 'windsock-poles'
   p.castShadow = true
   g.add(p)
   const sock = new THREE.Group()
   sock.name = 'sock'
   sock.position.y = 3
   const bands = [PROP_LOOK.sockOrange, PROP_LOOK.sockWhite, PROP_LOOK.sockOrange, PROP_LOOK.sockWhite]
-  bands.forEach((hex, i) => {
+  const clothParts = bands.map((hex, i) => {
     const r0 = 0.2 - i * 0.035
     const geo = new THREE.CylinderGeometry(Math.max(0.04, r0 - 0.03), r0, 0.26, 8, 1, true)
     geo.rotateZ(Math.PI / 2)
     geo.translate(0.16 + i * 0.24, 0, 0)
-    const m = new THREE.MeshLambertMaterial({ color: hex, side: THREE.DoubleSide })
-    geos.push(geo)
-    mats.push(m)
-    sock.add(new THREE.Mesh(geo, m))
+    return paintVerts(geo, hex)
   })
   const hoop = new THREE.TorusGeometry(0.2, 0.015, 6, 12)
   hoop.rotateY(Math.PI / 2)
-  const hm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.benchSteel })
-  geos.push(hoop)
-  mats.push(hm)
-  sock.add(new THREE.Mesh(hoop, hm))
+  clothParts.push(paintVerts(hoop, PROP_LOOK.benchSteel))
+  const cloth = mergeGeometries(clothParts, false)
+  for (const part of clothParts) part.dispose()
+  if (!cloth) throw new Error('windsock cloth merge failed')
+  const cm = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })
+  geos.push(cloth)
+  mats.push(cm)
+  const clothMesh = new THREE.Mesh(cloth, cm)
+  clothMesh.name = 'sock-cloth'
+  sock.add(clothMesh)
   g.add(sock)
-  const bPole = new THREE.CylinderGeometry(0.04, 0.05, 2.4, 6)
-  bPole.translate(0, 1.2, 0)
   const glass = new THREE.CylinderGeometry(0.09, 0.09, 0.28, 8)
   glass.translate(0, 2.45, 0)
   const lamp = new THREE.SphereGeometry(0.06, 8, 6)
   lamp.translate(0, 2.45, 0)
-  const bm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
   const gm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.beaconGlass, transparent: true, opacity: 0.45 })
   const lm = new THREE.MeshBasicMaterial({ color: PROP_LOOK.beaconRed })
-  geos.push(bPole, glass, lamp)
-  mats.push(bm, gm, lm)
+  geos.push(glass, lamp)
+  mats.push(gm, lm)
   const beacon = new THREE.Group()
   beacon.position.set(1.4, 0, 0.4)
   const lampMesh = new THREE.Mesh(lamp, lm)
   lampMesh.name = 'beacon-lamp'
-  beacon.add(new THREE.Mesh(bPole, bm), new THREE.Mesh(glass, gm), lampMesh)
+  beacon.add(new THREE.Mesh(glass, gm), lampMesh)
   g.add(beacon)
   return g
 }
