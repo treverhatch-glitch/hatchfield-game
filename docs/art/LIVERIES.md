@@ -13,7 +13,9 @@ Served from `public/textures/liveries/<id>/`. High is the crop at its own pixels
 | `zoomjet` | Zoomjet (`zoomjet`) | `a320neo`, `b738`, `b38m` |
 | 40 Gemini roster plates | The roster id of the same name (`brisa`, `atlas_cargo`, …) | That carrier's fleet |
 
-Zoomjet is a negotiation carrier. `game.allAirlines()` lists it, and a field that meets Northline's asks can sign it. The scripted playthrough line "could not sign zoomjet" is from before that listing. It is not negotiation-only in the sense of being unsignedable.
+Zoomjet is a negotiation carrier. `game.allAirlines()` lists it, and a field that meets the asks can sign it. The scripted playthrough line "could not sign zoomjet" is from before that listing. It is not negotiation-only.
+
+Its contract does not name metal. `CONTRACT_FLEET` stays unset, so spawn still draws from the 180-seat band. Pinning `a320neo`, `b738`, and `b38m` painted every Zoomjet flight with this plate, and it also kept the careful 35-day field from seating an eighth carrier and left every carrier on zero on-time through day 60. The plate paints those three types when one of them is the airframe. Other types in the band stay on the procedural shell.
 
 ## Plates with no carrier
 

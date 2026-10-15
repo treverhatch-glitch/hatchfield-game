@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { CONTRACT_FLEET } from './catalog.ts'
 import { Game } from './sim.ts'
 import type { Flight } from './types.ts'
 
@@ -82,7 +81,6 @@ describe('airline roster', () => {
     expect(ids).toContain('zoomjet')
     expect(new Set(ids).size).toBe(ids.length)
     expect(game.airline('zoomjet').name).toBe('Zoomjet')
-    expect([...(CONTRACT_FLEET.zoomjet ?? [])]).toEqual(['a320neo', 'b738', 'b38m'])
   })
 })
 

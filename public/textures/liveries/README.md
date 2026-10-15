@@ -32,8 +32,10 @@ Each row's `types` are the airframes that carrier flies. `preload: false` keeps
 those plates off the boot fetch.
 
 `bushline_local` paints Bushline (`bn2`, `dhc6`). `crown_pacific` paints Crown
-(`a380`, `b77w`). `zoomjet` paints Zoomjet (`a320neo`, `b738`, `b38m`), which
-is a negotiation carrier listed by `game.allAirlines()` and can be signed.
+(`a380`, `b77w`). `zoomjet` paints Zoomjet when the airframe is `a320neo`,
+`b738`, or `b38m`. Zoomjet is a negotiation carrier listed by
+`game.allAirlines()` and can be signed. Its contract does not name metal, so
+other types in the 180-seat band stay procedural.
 `siam_breeze` and `northstar_cargo` resolve to plates, and no airline in the
 catalog, the roster, or the negotiation book uses those ids, so no flight
 wears them.
