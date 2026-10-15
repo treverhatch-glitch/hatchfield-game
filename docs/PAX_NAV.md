@@ -305,3 +305,26 @@ and a click on an instanced walker selects them.
 
   `src/paxnav/crew.test.ts` covers posts, shift relief without wall crossing,
   edits, cleaners and determinism.
+
+## Read at a glance, and what the walk feeds back (P1 wiring)
+
+- **Names.** `guestName(id)` (`src/paxnav/guestNames.ts`) gives every guest a stable name from their id.
+  The guest card shows it with a mood word.
+- **Hover tooltip.** Resting the cursor on a passenger in the Terminal view shows name, mood, top need and the
+  thought they last had (`HallNav.glance`, `HallWorld.onWalkerHover`, `WalkerTooltip` in `TerminalView`).
+  Mood bands, need labels and the "worth naming" floor live in `GUEST_GLANCE`. Arrivals read as "Just landed".
+- **Capacity forecast.** The check-in and security cards carry a forecast line from `src/throughput`
+  (`checkinMix`, `securityPlan`), fed by the walk's own metrics through `src/game/hallCapacity.ts`: staffed
+  points, their live service time, and the passengers committed to them (in line, being served, walking there).
+  `HALL_CAPACITY_TUNING.planWindowNavSec` turns that headcount into an hourly rate. The models take optional
+  measured rates (`ratePerHr`, `ratesPerHr`) so they use the lane the player built, not the table rate.
+  The bag sorter and gate allocator in `src/throughput` are not read here: the sim has its own bag chain and
+  stand assignment.
+- **Mood onto the fare.** A thought that moves a walker's satisfaction also moves the matching `HallGuest`
+  happiness (`Game.applyHallMood`, weights in `HALL_MOOD_LINK`). Waits, shop and restroom results and missed
+  flights are weighted 0 there because the sim already scores them. Happiness at the gate moves airline heat and
+  the diplomacy mood grade.
+- **Full detail.** The Terminal view draws every walker in frame at full detail: `HALL_CROWD_TUNING` has no
+  visible cap and no distance LOD, and the people renderers use `PEOPLE_LOD_FULL`. Frustum culling stays (it
+  never removes anyone you can see). The render loop has no frame limiter.
+
