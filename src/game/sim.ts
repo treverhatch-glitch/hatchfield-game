@@ -664,6 +664,7 @@ import { nodeById } from '../research/nodes.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
 import { classifyTurn, relationshipLandingFactor } from '../wave3/honesty.ts'
 import { largestInFleet, metalAllowed } from '../wave3/fleet.ts'
+import { filterSpawnFleet } from '../wave3/fleetGrowth.ts'
 import {
   CONNECTIVITY_CATALOG,
   LINK_MAINT_SAFE,
@@ -786,6 +787,7 @@ import {
   contractedAirframes,
   fuelDwellSeconds,
   paxForAirframe,
+  airframesForKind,
   pickAirframe,
   pickAirframeWithFallback,
   standClassFor,
@@ -15481,15 +15483,20 @@ export class Game {
     return { ...report, hints, ok: hints.length === 0 }
   }
 
-  private pickOperable(preferred: AircraftKind, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
+  private pickOperable(
+    preferred: AircraftKind,
+    cargo: boolean,
+    allow?: (id: string) => boolean,
+  ): { af: Airframe | null; blocked: PillarReport | null } {
     const level = this.fieldLevel()
     const research = this.researchGrants()
     const runway = this.longestRunway()
-    const accepts = (id: string) => this.scaleReport(id).ok
+    const permitted = (id: string) => !allow || allow(id)
+    const accepts = (id: string) => permitted(id) && this.scaleReport(id).ok
     const af = pickAirframe(preferred, runway, research, level, accepts)
     if (af) return { af, blocked: null }
     // The strip can take this kind, but the pillar cannot. Hold the slot instead of sending a smaller jet.
-    const raw = pickAirframe(preferred, runway, research, level)
+    const raw = pickAirframe(preferred, runway, research, level, permitted)
     if (raw) return { af: null, blocked: this.scaleReport(raw.id) }
     const smaller = pickAirframeWithFallback(preferred, runway, cargo, research, level, accepts)
     return { af: smaller, blocked: null }
@@ -15531,14 +15538,24 @@ export class Game {
    * Spawn the airplane the contract sold. A named fleet never falls through
    * to a generic jet. A short pillar or a short strip holds the slot.
    */
+  /** Listed metal this carrier may spawn at its current size and relationship tier. */
+  private grownFleet(airlineId: AirlineId, frames: readonly Airframe[]): Airframe[] {
+    return filterSpawnFleet(frames, this.airline(airlineId).tier, this.wave3.relation(airlineId).tier)
+  }
+
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
     const fleet = this.contractFleet(a.id)
     if (!fleet) {
-      if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
-      return this.pickOperable(this.pickAircraftKind(airlineId), false)
+      const kind: AircraftKind = cargo || a.kind === 'cargo' ? 'freighter' : this.pickAircraftKind(airlineId)
+      const siblings = airframesForKind(kind)
+      const allow = (id: string) => this.grownFleet(airlineId, siblings).some((af) => af.id === id)
+      return this.pickOperable(kind, cargo || a.kind === 'cargo', allow)
     }
-    const pool = resolvedAirframes(fleet).filter((af) => metalAllowed(fleet, af.id))
+    const pool = this.grownFleet(
+      airlineId,
+      resolvedAirframes(fleet).filter((af) => metalAllowed(fleet, af.id)),
+    )
     if (!pool.length) return { af: null, blocked: null }
     const field = this.fieldFit()
     const fit = pool.filter((af) => !airframeGap(af, field) && (isHeloAirframe(af) || this.scaleReport(af.id).ok))
@@ -15558,10 +15575,11 @@ export class Game {
   ): { af: Airframe | null; blocked: PillarReport | null } {
     const fleet = this.contractFleet(airlineId)
     const pinned = slot.airframeId ? AIRFRAMES[slot.airframeId] : undefined
+    const grown = fleet ? this.grownFleet(airlineId, resolvedAirframes(fleet)) : []
     if (
       fleet &&
       pinned &&
-      fleet.includes(pinned.id) &&
+      grown.some((af) => af.id === pinned.id) &&
       !airframeGap(pinned, this.fieldFit()) &&
       (isHeloAirframe(pinned) || this.scaleReport(pinned.id).ok)
     ) {
@@ -16914,7 +16932,7 @@ export class Game {
     }
     if (n <= 0) return
     let eta = t
-    const plannedId = planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null
+    const plannedId = planned?.id ?? this.grownFleet(airlineId, resolvedAirframes(this.contractFleet(airlineId) ?? []))[0]?.id ?? null
     const prior = new Set(this.schedule.map((row) => row.id))
     for (let i = 0; i < n; i++) {
       const strip = helo ? null : this.pickBalancedRunway()
@@ -17053,7 +17071,7 @@ export class Game {
       standPref: null,
       runwayPref: rw,
       claimLane: null,
-      airframeId: planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null,
+      airframeId: planned?.id ?? this.grownFleet(airlineId, resolvedAirframes(this.contractFleet(airlineId) ?? []))[0]?.id ?? null,
     }
     this.assignSlotClaimLane(slot)
     this.schedule.push(slot)

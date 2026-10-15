@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { JUMBO_RELATION_TIER } from '../wave3/fleetGrowth.ts'
 import type { ResearchId } from './types.ts'
 import { Game } from './sim.ts'
 
@@ -116,6 +117,9 @@ describe('Crown Pacific A380', () => {
     game.offer = { airline: 'crown', age: 0, deadline: 120 }
     game.acceptOffer()
     expect(game.signed).toContain('crown')
+    while (game.wave3.relation('crown').tier < JUMBO_RELATION_TIER) {
+      game.wave3.noteTurnaround('crown', 'success')
+    }
 
     const seen = new Set<string>()
     let hit: { c: number; r: number } | null = null
