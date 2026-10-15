@@ -61,15 +61,17 @@ describe('Tier III + prestige building data', () => {
     }
   })
 
-  it('makes the cheapest Tier III build cost more at each higher level', () => {
+  it('prices cargo hub II and the approach centre under the previous rung', () => {
     const cheapest = new Map<number, number>()
     for (const b of TIER3_BUILDINGS) {
       cheapest.set(b.unlockFL, Math.min(cheapest.get(b.unlockFL) ?? Infinity, b.cost))
     }
-    const levels = [...cheapest.keys()].sort((a, c) => a - c)
-    for (let i = 1; i < levels.length; i++) {
-      expect(cheapest.get(levels[i])!).toBeGreaterThan(cheapest.get(levels[i - 1])!)
-    }
+    // Field level 7 still steps up from the tier below. The two rebalanced
+    // buys are the cheap entry at 8 and 9 so a one-carrier field can reach them.
+    expect(cheapest.get(7)).toBe(280_000)
+    expect(cheapest.get(8)).toBe(220_000)
+    expect(cheapest.get(9)).toBe(160_000)
+    expect(cheapest.get(10)!).toBeGreaterThan(cheapest.get(9)!)
   })
 
   it('keeps prestige landmarks unique, pricey and within bonus ranges', () => {
