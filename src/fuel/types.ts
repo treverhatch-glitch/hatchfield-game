@@ -46,6 +46,12 @@ export interface FuelView {
   dock: DockRead | null
   path: Cell[]
   farm: Cell | null
+  /** Arrival gate. Distinct from exit. */
+  entry: Cell | null
+  /** Departure gate. The tanker does not reverse out of entry. */
+  exit: Cell | null
+  /** entry, farm, exit. */
+  through: Cell[]
   wholesalePerLitre: number
 }
 

@@ -3,8 +3,9 @@
 .phone-dock {
   position: absolute;
   left: 0;
-  top: calc(var(--hud-top, 52px) + 168px);
-  bottom: 108px;
+  top: auto;
+  bottom: 16px;
+  height: min(340px, 36vh);
   width: 320px;
   z-index: 33;
   pointer-events: none;
@@ -12,7 +13,8 @@
 }
 
 .phone-dock.below-coach {
-  top: calc(var(--hud-top, 52px) + min(42vh, 360px) + 56px);
+  top: auto;
+  bottom: 16px;
 }
 
 .phone-device {

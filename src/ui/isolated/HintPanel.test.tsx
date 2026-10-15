@@ -35,22 +35,24 @@ describe('HintPanel', () => {
     expect(html).toContain('data-testid="hint-mute-standing-a"')
   })
 
-  it('anchors the badge above a warning dock and keeps today\'s place when the dock is empty', () => {
+  it('sits top-left and leaves the warning dock on its own corner', () => {
     const game = new Game()
     game.advice.push({ id: 'standing-a', title: 'Standing Note', cells: [], detail: '', fix: '' })
     const resting = renderToStaticMarkup(<HintPanel game={game} />)
-    expect(resting).toContain(`data-bottom="${HINT_REST_BOTTOM}"`)
-    expect(resting).toContain('bottom:120px')
+    expect(resting).toContain('left:16px')
+    expect(resting).toContain('top:calc(var(--hud-top) + 48px)')
+    expect(resting).not.toContain('bottom:')
 
     game.raiseAlert({ key: 'cond:cash', severity: 'warning', title: 'Cash is low', detail: '$4k' })
     const anchor = { rows: 1, minimised: false }
     const bottom = hintBadgeBottom(anchor)
     const dockTop = ALERT_DOCK_BOTTOM + dockBlockHeight(anchor)
     expect(bottom).toBeGreaterThanOrEqual(dockTop)
+    expect(HINT_REST_BOTTOM).toBe(120)
     const hint = renderToStaticMarkup(<HintPanel game={game} />)
     const dock = renderToStaticMarkup(<AlertStackView game={game} />)
-    expect(hint).toContain(`data-bottom="${bottom}"`)
-    expect(hint).toContain(`bottom:${bottom}px`)
+    expect(hint).toContain('left:16px')
+    expect(hint).not.toContain('bottom:')
     expect(hint).toContain('data-testid="hint-badge"')
     expect(dock).toContain('class="alert-dock"')
     expect(dock).toContain('Cash is low')

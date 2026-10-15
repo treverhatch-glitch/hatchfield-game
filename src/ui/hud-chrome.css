@@ -331,10 +331,19 @@
   border-radius: 16px;
 }
 
+.hud .coach.is-chip {
+  max-height: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
 .hud .map-goals {
-  left: 12px;
-  bottom: 96px;
-  width: min(220px, 22vw);
+  left: 0;
+  bottom: auto;
+  top: calc(100% + 110px);
+  width: min(240px, 70vw);
   background: rgb(15 23 42 / 0.86);
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 16px;

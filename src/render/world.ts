@@ -2274,7 +2274,8 @@ export class World {
   }
 
   /**
-   * Construction poles + progress bars, advisor / focus rings, fuel and bag-farm rings.
+   * Construction poles + progress bars, advisor / focus rings, and the bag-hall ring.
+   * Fuel-farm lane paint lives on the depot mesh.
    * Meshes are rebuilt only when the set of marks changes; bars just rescale each frame.
    */
   syncSites(game: Game) {
@@ -2376,11 +2377,11 @@ export class World {
       if (!row) continue
       for (let c = 0; c < row.length; c++) {
         const tile = row[c]
-        if (tile !== 'fuel' && tile !== 'bags') continue
+        if (tile !== 'bags') continue
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(CELL * 0.32, CELL * 0.46, 18),
           new THREE.MeshBasicMaterial({
-            color: tile === 'fuel' ? '#e0a020' : '#3a8ec2',
+            color: '#3a8ec2',
             transparent: true,
             opacity: 0.9,
             side: THREE.DoubleSide,

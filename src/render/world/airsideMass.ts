@@ -37,10 +37,169 @@ function pipe(g: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, r: number, mat
   g.add(mesh)
 }
 
+let yardDecalTex: THREE.Texture | null | undefined
+let laneTex: THREE.Texture | null | undefined
+
+/** Tire tracks and oil stains. Tests run without a canvas, so the mesh stays invisible there. */
+function yardDecalTexture(): THREE.Texture | null {
+  if (yardDecalTex !== undefined) return yardDecalTex
+  if (typeof document === 'undefined') {
+    yardDecalTex = null
+    return null
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 512
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    yardDecalTex = null
+    return null
+  }
+  ctx.clearRect(0, 0, 512, 512)
+  ctx.fillStyle = 'rgba(42, 32, 22, 0.45)'
+  for (const [x, y, rx, ry] of [
+    [180, 140, 70, 36],
+    [340, 220, 48, 28],
+    [250, 360, 90, 40],
+    [120, 300, 36, 22],
+    [400, 400, 54, 24],
+  ] as const) {
+    ctx.beginPath()
+    ctx.ellipse(x, y, rx, ry, 0.4, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.strokeStyle = 'rgba(28, 26, 24, 0.72)'
+  ctx.lineWidth = 7
+  ctx.lineCap = 'round'
+  for (const x of [228, 284]) {
+    ctx.beginPath()
+    ctx.moveTo(x, 20)
+    ctx.bezierCurveTo(x + 8, 160, x - 14, 300, x + 4, 492)
+    ctx.stroke()
+  }
+  ctx.lineWidth = 5
+  ctx.strokeStyle = 'rgba(28, 26, 24, 0.5)'
+  ctx.beginPath()
+  ctx.moveTo(40, 180)
+  ctx.bezierCurveTo(120, 200, 180, 80, 256, 70)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(470, 240)
+  ctx.bezierCurveTo(400, 260, 340, 200, 300, 210)
+  ctx.stroke()
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.needsUpdate = true
+  yardDecalTex = tex
+  return tex
+}
+
+/** White edge lines, a dashed centre, and stop bars. No filled disc. */
+function lanePaintTexture(): THREE.Texture | null {
+  if (laneTex !== undefined) return laneTex
+  if (typeof document === 'undefined') {
+    laneTex = null
+    return null
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 512
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    laneTex = null
+    return null
+  }
+  ctx.clearRect(0, 0, 256, 512)
+  ctx.fillStyle = 'rgba(48, 50, 54, 0.55)'
+  ctx.fillRect(8, 8, 240, 496)
+  ctx.strokeStyle = 'rgba(244, 244, 240, 0.95)'
+  ctx.lineWidth = 8
+  ctx.beginPath()
+  ctx.moveTo(18, 16)
+  ctx.lineTo(18, 496)
+  ctx.moveTo(238, 16)
+  ctx.lineTo(238, 496)
+  ctx.stroke()
+  ctx.lineWidth = 6
+  ctx.setLineDash([28, 22])
+  ctx.beginPath()
+  ctx.moveTo(128, 24)
+  ctx.lineTo(128, 488)
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.lineWidth = 10
+  ctx.beginPath()
+  ctx.moveTo(28, 36)
+  ctx.lineTo(228, 36)
+  ctx.moveTo(28, 476)
+  ctx.lineTo(228, 476)
+  ctx.stroke()
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.needsUpdate = true
+  laneTex = tex
+  return tex
+}
+
+function decalMaterial(map: THREE.Texture | null): THREE.Material {
+  if (!map) return new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+  return new THREE.MeshBasicMaterial({
+    map,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+  })
+}
+
+/** Earth ring around one tank. The first segment carries the name. */
+function earthBerm(g: THREE.Group, x: number, z: number, radius: number, mat: THREE.Material, name?: string) {
+  const n = 8
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2
+    const wall = based(0.62, 0.55, radius * 0.72, mat, x + Math.cos(a) * radius, 0.04, z + Math.sin(a) * radius)
+    wall.rotation.y = -a
+    if (i === 0 && name) wall.name = name
+    g.add(wall)
+  }
+}
+
+function canopyTanker(g: THREE.Group, x: number, z: number, hose: THREE.Material) {
+  const root = new THREE.Group()
+  root.name = 'canopy-tanker'
+  root.position.set(x, 0, z)
+  const white = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.42, metalness: 0.12 })
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.78, 1.05), white)
+  cab.position.set(0, 0.52, 1.15)
+  cab.castShadow = true
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 2.15, 10), white)
+  tank.rotation.x = Math.PI / 2
+  tank.position.set(0, 0.68, -0.2)
+  tank.castShadow = true
+  const wheel = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.85 })
+  for (const [wx, wz] of [
+    [-0.46, 0.85],
+    [0.46, 0.85],
+    [-0.46, -0.85],
+    [0.46, -0.85],
+    [-0.46, -0.35],
+    [0.46, -0.35],
+  ] as const) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.08, 8), wheel)
+    w.rotation.z = Math.PI / 2
+    w.position.set(wx, 0.15, wz)
+    root.add(w)
+  }
+  root.add(cab, tank)
+  g.add(root)
+  pipe(g, new THREE.Vector3(x, 2.02, z + 0.15), new THREE.Vector3(x, 1.12, z - 0.2), 0.035, hose)
+}
+
 /**
- * Tank farm from building-visuals-r9 (fuelFarmR5): five domed tanks in a bund,
- * a pipe rack, a pump house, and a loading gantry. Tank shells keep the Gemini
- * tank plate. The fill socket stays on the +X outlet the fuel hose already uses.
+ * Stage-III depot: tanks sit in grass earth berms, two tankers dock under a
+ * drive-through canopy, and the yard carries tire tracks. The fill socket
+ * stays on the +X outlet the fuel hose already uses. The loading lane is
+ * painted lines, not a filled yellow pad.
  */
 export function addFuelFarm(g: THREE.Group) {
   const shell = skinMaterial('fuel_farm', 'wall', { metalness: 0.35 })
@@ -50,7 +209,9 @@ export function addFuelFarm(g: THREE.Group) {
   const steel = new THREE.MeshStandardMaterial({ color: '#8b949e', roughness: 0.4, metalness: 0.55 })
   const dark = new THREE.MeshStandardMaterial({ color: '#3a4048', roughness: 0.45, metalness: 0.5 })
   const concrete = new THREE.MeshStandardMaterial({ color: '#c9c6bf', roughness: 0.82 })
-  const bundMat = new THREE.MeshStandardMaterial({ color: '#a8a397', roughness: 0.95 })
+  const earth = new THREE.MeshStandardMaterial({ color: '#5d7a3a', roughness: 0.95 })
+  const canopyMat = new THREE.MeshStandardMaterial({ color: '#c5ccd3', roughness: 0.55, metalness: 0.35 })
+  const hoseMat = new THREE.MeshStandardMaterial({ color: '#1c1c1c', roughness: 0.7 })
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   yard.rotation.x = -Math.PI / 2
@@ -58,26 +219,22 @@ export function addFuelFarm(g: THREE.Group) {
   yard.receiveShadow = true
   g.add(yard)
 
-  const bw = 8.6
-  const bd = 5.6
-  const bz = -1.6
-  g.add(based(bw, 0.5, 0.18, bundMat, 0, 0.12, bz - bd / 2))
-  g.add(based(bw, 0.5, 0.18, bundMat, 0, 0.12, bz + bd / 2))
-  g.add(based(0.18, 0.5, bd, bundMat, -bw / 2, 0.12, bz))
-  g.add(based(0.18, 0.5, bd, bundMat, bw / 2, 0.12, bz))
-  const floor = new THREE.Mesh(new THREE.BoxGeometry(bw - 0.4, 0.04, bd - 0.4), new THREE.MeshStandardMaterial({ color: '#9c9789', roughness: 1 }))
-  floor.position.set(0, 0.14, bz)
-  floor.receiveShadow = true
-  g.add(floor)
+  const decal = new THREE.Mesh(new THREE.PlaneGeometry(CELL * 0.9, CELL * 0.9), decalMaterial(yardDecalTexture()))
+  decal.name = 'fuel-yard-decal'
+  decal.rotation.x = -Math.PI / 2
+  decal.position.y = 0.055
+  decal.receiveShadow = true
+  g.add(decal)
 
   const tanks: [number, number, number, number, string?][] = [
-    [-2.85, -2.9, 1.35, 3.0],
+    [-3.05, -2.9, 1.2, 2.7],
     [0, -2.9, 1.35, 3.0, 'fuel-tank'],
-    [2.85, -2.9, 1.35, 3.0],
-    [-2.6, -0.1, 0.8, 2.0],
-    [-0.6, -0.1, 0.7, 1.6],
+    [3.05, -2.9, 1.2, 2.7],
+    [-3.55, -1.05, 0.55, 1.35],
+    [3.55, -1.05, 0.55, 1.35],
   ]
   for (const [x, z, r, h, name] of tanks) {
+    earthBerm(g, x, z, r + 0.42, earth, name ? 'fuel-berm' : undefined)
     const body = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(r, r, h, 18), SKIN_TILE_M.tank, WORLD_PER_METER), shell)
     body.position.set(x, 0.3 + h / 2, z)
     body.castShadow = true
@@ -103,42 +260,36 @@ export function addFuelFarm(g: THREE.Group) {
   }
 
   const yel = new THREE.MeshStandardMaterial({ color: '#d4a017', roughness: 0.4, metalness: 0.45 })
-  for (const x of [-3.6, -1.8, 0, 1.8]) {
-    g.add(based(0.08, 0.9, 0.08, dark, x, 0.12, 0.9))
-    g.add(based(0.08, 0.9, 0.08, dark, x, 0.12, 1.3))
-    g.add(based(0.08, 0.06, 0.5, dark, x, 1.0, 1.1))
+  for (const x of [-3.2, -1.6, 0, 1.6]) {
+    g.add(based(0.08, 0.85, 0.08, dark, x, 0.12, -0.15))
+    g.add(based(0.08, 0.85, 0.08, dark, x, 0.12, 0.15))
+    g.add(based(0.08, 0.06, 0.38, dark, x, 0.95, 0))
   }
-  pipe(g, new THREE.Vector3(-3.8, 1.1, 0.95), new THREE.Vector3(2.6, 1.1, 0.95), 0.06, yel)
-  pipe(g, new THREE.Vector3(-3.8, 1.1, 1.15), new THREE.Vector3(2.6, 1.1, 1.15), 0.05, steel)
+  pipe(g, new THREE.Vector3(-3.4, 1.0, -0.08), new THREE.Vector3(2.4, 1.0, -0.08), 0.06, yel)
+  pipe(g, new THREE.Vector3(-3.4, 1.0, 0.1), new THREE.Vector3(2.4, 1.0, 0.1), 0.05, steel)
   for (const [x, z, r] of tanks) {
-    pipe(g, new THREE.Vector3(x, 0.5, z + (r as number)), new THREE.Vector3(x, 1.1, 0.95), 0.045, steel)
+    pipe(g, new THREE.Vector3(x, 0.5, z + (r as number)), new THREE.Vector3(x, 1.0, -0.08), 0.04, steel)
   }
 
-  g.add(based(2.0, 1.7, 1.6, concrete, 3.2, 0.12, 0.4))
-  g.add(based(2.15, 0.1, 1.75, roof, 3.2, 1.82, 0.4))
+  g.add(based(1.7, 1.45, 1.35, concrete, -3.55, 0.12, 2.15))
+  g.add(based(1.85, 0.08, 1.5, roof, -3.55, 1.57, 2.15))
   const window = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.4, 0.06),
+    new THREE.BoxGeometry(0.55, 0.36, 0.06),
     new THREE.MeshStandardMaterial({ color: '#9ec4de', roughness: 0.15, metalness: 0.2 }),
   )
-  window.position.set(3.2, 1.35, 1.22)
+  window.position.set(-3.55, 1.15, 2.84)
   g.add(window)
 
-  g.add(based(1.4, 0.7, 0.8, bandMat, 0, 0.12, 2.1))
-  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.035, 6, 14), new THREE.MeshStandardMaterial({ color: '#c8231e', roughness: 0.4, metalness: 0.3 }))
-  valve.position.set(0, 0.95, 2.1)
-  valve.rotation.x = Math.PI / 2
-  g.add(valve)
-
-  const gantryY = 2.35
-  g.add(based(6.4, 0.08, 1.7, roof, 0, gantryY, 3.35))
-  for (const x of [-2.8, 2.8]) {
-    g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, 2.6))
-    g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, 4.1))
+  const laneZ = 2.55
+  const gantryY = 2.15
+  g.add(based(3.6, 0.08, 3.5, canopyMat, 0, gantryY, laneZ))
+  for (const x of [-1.7, 1.7]) {
+    for (const z of [laneZ - 1.55, laneZ + 1.55]) {
+      g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, z))
+    }
   }
-  for (const x of [-2, 2]) {
-    g.add(based(0.32, 1.45, 0.32, bandMat, x, 0.12, 2.35))
-    pipe(g, new THREE.Vector3(x, 1.5, 2.4), new THREE.Vector3(x, 1.9, 3.05), 0.06, dark)
-  }
+  canopyTanker(g, -0.72, laneZ, hoseMat)
+  canopyTanker(g, 0.72, laneZ, hoseMat)
 
   // Outlet the locked farm_fill socket hoses into. The socket itself does not move.
   const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 10), trim)
@@ -146,10 +297,15 @@ export function addFuelFarm(g: THREE.Group) {
   reel.position.set(1.25, 0.55, 0)
   g.add(reel)
 
-  g.add(based(0.55, 0.4, 0.04, new THREE.MeshStandardMaterial({ color: '#c8231e' }), -3.0, 0.2, bz + bd / 2 + 0.12))
-  mountSign(g, 'FUEL', { w: 1.5, h: 0.34, x: 0, y: gantryY + 0.28, z: 4.22 }, '#2d6a4f', '#ffffff')
-  // One loading court: wide enough for a fuel tanker (10 m × 2.5 m) under the gantry.
-  mountServiceBay(g, 'fill', 1.4, 4.6, 0, 3.4, '#d7a21a')
+  g.add(based(0.55, 0.4, 0.04, new THREE.MeshStandardMaterial({ color: '#c8231e' }), -3.4, 0.35, -1.15))
+  mountSign(g, 'FUEL', { w: 1.5, h: 0.34, x: 0, y: gantryY + 0.28, z: laneZ + 1.85 }, '#2d6a4f', '#ffffff')
+  // Drive-through lane. Wide enough for a fuel tanker, long enough to enter and leave.
+  const lane = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 4.3), decalMaterial(lanePaintTexture()))
+  lane.name = 'service-bay:fill'
+  lane.rotation.x = -Math.PI / 2
+  lane.position.set(0, 0.07, laneZ)
+  lane.receiveShadow = true
+  g.add(lane)
   mountSockets(g, FUEL_TILE_SOCKETS)
 }
 

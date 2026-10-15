@@ -93,9 +93,11 @@ export class FuelLayer {
     const origin = atCell(farm.c, farm.r, 0)
     const bayWorld = origin.clone().add(new THREE.Vector3(bay[0], bay[1], bay[2]).multiplyScalar(WORLD_PER_METER))
     const fillWorld = origin.clone().add(new THREE.Vector3(fill[0], fill[1], fill[2]).multiplyScalar(WORLD_PER_METER))
-    const face = view.path.length > 1 ? view.path[view.path.length - 1] : farm
-    const prev = view.path.length > 1 ? view.path[view.path.length - 2] : farm
-    rig.rotation.set(0, -Math.atan2(face.r - prev.r, face.c - prev.c), 0)
+    const from = view.entry ?? (view.path.length > 1 ? view.path[view.path.length - 2] : farm)
+    const to = view.exit ?? (view.path.length > 1 ? view.path[view.path.length - 1] : farm)
+    const dc = to.c - from.c
+    const dr = to.r - from.r
+    if (dc !== 0 || dr !== 0) rig.rotation.set(0, -Math.atan2(dr, dc), 0)
     rig.position.copy(bayWorld)
     rig.updateMatrixWorld(true)
     const inlet = rig.getObjectByName('truck_fill')

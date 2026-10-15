@@ -3,7 +3,6 @@ import { money, STARTER_KIT_COST } from '../../game/catalog.ts'
 import { starterKitPreview } from '../../game/starterLayout.ts'
 import type { Game } from '../../game/sim.ts'
 import { severityOf, worstSeverity, type HintSeverity } from '../../game/hints.ts'
-import { dockAnchor, hintBadgeBottom } from './hintAnchor.ts'
 
 const SEV_COLOR: Record<HintSeverity, string> = {
   blocker: '#e0574a',
@@ -18,35 +17,58 @@ const SEV_WORD: Record<HintSeverity, string> = {
 }
 
 /**
- * Advisor hints, bottom-right. Collapsed to a badge (count + worst severity);
- * opens to a worst-first list. Shares the one-panel slot with the HUD rollout.
- * Inline styles so a HUD redesign can lift it.
+ * Advisor hints, top-left under the photo button. Collapsed to a badge
+ * (count + worst severity); the list opens downward. Shares the one-panel
+ * slot with the HUD rollout. Inline styles so a HUD redesign can lift it.
  */
 export function HintPanel({ game }: { game: Game }) {
   const hints = game.visibleHints()
   const open = game.sidePanel === 'hints'
   if (!hints.length) return null
   const worst = worstSeverity(hints) ?? 'tip'
-  const anchor = dockAnchor(game)
-  const bottom = hintBadgeBottom(anchor)
   return (
     <div
       data-testid="hint-panel"
-      data-bottom={bottom}
       style={{
         pointerEvents: 'auto',
         position: 'absolute',
-        right: 12,
-        bottom,
+        left: 16,
+        top: 'calc(var(--hud-top) + 48px)',
+        right: 'auto',
         width: open ? 300 : 'auto',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         gap: 6,
         font: '13px sans-serif',
         color: '#e7eee9',
+        zIndex: 24,
       }}
     >
+      <button
+        type="button"
+        data-testid="hint-badge"
+        onClick={() => game.setSidePanel(open ? null : 'hints')}
+        title={open ? 'Hide hints' : 'Show hints'}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          background: 'rgba(12, 22, 28, 0.92)',
+          color: '#e7eee9',
+          border: `1px solid ${SEV_COLOR[worst]}`,
+          borderRadius: 999,
+          padding: '4px 10px',
+          font: '700 12px sans-serif',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{ width: 8, height: 8, borderRadius: 999, background: SEV_COLOR[worst], display: 'inline-block' }}
+        />
+        {hints.length} hint{hints.length === 1 ? '' : 's'}
+        <span style={{ opacity: 0.7, fontWeight: 400 }}>{open ? '▴' : '▾'}</span>
+      </button>
       {open && (
         <div
           data-testid="hint-list"
@@ -147,30 +169,6 @@ export function HintPanel({ game }: { game: Game }) {
           })}
         </div>
       )}
-      <button
-        type="button"
-        data-testid="hint-badge"
-        onClick={() => game.setSidePanel(open ? null : 'hints')}
-        title={open ? 'Hide hints' : 'Show hints'}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          background: 'rgba(12, 22, 28, 0.92)',
-          color: '#e7eee9',
-          border: `1px solid ${SEV_COLOR[worst]}`,
-          borderRadius: 999,
-          padding: '4px 10px',
-          font: '700 12px sans-serif',
-        }}
-      >
-        <span
-          aria-hidden
-          style={{ width: 8, height: 8, borderRadius: 999, background: SEV_COLOR[worst], display: 'inline-block' }}
-        />
-        {hints.length} hint{hints.length === 1 ? '' : 's'}
-        <span style={{ opacity: 0.7, fontWeight: 400 }}>{open ? '▾' : '▴'}</span>
-      </button>
     </div>
   )
 }

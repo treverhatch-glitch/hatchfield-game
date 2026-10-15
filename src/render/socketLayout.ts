@@ -230,15 +230,24 @@ export const JET_BRIDGE_PROP_SOCKETS: SocketTable = {
   bridge_cab: [0, 3.25, 17.6],
 }
 
-/** Fuel-farm tile, in the tile's own units (the tank outlet on the +X side). */
+/**
+ * Fuel-farm tile, in the tile's own units (the tank outlet on the +X side).
+ * farm_entry and farm_exit sit at opposite ends of the loading lane so a
+ * tanker drives through the canopy and does not reverse out of the same gate.
+ */
 export const FUEL_TILE_SOCKETS: SocketTable = {
   farm_fill: [1.25, 0.55, 0],
+  farm_entry: [0, 0.2, 0.25],
+  farm_exit: [0, 0.2, 4.85],
 }
 
 /** Fuel farm in metres, for the handoff rig. The outlet is on the tank wall. */
 export const FARM_SOCKETS: SocketTable = {
   farm_fill: [0, 1.45, 1.35],
-  farm_bay: [4.2, 2.05, 1.35],
+  /** Under the loading canopy, mid-lane. World z ≈ 2.55. */
+  farm_bay: [0, 1.6, 5.67],
+  farm_entry: [0, 0.45, 0.56],
+  farm_exit: [0, 0.45, 10.78],
 }
 
 /** Nose height of a docked ground vehicle, in the building's world units. */

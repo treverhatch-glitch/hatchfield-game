@@ -96,6 +96,17 @@ describe('fuel farm supply', () => {
     expect(view.dock).toEqual({ farm: 'farm_fill', truck: 'truck_fill' })
   })
 
+  it('drives the tanker in one gate and out the other', () => {
+    const chain = new FuelChain()
+    const view = chain.tick(1, order())
+    expect(view.path.length).toBeGreaterThan(1)
+    expect(view.entry).toEqual({ c: 7, r: 7 })
+    expect(view.farm).toEqual({ c: 7, r: 8 })
+    expect(view.exit).toEqual({ c: 7, r: 9 })
+    expect(view.entry).not.toEqual(view.exit)
+    expect(view.through).toEqual([view.entry, view.farm, view.exit])
+  })
+
   it('puts the tanker on the landside road flow', () => {
     const base: LandsideField = {
       roads: roads(),

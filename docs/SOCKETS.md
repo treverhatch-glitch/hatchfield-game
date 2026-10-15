@@ -21,7 +21,9 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | `hose_nozzle` | the nozzle prop | `crew_hand_r` while carried, `plane_fuel_port` while fueling, then back to `hose_reel_out` |
 | `truck_fill` | fuel tanker | farm coupler while the truck is being filled |
 | `farm_fill` | fuel farm | farm end of the fill hose |
-| `farm_bay` | fuel farm rig | where `truck_fill` stops |
+| `farm_bay` | fuel farm rig | where `truck_fill` stops, under the loading canopy |
+| `farm_entry` | fuel farm | arrival end of the one-way loading lane |
+| `farm_exit` | fuel farm | departure end of the lane. Never the same gate as `farm_entry` |
 | `crew_hand_r` | crew rig | carries the nozzle |
 | `crew_hand_l` | crew rig | free hand |
 | `belt_low` | belt loader | low end of the belt, where a bag comes off the cart |
@@ -98,6 +100,6 @@ Passengers, then the return:
 
 `bridge_hall` → `bridge_cab` → `plane_pax_sill` → `bridge_cab` → `bridge_hall`
 
-Fuel farm: the coupler waits on `farm_fill`, the truck stops with `truck_fill` on `farm_bay`, the coupler follows a catenary onto `truck_fill`, and it leaves with the truck.
+Fuel farm: the coupler waits on `farm_fill`, the truck stops with `truck_fill` on `farm_bay` under the canopy, the coupler follows a catenary onto `truck_fill`, and the truck leaves through `farm_exit`. It does not reverse out of `farm_entry`.
 
 Stand fittings name the point on the card. `bridge_cab` is the jet bridge. `plane_gpu_port` is the fixed ground-power cable. `apron_mast` is the stand light. `deice_fill` is where the de-ice truck fills. `stand_flag` is the flag. `alarm_bell` is the fire-station bell. `line_office` is the hangar office.

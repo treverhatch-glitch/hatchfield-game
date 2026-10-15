@@ -159,6 +159,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   useEffect(() => subscribeFids(setBoardsOpen), [])
   // Terminal view folds the apron cards. A peek belongs to the view it was opened in.
   const [hallPeek, setHallPeek] = useState<{ view: string; id: 'coach' | 'offer' | 'map' } | null>(null)
+  const [climateOpen, setClimateOpen] = useState(false)
+  const [coachOpen, setCoachOpen] = useState(false)
   const inHall = game.view === 'hall'
   const peek = hallPeek?.view === game.view ? hallPeek.id : null
   const openPeek = (id: 'coach' | 'offer' | 'map') =>
@@ -410,6 +412,44 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="stat" title="One day is a 180-second cycle">
           <LiveText testId="hud-clock" read={() => formatSimDate(game.clock)} />
         </div>
+        {game.site ? (
+          <div className="climate-dock">
+            <button
+              type="button"
+              className={`stat climate-chip${climateOpen || peek === 'map' ? ' on' : ''}`}
+              data-testid="climate-chip"
+              aria-expanded={inHall ? peek === 'map' : climateOpen}
+              title={`${game.mapSummary().name}. ${game.mapSummary().season}`}
+              onClick={() => {
+                if (inHall) openPeek('map')
+                else setClimateOpen((open) => !open)
+              }}
+            >
+              Climate: {game.mapSummary().region}
+            </button>
+            {(inHall ? peek === 'map' : climateOpen) ? (
+              <aside className="map-goals" data-testid="map-goals" aria-label="Climate goals">
+                <div className="map-goals-head">
+                  <strong>Climate: {game.mapSummary().region}</strong>
+                  <span>{game.mapSummary().season}</span>
+                </div>
+                <ul>
+                  {game.mapGoalCards().map((goal) => (
+                    <li key={goal.id} data-testid={`goal-${goal.id}`} data-done={goal.done ? '1' : '0'}>
+                      <span className="mark">{goal.done ? '✓' : '·'}</span>
+                      <span>
+                        {goal.title}{' '}
+                        <em>
+                          {formatPanelNumber(Math.min(goal.value, goal.target))}/{formatPanelNumber(goal.target)}
+                        </em>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </aside>
+            ) : null}
+          </div>
+        ) : null}
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <FieldBadge
           progress={xp}
@@ -499,41 +539,31 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               className={peek === 'map' ? 'on' : ''}
               onClick={() => openPeek('map')}
             >
-              {game.mapSummary().name}
+              Climate: {game.mapSummary().region}
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {game.site && (!inHall || peek === 'map') ? (
-        <aside className="map-goals" data-testid="map-goals" aria-label="Map goals">
-          <div className="map-goals-head">
-            <strong>{game.mapSummary().name}</strong>
-            <span>{game.mapSummary().season}</span>
-          </div>
-          <ul>
-            {game.mapGoalCards().map((goal) => (
-              <li key={goal.id} data-testid={`goal-${goal.id}`} data-done={goal.done ? '1' : '0'}>
-                <span className="mark">{goal.done ? '✓' : '·'}</span>
-                <span>
-                  {goal.title}{' '}
-                  <em>
-                    {formatPanelNumber(Math.min(goal.value, goal.target))}/{formatPanelNumber(goal.target)}
-                  </em>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      ) : null}
-
       {game.showCoach() && (!inHall || peek === 'coach') ? (
-        <div className="coach" data-testid="coach">
+        <div
+          className={`coach${game.showStarterKit() || coachOpen ? '' : ' is-chip'}${game.sidePanel === 'hints' ? ' below-hints' : ''}`}
+          data-testid="coach"
+        >
+          {game.showStarterKit() || coachOpen ? (
+          <>
           <div className="coach-head">
             <strong>First hour</strong>
-            <button type="button" className="ghost" onClick={() => game.dismissCoach()}>
-              Got it
-            </button>
+            <span className="coach-actions">
+              {game.showStarterKit() ? null : (
+                <button type="button" className="ghost" data-testid="coach-collapse" onClick={() => setCoachOpen(false)}>
+                  Hide
+                </button>
+              )}
+              <button type="button" className="ghost" onClick={() => game.dismissCoach()}>
+                Got it
+              </button>
+            </span>
           </div>
           <ol>
             {game.coachSteps().map((s) =>
@@ -576,6 +606,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
           </p>
+          </>
+          ) : (
+            <button type="button" className="coach-toggle" data-testid="coach-toggle" onClick={() => setCoachOpen(true)}>
+              First hour
+            </button>
+          )}
         </div>
       ) : null}
 

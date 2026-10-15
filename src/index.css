@@ -231,7 +231,7 @@ button {
 }
 
 .disruption-stack.below-coach {
-  top: calc(var(--hud-top) + 272px);
+  top: calc(var(--hud-top) + 96px);
 }
 
 .disruption {
@@ -282,10 +282,10 @@ button {
 }
 
 .coach {
-  /* Top-left under the HUD (below the photo button) — never cover the bottom tool dock (was z>dock). */
+  /* Under the photo button and the hint badge, so the three top-left chips do not stack. */
   position: absolute;
   left: 16px;
-  top: calc(var(--hud-top) + 44px);
+  top: calc(var(--hud-top) + 84px);
   width: min(280px, 90vw);
   max-height: min(42vh, 360px);
   overflow: auto;
@@ -296,6 +296,36 @@ button {
   border-radius: 10px;
   padding: 12px 14px;
   animation: coach-in 0.45s ease-out;
+}
+
+.coach.below-hints {
+  top: calc(var(--hud-top) + min(40vh, 340px) + 92px);
+}
+
+.coach.is-chip {
+  width: auto;
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: 0;
+}
+
+.coach-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.coach-toggle {
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  color: #c9a227;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 @keyframes coach-in {
@@ -2281,7 +2311,7 @@ html[data-gfx='low'] .view-layer.dim {
 }
 
 .letter-stack.below-coach {
-  top: calc(var(--hud-top) + 272px);
+  top: calc(var(--hud-top) + 128px);
 }
 
 /* A contract letter carries a CEO card. Sit it beside the coach so Accept stays on screen. */
@@ -2299,7 +2329,7 @@ html[data-gfx='low'] .view-layer.dim {
 }
 
 .letter-stack.below-coach.below-inbound {
-  top: calc(var(--hud-top) + 442px);
+  top: calc(var(--hud-top) + 128px);
 }
 
 /* One inbound card. It sits over the apron corner and leaves the field clickable. */
@@ -2315,11 +2345,14 @@ html[data-gfx='low'] .view-layer.dim {
 /* While the First hour coach is up the card sits beside it, so the kit link stays visible. */
 @media (min-width: 801px) {
   .inbound-panel.beside-coach {
-    left: 312px;
-    top: calc(var(--hud-top) + 44px);
+    left: 360px;
+    top: calc(var(--hud-top) + 48px);
   }
-  .letter-stack.below-coach.below-inbound {
-    top: calc(var(--hud-top) + 272px);
+  .letter-stack.below-coach,
+  .letter-stack.below-coach.below-inbound,
+  .disruption-stack.below-coach {
+    top: calc(var(--hud-top) + 48px);
+    left: 360px;
   }
 }
 
@@ -3126,13 +3159,24 @@ h1.game-title::after {
   line-height: 1.4;
 }
 
+.climate-dock {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.climate-chip {
+  cursor: pointer;
+}
+
 .map-goals {
   position: absolute;
-  left: 16px;
-  bottom: 148px;
+  top: calc(100% + 110px);
+  left: 0;
+  bottom: auto;
   width: min(240px, 78vw);
-  z-index: 23;
-  pointer-events: none;
+  z-index: 30;
+  pointer-events: auto;
   background: rgba(10, 20, 16, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;

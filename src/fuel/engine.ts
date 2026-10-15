@@ -23,6 +23,9 @@ function emptyView(): FuelView {
     dock: null,
     path: [],
     farm: null,
+    entry: null,
+    exit: null,
+    through: [],
     wholesalePerLitre: 0,
   }
 }
@@ -255,7 +258,7 @@ export class FuelChain {
     queue: DeliveryRead[],
     roadVeh: number,
     dock: DockRead | null,
-    route: { path: FuelView['path']; farm: FuelView['farm'] },
+    route: { path: FuelView['path']; farm: FuelView['farm']; entry: FuelView['entry']; exit: FuelView['exit']; through: FuelView['through'] },
     paid: number,
     delivered: number,
     truck: number,
@@ -276,6 +279,9 @@ export class FuelChain {
       dock,
       path: route.path,
       farm: route.farm,
+      entry: route.entry,
+      exit: route.exit,
+      through: route.through,
       wholesalePerLitre: usable(input.wholesalePerLitre),
     }
   }
