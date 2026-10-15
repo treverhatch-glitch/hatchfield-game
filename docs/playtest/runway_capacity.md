@@ -8,23 +8,23 @@ The Airfield numbers panel for a deferred bank is `docs/playtest/runway_capacity
 
 | | Careful | Greedy | Chaotic |
 | --- | ---: | ---: | ---: |
-| Flights completed | 361 | 270 | 313 |
-| Cash | $517,504 | $35,954 | $3,473 |
-| Guests on the field | 60 | 0 | 159 |
-| Connection diverts | 37 | 49 | 69 |
-| Missed-connection $ | $83,700 | $89,280 | $133,920 |
-| Deferred slots (run total) | 66 | 34 | 62 |
-| Day strip 2 opened | 18 | not built | not built |
+| Flights completed | 273 | 301 | 265 |
+| Cash | $976,690 | $281,202 | $198,883 |
+| Guests on the field | 77 | 99 | 66 |
+| Connection diverts | 9 | 35 | 39 |
+| Missed-connection $ | $27,900 | $68,820 | $87,420 |
+| Deferred slots (run total) | 29 | 28 | 29 |
+| Day strip 2 opened | 23 | 26 | not built |
 
-Connection diverts are passengers whose connection was judged a divert. They are not the runway go-around divert. The eight-day runway tests on this branch finish with no runway divert.
+Connection diverts are passengers whose connection was judged a divert. They are not the runway go-around divert. The eight-day runway tests on this branch finish with no runway divert on one strip, and one on the two-strip field.
 
-Careful is ahead of the till. The second strip opened on day 18, once the Airfield figure showed deferred demand and cash cleared the $38,000 stamp plus a $30,000 reserve. Greedy was over that reserve on the day-0 and day-25 samples only. Neither of those decisions saw today's deferred figure, so Greedy did not stamp. Greedy still finished above $0. Chaotic finished at $3,473 with 19 stands and did not stamp a strip. Chaotic is not one of the two personas the strip rule applies to. Chaotic also left a security queue and one departure stuck long enough for the softlock note.
+Careful and Greedy both stamp the second strip once the Airfield figure shows deferred demand and cash clears the $38,000 stamp plus a $30,000 reserve. Careful opened it on day 23. Greedy opened it on day 26. Both finish well above $0. Chaotic is not one of the two personas the strip rule applies to. Chaotic finished at $198,883 with 14 stands and did not stamp a strip.
 
 ## Prefab strain
 
 The opening headway is still 150 seconds for the first ten minutes, so the prefab does not fill at the start.
 
-The first sampled day with 4 or more people waiting at check-in was day 21 for Chaotic. Careful and Greedy never reached 4 on a sampled day. Careful's answer to runway pressure was the second strip on day 18, which is just after the day-5-to-15 window. The hall queue on this seed did not jam Careful in that window.
+No persona had a sampled day with 4 or more people waiting at check-in. The runway answer on this seed is the second strip in the fourth week, later than the day-5-to-15 window. The hall queue did not jam.
 
 ## Idle soak
 
