@@ -141,6 +141,7 @@ describe('menu taxonomy', () => {
     expect(seen.get('specializations')).toBe('growth')
     expect(seen.get('commercial')).toBe('money')
     expect(seen.get('levels')).toBe('growth')
+    expect(seen.get('wallet')).toBe('growth')
     expect(seen.get('achievements')).toBe('growth')
     expect(MANAGE_MENUS.find((menu) => menu.id === 'growth')?.tabs.find((tab) => tab.id === 'specializations')?.label).toBe(
       'Specializations',
@@ -152,6 +153,7 @@ describe('menu taxonomy', () => {
       'research',
       'levels',
       'specializations',
+      'wallet',
       'achievements',
     ])
     expect(seen.has('awards' as ManageTabId)).toBe(false)

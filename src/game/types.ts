@@ -1,4 +1,5 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { EconomyState } from '../economy/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
@@ -1144,6 +1145,7 @@ export interface GameSnapshot {
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
   /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  economy?: EconomyState
   tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
   /** Missed-connection guests waiting on the airport hotel. */
   missedHotelNights?: number

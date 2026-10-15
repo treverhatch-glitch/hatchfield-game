@@ -4,6 +4,7 @@ import { useHudBandVar } from './hudBand'
 import { LiveText } from './LiveText'
 import { ViewModeToggle } from './ViewModeToggle'
 import { PremiumPanel } from './PremiumPanel.tsx'
+import { OpsWalletPanel } from './OpsWalletPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
@@ -1621,6 +1622,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {panel === 'specialize' ? <SpecTree game={game} /> : null}
+              {panel === 'wallet' ? <OpsWalletPanel game={game} /> : null}
 
               {panel === 'rival' ? (
                 rival ? (

@@ -579,6 +579,8 @@ import {
   type EconomyAdapter,
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState, PowerLoad, PowerPlantTier } from '../economy/types.ts'
+import { techNode } from '../economy/techTree.ts'
+import { restoreEconomyState, walletRefusal, walletView, type WalletView } from '../economy/wallet.ts'
 import {
   arrivalSpacingScale,
   bankTarget,
@@ -1369,6 +1371,8 @@ export class Game {
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
   private economyView: EconomySnapshot | null = null
+  private walletNudged = new Set<string>()
+  private walletNudgeDue = false
   branding: BrandingSave = defaultBranding()
   private ambience: AmbienceMixer | null = null
   crashCool = 8
@@ -6996,6 +7000,7 @@ export class Game {
       disruptions: this.disruptions.save(),
       playtestYear: this.playtestYear.save(),
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
+      economy: this.economyState ? structuredClone(this.economyState) : undefined,
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
       achievements: this.achievements.save(),
@@ -7061,7 +7066,7 @@ export class Game {
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
       this.tycoon.restore(s.tycoon, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
       this.economy = null
-      this.economyState = null
+      this.economyState = restoreEconomyState(s.economy)
       this.economyView = null
       this.speed = 0
       this.fuelBrand = s.fuelBrand
@@ -7482,6 +7487,52 @@ export class Game {
   /** Latest economy snapshot for the HUD. Null until the first tick. */
   economySnapshot(): EconomySnapshot | null {
     return this.economyView
+  }
+
+  /** Operations wallet: the points, the nine branches, and what each node does in the airport. */
+  opsWallet(): WalletView {
+    const engine = this.ensureEconomy().engine
+    return walletView(engine.state, this.hostedFieldLevel(), this.sandbox)
+  }
+
+  hasOpsTech(id: string): boolean {
+    const owned = this.economyState?.unlockedTech ?? this.economyView?.state.unlockedTech ?? []
+    return owned.includes(id)
+  }
+
+  buyOpsTech(id: string): boolean {
+    const adapter = this.ensureEconomy()
+    const state = adapter.engine.state
+    const refusal = walletRefusal(id, state, this.hostedFieldLevel(), this.sandbox)
+    if (refusal) {
+      this.pushNews(refusal, 'bad')
+      this.emit()
+      return false
+    }
+    const node = techNode(id)
+    if (!node) return false
+    if (state.researchPoints < node.costRp) state.researchPoints = node.costRp
+    if (!adapter.unlockTech(id)) {
+      this.pushNews(`${node.name} could not be unlocked.`, 'bad')
+      this.emit()
+      return false
+    }
+    this.pushNews(`Ops wallet: ${node.name} owned. ${node.description}`, 'good')
+    this.emit()
+    return true
+  }
+
+  /** One nudge per node, the first time its points and prerequisites line up. */
+  private nudgeOpsWallet(): void {
+    const view = this.opsWallet()
+    if (!view.nextBuy || this.walletNudged.has(view.nextBuy)) return
+    this.walletNudged.add(view.nextBuy)
+    const node = techNode(view.nextBuy)
+    if (!node) return
+    this.pushNews(
+      `Ops wallet: ${view.points} RP banked. ${node.name} is ready in Growth > Ops wallet.`,
+      'good',
+    )
   }
 
   private groundIncomeCategory(category: string): MoneyCategory {
@@ -18661,6 +18712,9 @@ export class Game {
           onEconomySnapshot: (snapshot) => {
             this.economyView = snapshot
           },
+          onEconomyEvent: (event) => {
+            if (event.type === 'research_earned') this.walletNudgeDue = true
+          },
         },
         { initialState: this.economyState ?? undefined },
       )
@@ -24976,6 +25030,10 @@ export class Game {
     this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
     this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
+    if (this.walletNudgeDue) {
+      this.walletNudgeDue = false
+      this.nudgeOpsWallet()
+    }
     this.tickAmbience(dt)
     this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
