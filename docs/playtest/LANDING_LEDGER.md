@@ -265,4 +265,6 @@ The seasonal goals card is off the main HUD. The status bar keeps `Temperate · 
 
 Quick PASS on `d988e2da155b287d085cd77ccb153b3bc177a29f` (713.3s, Node v22.14.0). 2986 tests passed, 0 failed, 9 skipped (462 files). 30-day soak reached day 30, end cash $4,559,895, stuck 0, 29 recoveries. Draw-call budgets passed. Careful bots, 15 days, passed. Report: `docs/devlog/gate/d988e2da155b287d085cd77ccb153b3bc177a29f.md`.
 
+`main` moved to `28c5b5d3` (schedule board) after that gate. The missions commit rebased onto it. The schedule-board row above stays.
+
 `npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset. `--branch main` was not used.
