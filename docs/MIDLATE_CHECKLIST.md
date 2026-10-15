@@ -97,18 +97,16 @@ Tier III rows that are data only (`pier_iii`, garage, remote screening, de-icing
 | Hub-tier checklist | PLAYABLE | Airlines desk and the Hubs sheet (`src/ui/hub/HubPanels.tsx`, `20e829d`). Progress, the next tier’s rewards, and a common-use showcase are on the card. Desk and lane lines stay on “Waiting on the desk allocator” until a lease exists, and dedicating a desk stays disabled. |
 | Late disruptions | PLAYABLE | Seven events in `src/disruptions/catalog.ts` `fc4a2c8`: volcanic ash, state visit, software outage, strike day, hub meltdown, health screening, rival price war. Quiet before FL3. Chance rises through FL5 (`src/disruptions/data.ts`). `tickDisruptions` posts the alert text. |
 | Rival airport | PLAYABLE | Bellwater is created when the player buys land (`ensureRival` in `src/game/sim.ts`) and advances each day inside `sampleEconomy`. The rival sheet is `src/rival/RivalPanel.tsx` `8bc65f8`. |
-| Scenarios | SIM ONLY | Eight templates in `src/scenarios/templates.ts` `b502bfa` (island hop, mountain gateway, cramped city, cargo night owl, mega-hub, military host, green pioneer, rescue). Validation only. The game never starts one. |
+| Scenarios | PLAYABLE | Eight templates in `src/scenarios/templates.ts` `b502bfa`. The Field Levels sheet lists them (`src/ui/nav/ScenarioPanel.tsx`). Start is opt-in: a new game does not apply one. Island Hop blocks further parcels, Cramped City keeps the night curfew after Night bank, Mountain Gateway caps strip length, and Rescue puts $250,000 on the loan book without wiring cash. The day close scores passengers, profit days, night-hub revenue, and connecting share. |
 | Airport Council | MISSING | No council type, meeting, or vote in `src/` or `docs/`. `docs/IDEAS.md` `dbd0fb0` parks “AGM / shareholder votes after IPO” as an idea. |
 | Auto bank | PLAYABLE | `scheduleAuto` defaults on. The planner labels Auto bank and Manual bank. |
 | Desk staff on posts | PLAYABLE | Hired desk staff are spread across check-in and security in the sim. |
 | Stand and staff automation tech | SIM ONLY | Economy modifiers `airside.autoStandAllocation` and `staff.dynamicAllocation` are never read (`src/economy/techTree.ts`). `ai_stand_planner` is only in `research_tier5.ts`. |
 | Bag system upgrade | PLAYABLE | The operations sheet calls `upgradeBagSystem`. |
 
-## Gaps worth a small fix
+## Still unwired
 
-These exist in the sim and a normal game does not unlock or show them.
-
-1. Scenarios. An opt-in list on the Field Levels sheet, started by the player. A new game must not apply Island Hop’s `noLandPlots` by itself.
+Green Pioneer’s net-zero goal cannot be met. `src/sustainability/carbon.ts` is not on the day book, and the sheet says so before Start.
 
 Left alone on purpose:
 

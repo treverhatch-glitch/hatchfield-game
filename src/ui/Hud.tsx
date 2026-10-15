@@ -18,6 +18,7 @@ import { StatusChip } from './StatusChip.tsx'
 import { ApronFlightCard, FlightCard } from './inspector/FlightCard.tsx'
 import { dockHasRows, runStatusChipAction, statusChipFromGame } from './statusChip.ts'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
+import { ScenarioPanel } from './nav/ScenarioPanel.tsx'
 import type { UnlockLink } from './nav/stampFacts.ts'
 import { useDesktop } from './phone/useDesktop.ts'
 import { letterOnStack } from '../phone/logic.ts'
@@ -2093,7 +2094,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   )}
                 </section>
               ) : null}
-              {manageTab === 'levels' ? <FieldLevelsPanel level={game.fieldLevel()} focus={unlockFocus} /> : null}
+              {manageTab === 'levels' ? (
+                <>
+                  <FieldLevelsPanel level={game.fieldLevel()} focus={unlockFocus} />
+                  <ScenarioPanel game={game} />
+                </>
+              ) : null}
               {manageTab === 'achievements' ? (
                 <>
                   <section data-testid="achievements-panel">

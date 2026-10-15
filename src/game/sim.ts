@@ -256,6 +256,13 @@ import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { StuckWatchdog, type RecoveryAction, type RecoveryLogEntry, type WatchSample } from './stuckWatchdog.ts'
 import { STUCK_MOVING_PHASES, STUCK_WATCH } from './stuckWatchdogData.ts'
 import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
+import {
+  scenarioById,
+  scenarioRuleLines,
+  scoreScenario,
+  type ScenarioRun,
+} from '../scenarios/schedule.ts'
+import type { Scenario } from '../scenarios/types.ts'
 import { disruptionLocus, type DisruptionLocusField } from '../disruptions/locus.ts'
 import {
   CT_TECH_ID,
@@ -1548,7 +1555,17 @@ export class Game {
   hourExpense = 0
   dayPax = 0
   dayCargo = 0
+  /** Income and expense since the last day close. Scenario profit days read the difference. */
+  dayIncome = 0
+  dayExpense = 0
   dayMark = 0
+  /** Opt-in scenario. Null until the player starts one from the Field Levels sheet. */
+  scenarioRun: ScenarioRun | null = null
+  scenarioNoPlots = false
+  scenarioCurfew = false
+  scenarioMaxRunwayM: number | null = null
+  /** Night-hub revenue already scored, so a later day only counts the new takings. */
+  scenarioNightMark = 0
   /** Cash earned in the latest finished hour. */
   incomePerHour = 0
   /** Pax / cargo cleared on the last finished day (180s). */
@@ -1866,7 +1883,14 @@ export class Game {
     this.hourExpense = 0
     this.dayPax = 0
     this.dayCargo = 0
+    this.dayIncome = 0
+    this.dayExpense = 0
     this.dayMark = 0
+    this.scenarioRun = null
+    this.scenarioNoPlots = false
+    this.scenarioCurfew = false
+    this.scenarioMaxRunwayM = null
+    this.scenarioNightMark = 0
     this.incomePerHour = 0
     this.paxPerDay = 0
     this.cargoPerDay = 0
@@ -4473,10 +4497,96 @@ export class Game {
     this.emit()
   }
 
-  /** Next expansion the parcel button would buy. Null when the grid is full or land is unsold. */
+  /** Next expansion the parcel button would buy. Null when the grid is full, land is unsold, or the scenario forbids parcels. */
   nextParcelOffer(): PlotOffer | null {
-    if (!this.site || !this.ownedPlots.length) return null
+    if (!this.site || !this.ownedPlots.length || this.scenarioNoPlots) return null
     return nextPlotOffer(this.ownedPlots, this.fieldLevel(), LAND_PLOT)
+  }
+
+  /**
+   * Starts one scenario from the Field Levels sheet.
+   * A new game does not call this. Starting again while one is open is refused.
+   */
+  startScenario(id: string): boolean {
+    const scenario = scenarioById(id)
+    if (!scenario) {
+      this.pushNews('Unknown scenario.', 'bad')
+      this.emit()
+      return false
+    }
+    if (this.scenarioRun?.status === 'running') {
+      const current = scenarioById(this.scenarioRun.id)
+      this.pushNews(`${current?.name ?? 'A scenario'} is already running.`, 'bad')
+      this.emit()
+      return false
+    }
+    this.scenarioRun = {
+      id: scenario.id,
+      startedDay: this.gameDay(),
+      status: 'running',
+      progress: 0,
+      profitDays: 0,
+    }
+    this.applyScenarioRules(scenario, true)
+    this.pushNews(`${scenario.name} started. ${scenarioRuleLines(scenario).join(' ')}`, 'ok')
+    this.emit()
+    return true
+  }
+
+  private applyScenarioRules(scenario: Scenario, fresh: boolean) {
+    this.scenarioNoPlots = scenario.constraints.noLandPlots === true
+    this.scenarioCurfew = scenario.constraints.curfew === true
+    const cap = scenario.constraints.maxRunwayM
+    this.scenarioMaxRunwayM = cap != null && Number.isFinite(cap) ? cap : null
+    this.scenarioNightMark = this.tier3.snapshot().nightHub.revenue
+    const debt = scenario.constraints.startDebt
+    if (!fresh || this.sandbox || debt == null || !(debt > 0)) return
+    this.loanBalance += debt
+    this.loanPrincipal += debt
+    this.loanOpened += debt
+    if (!this.loanProductId) this.loanProductId = 'bridge'
+  }
+
+  private closeScenarioDay(day: number, pax: number, profit: number) {
+    const run = this.scenarioRun
+    if (!run || run.status !== 'running') return
+    const scenario = scenarioById(run.id)
+    if (!scenario) return
+    const nightTotal = this.tier3.snapshot().nightHub.revenue
+    const nightRevenue = Math.max(0, nightTotal - this.scenarioNightMark)
+    this.scenarioNightMark = nightTotal
+    const carriers = this.signed.filter((id) => this.airline(id).kind === 'pax')
+    const transferShare = carriers.length
+      ? carriers.reduce((sum, id) => sum + this.connectingShare(id), 0) / carriers.length
+      : 0
+    const scored = scoreScenario(run, scenario, { day, pax, profit, nightRevenue, transferShare })
+    this.scenarioRun = scored.run
+    if (scored.run.status !== 'running') this.clearScenarioRules()
+    if (scored.news) this.pushNews(scored.news, scored.run.status === 'met' ? 'good' : 'bad')
+  }
+
+  private clearScenarioRules() {
+    this.scenarioNoPlots = false
+    this.scenarioCurfew = false
+    this.scenarioMaxRunwayM = null
+  }
+
+  private restoreScenario(saved: GameSnapshot['scenario']) {
+    this.scenarioRun = null
+    this.clearScenarioRules()
+    this.scenarioNightMark = this.tier3.snapshot().nightHub.revenue
+    if (!saved) return
+    const scenario = scenarioById(saved.id)
+    const status = saved.status
+    if (!scenario || (status !== 'running' && status !== 'met' && status !== 'missed')) return
+    this.scenarioRun = {
+      id: scenario.id,
+      startedDay: Number.isFinite(saved.startedDay) ? saved.startedDay : 0,
+      status,
+      progress: Number.isFinite(saved.progress) ? saved.progress : 0,
+      profitDays: Number.isFinite(saved.profitDays) ? saved.profitDays : 0,
+    }
+    if (status === 'running') this.applyScenarioRules(scenario, false)
   }
 
   /**
@@ -4486,7 +4596,12 @@ export class Game {
   buyParcel(): boolean {
     const offer = this.nextParcelOffer()
     if (!offer) {
-      this.pushNews(this.site ? 'No more parcels on this map.' : 'Buy land first.', 'bad')
+      const why = !this.site
+        ? 'Buy land first.'
+        : this.scenarioNoPlots
+          ? 'This scenario has no further parcels.'
+          : 'No more parcels on this map.'
+      this.pushNews(why, 'bad')
       this.emit()
       return false
     }
@@ -4501,6 +4616,11 @@ export class Game {
   buyPlot(id: string): boolean {
     if (!this.site) {
       this.pushNews('Buy land first.', 'bad')
+      this.emit()
+      return false
+    }
+    if (this.scenarioNoPlots) {
+      this.pushNews('This scenario has no further parcels.', 'bad')
       this.emit()
       return false
     }
@@ -5868,6 +5988,7 @@ export class Game {
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
       achievements: this.achievements.save(),
+      scenario: this.scenarioRun ? { ...this.scenarioRun } : undefined,
     }
     try {
       localStorage.setItem(
@@ -6053,6 +6174,7 @@ export class Game {
       }
       this.hubLinks = []
       this.tier3 = Tier3Session.restore(s.tier3)
+      this.restoreScenario(s.scenario)
       this.powerPlantTier = s.powerPlantTier === 2 || s.powerPlantTier === 3 ? s.powerPlantTier : 1
       this.hubAirlines = s.hubAirlines ?? []
       this.hubTiers = readHubTiers(s.hubTiers)
@@ -6226,6 +6348,7 @@ export class Game {
   noteIncome(amount: number, category: MoneyCategory = 'landing_fees') {
     if (!(amount > 0)) return
     this.hourIncome += amount
+    this.dayIncome += amount
     const stamp = this.simMinutes()
     // A stocked counter sells all day. One retail line per game day keeps
     // the cash and the category total, without a journal row per serving.
@@ -6343,7 +6466,10 @@ export class Game {
   }
 
   noteExpense(amount: number) {
-    if (amount > 0) this.hourExpense += amount
+    if (amount > 0) {
+      this.hourExpense += amount
+      this.dayExpense += amount
+    }
   }
 
   /** Pax and freight cleared when a turnaround finishes — feeds the day charts. */
@@ -6365,17 +6491,23 @@ export class Game {
     let paxSnap = this.dayPax
     let cargoSnap = this.dayCargo
     if (this.clock - this.dayMark >= day) {
-      this.paxPerDay = this.dayPax
+      const closedDay = Math.floor(this.dayMark / day)
+      const closedPax = this.dayPax
+      const profit = this.dayIncome - this.dayExpense
+      this.paxPerDay = closedPax
       this.cargoPerDay = this.dayCargo
       paxSnap = this.paxPerDay
       cargoSnap = this.cargoPerDay
       this.dayPax = 0
       this.dayCargo = 0
+      this.dayIncome = 0
+      this.dayExpense = 0
       this.dayMark = this.clock
       const retail = this.negotiationBridge?.rollDay() ?? 0
       if (retail > 0) this.earn(retail, 'ULCC retail')
       this.advanceRivalDay()
       this.advancePriceWarDay()
+      this.closeScenarioDay(closedDay, closedPax, profit)
     }
     if (this.econHour < hour) return
     this.incomePerHour = Math.round(this.hourIncome)
@@ -14781,9 +14913,10 @@ export class Game {
       }
     }
     // Soft night curfew — pax slip after dark until Night bank is researched.
+    // A scenario curfew stays on after that research.
     if (
       this.isNight() &&
-      !this.hasResearch('night_bank') &&
+      (this.scenarioCurfew || !this.hasResearch('night_bank')) &&
       this.nightCurfewCool <= 0 &&
       Math.random() < dt * 0.055
     ) {
@@ -14798,7 +14931,9 @@ export class Game {
         this.nightCurfewCool = 28
         this.adjustHeat(soon.airline, -0.35)
         this.pushNews(
-          `${soon.flightNo} held for night curfew — research Night bank to open the bank after dark.`,
+          this.scenarioCurfew
+            ? `${soon.flightNo} held for the scenario curfew.`
+            : `${soon.flightNo} held for night curfew — research Night bank to open the bank after dark.`,
           'bad',
         )
       }
@@ -18055,6 +18190,27 @@ export class Game {
       }
     }
     const cells = this.prefabRunway(v, klass)
+    if (this.scenarioMaxRunwayM != null) {
+      let minC = cells[0]?.c ?? 0
+      let maxC = minC
+      let minR = cells[0]?.r ?? 0
+      let maxR = minR
+      for (const cell of cells) {
+        if (cell.c < minC) minC = cell.c
+        if (cell.c > maxC) maxC = cell.c
+        if (cell.r < minR) minR = cell.r
+        if (cell.r > maxR) maxR = cell.r
+      }
+      const lengthM = (Math.max(maxC - minC, maxR - minR) + 1) * METERS_PER_CELL
+      if (lengthM > this.scenarioMaxRunwayM) {
+        this.pushNews(
+          `This scenario caps the strip at ${this.scenarioMaxRunwayM} m. This stamp is ${lengthM} m.`,
+          'bad',
+        )
+        this.emit()
+        return
+      }
+    }
     const blocked = this.placementBlockReason('runway', cells, v, 'runway')
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||

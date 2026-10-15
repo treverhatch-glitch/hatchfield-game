@@ -1100,6 +1100,14 @@ export interface GameSnapshot {
   crewHotelNights?: number
   /** Achievement tracking state. */
   achievements?: any
+  /** Opt-in scenario. Missing on older saves, and on a game that never started one. */
+  scenario?: {
+    id: string
+    startedDay: number
+    status: 'running' | 'met' | 'missed'
+    progress: number
+    profitDays: number
+  }
 }
 
 /** A placed building that is still a construction site. */
