@@ -124,6 +124,17 @@ export interface PhoneWorld {
     secondsLeft: number
   } | null
   warn: { key: string; blurb: string } | null
+  inbound: {
+    id: string
+    title: string
+    blurb: string
+    priority: boolean
+    needs: string
+    pay: string
+    secondsLeft: number
+  } | null
+  threat: { title: string; blurb: string; secondsLeft: number } | null
+  emergency: { title: string; blurb: string; secondsLeft: number } | null
   advisor: {
     id: string
     airlineName: string
@@ -167,6 +178,9 @@ export function emptyPhoneWorld(): PhoneWorld {
     field: null,
     cargo: null,
     warn: null,
+    inbound: null,
+    threat: null,
+    emergency: null,
     advisor: [],
     rivalNotes: [],
     nudges: [],
@@ -575,6 +589,75 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       arrives: true,
       secondsLeft: cargo.secondsLeft,
       actions: [btn('dismiss', 'Dismiss', { type: 'ack', key: `cargo:${cargo.id}` })],
+    })
+    if (built) cards.push(built)
+  }
+
+  const inbound = world.inbound
+  if (inbound) {
+    const title = inbound.title
+    const built = card({
+      id: 'inbound',
+      key: `inbound:${inbound.id}`,
+      tab: 'messages',
+      kind: 'inbound',
+      from: inbound.priority ? 'Priority traffic' : 'Traffic',
+      title,
+      preview: phonePreview(title),
+      body: `${inbound.blurb}\n${inbound.needs}\n${inbound.pay}`,
+      tone: inbound.priority ? 'warn' : 'ok',
+      arrives: true,
+      secondsLeft: inbound.secondsLeft,
+      actions: [
+        btn('accept', 'Accept', { type: 'accept-inbound', requestId: inbound.id }, { primary: true }),
+        btn('refuse', 'Refuse', { type: 'refuse-inbound', requestId: inbound.id }),
+      ],
+    })
+    if (built) cards.push(built)
+  }
+
+  const threat = world.threat
+  if (threat) {
+    const built = card({
+      id: 'threat',
+      key: `threat:${threat.title}`,
+      tab: 'messages',
+      kind: 'threat',
+      from: 'Tower',
+      title: threat.title,
+      preview: phonePreview(threat.title),
+      body: threat.blurb,
+      tone: 'bad',
+      holdId: 'threat',
+      arrives: true,
+      secondsLeft: threat.secondsLeft,
+      actions: [
+        btn('scramble', 'Scramble', { type: 'scramble-threat' }, { primary: true }),
+        btn('ignore', 'Ignore', { type: 'ignore-threat' }),
+      ],
+    })
+    if (built) cards.push(built)
+  }
+
+  const emergency = world.emergency
+  if (emergency) {
+    const built = card({
+      id: 'emergency',
+      key: `emergency:${emergency.title}`,
+      tab: 'messages',
+      kind: 'emergency',
+      from: 'Operations',
+      title: emergency.title,
+      preview: phonePreview(emergency.title),
+      body: emergency.blurb,
+      tone: 'warn',
+      holdId: 'emergency',
+      arrives: true,
+      secondsLeft: emergency.secondsLeft,
+      actions: [
+        btn('host', 'Host landing', { type: 'host-emergency' }, { primary: true }),
+        btn('refuse', 'Refuse', { type: 'refuse-emergency' }),
+      ],
     })
     if (built) cards.push(built)
   }

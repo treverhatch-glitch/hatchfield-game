@@ -30,6 +30,12 @@ function host(): PhoneCommandHost {
     dropFuelTerm: vi.fn(),
     orderPipelineSpot: vi.fn(),
     orderBargeSpot: vi.fn(),
+    acceptInbound: vi.fn(),
+    refuseInbound: vi.fn(),
+    scrambleThreat: vi.fn(),
+    ignoreThreat: vi.fn(),
+    hostEmergency: vi.fn(),
+    refuseEmergency: vi.fn(),
     emit: vi.fn(),
   }
 }
@@ -63,5 +69,13 @@ describe('phone commands', () => {
     expect(desk.declineFieldTask).toHaveBeenCalledOnce()
     expect(desk.dismissAdvisor).toHaveBeenCalledWith('advisor-standing-northline-1')
     expect(desk.emit).toHaveBeenCalledOnce()
+  })
+
+  it('accepts and refuses an inbound card', () => {
+    const desk = host()
+    dispatchPhoneAction(desk, { type: 'accept-inbound', requestId: 'in-1' })
+    dispatchPhoneAction(desk, { type: 'refuse-inbound', requestId: 'in-1' })
+    expect(desk.acceptInbound).toHaveBeenCalledWith('in-1')
+    expect(desk.refuseInbound).toHaveBeenCalledWith('in-1')
   })
 })

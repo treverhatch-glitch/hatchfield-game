@@ -487,16 +487,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               First hour
             </button>
           ) : null}
-          {game.inboundOffer() ? (
-            <button
-              type="button"
-              data-testid="peek-offer"
-              className={peek === 'offer' ? 'on' : ''}
-              onClick={() => openPeek('offer')}
-            >
-              {game.inboundOffer()?.title ?? 'Offer'}
-            </button>
-          ) : null}
           {game.site ? (
             <button
               type="button"
@@ -584,50 +574,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </div>
       ) : null}
 
-      {game.inboundOffer() && (!inHall || peek === 'offer') ? (
-        <aside
-          className={`inbound-panel${game.showCoach() && !inHall ? ' beside-coach' : ''}`}
-          aria-label="Inbound offer"
-          data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
-          {(() => {
-            const card = game.inboundOffer()
-            if (!card) return null
-            return (
-              <div className="inbound-card">
-                <header>
-                  <span className="kind">{card.priority ? 'Priority' : 'Traffic'}</span>
-                  <LiveText className="timer" read={() => `${Math.ceil(game.inboundOffer()?.secondsLeft ?? 0)}s`} />
-                </header>
-                <h3>{card.title}</h3>
-                <p>{card.blurb}</p>
-                <p className="needs">{card.needs}</p>
-                <p className="pay">
-                  {card.reward > 0 ? `Fee ${money(card.reward)}` : `Day-rate ${money(card.dailyFee)}`}
-                  {card.fine > 0 ? ` · refuse ${money(card.fine)}` : ''}
-                  {` · ${card.stayDays}d`}
-                </p>
-                <div className="row">
-                  <button
-                    type="button"
-                    className="on"
-                    data-testid="inbound-accept"
-                    onClick={() => game.acceptInbound(card.id)}
-                  >
-                    Accept
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="inbound-refuse"
-                    onClick={() => game.refuseInbound(card.id)}
-                  >
-                    Refuse
-                  </button>
-                </div>
-              </div>
-            )
-          })()}
-        </aside>
-      ) : null}
       {!panel && game.pendingYearReport() ? (
         <YearReportCard
           report={game.pendingYearReport()!}
@@ -652,7 +598,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       ) : null}
       <div
         id="letter-stack"
-        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
+        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}`}
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
@@ -834,6 +780,30 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               tone: 'warn',
               left: null,
               cardData: card,
+            })
+          }
+          const fuelOut = game.alerts.ranked().find((alert) => alert.key === 'cond:fuel-out')
+          if (fuelOut) {
+            letters.push({
+              id: 'fuel-out',
+              kind: 'Fuel outage',
+              from: 'Operations',
+              title: fuelOut.title,
+              blurb: fuelOut.detail,
+              tone: 'bad',
+              left: null,
+            })
+          }
+          const crash = game.news.find((item) => item.text.startsWith('CRASH on') && item.age < 90)
+          if (crash) {
+            letters.push({
+              id: 'crash',
+              kind: 'Crash',
+              from: 'Tower',
+              title: 'Crash on the field',
+              blurb: crash.text,
+              tone: 'bad',
+              left: null,
             })
           }
           if (desktopPhone) {

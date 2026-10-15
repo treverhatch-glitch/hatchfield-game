@@ -49,6 +49,24 @@ function hubPhoneOffer(game: Game, airlineName: string): NonNullable<PhoneWorld[
   }
 }
 
+function inboundPhone(game: Game): PhoneWorld['inbound'] {
+  const card = game.inboundOffer()
+  if (!card) return null
+  const pay =
+    (card.reward > 0 ? `Fee ${money(card.reward)}` : `Day-rate ${money(card.dailyFee)}`) +
+    (card.fine > 0 ? ` · refuse ${money(card.fine)}` : '') +
+    ` · ${card.stayDays}d`
+  return {
+    id: card.id,
+    title: card.title,
+    blurb: card.blurb,
+    priority: card.priority,
+    needs: card.needs,
+    pay,
+    secondsLeft: Math.ceil(card.secondsLeft),
+  }
+}
+
 function signedRow(game: Game, id: string) {
   return { id, name: game.airline(id).name, standing: Math.round(game.standingOf(id)) }
 }
@@ -208,6 +226,26 @@ export function readPhoneWorld(game: Game): PhoneWorld {
               .join(' · ')}. Standing ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
           }
         : null,
+    inbound: inboundPhone(game),
+    threat: game.pendingThreat
+      ? {
+          title: game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security alert',
+          blurb: game.pendingThreat.blurb,
+          secondsLeft: Math.ceil(game.pendingThreat.deadline),
+        }
+      : null,
+    emergency: game.pendingEmergency
+      ? {
+          title:
+            game.pendingEmergency.kind === 'tanker_mx'
+              ? 'Firefighting plane · refuel and maintenance'
+              : game.pendingEmergency.kind === 'tanker'
+                ? 'Firefighting plane · refuel only'
+                : 'Weather divert',
+          blurb: `${game.pendingEmergency.blurb} · ${money(game.pendingEmergency.fee)} · Needs ${game.emergencyNeedsLine(game.pendingEmergency)}`,
+          secondsLeft: Math.ceil(game.pendingEmergency.deadline),
+        }
+      : null,
     rivalNotes: game.hubRivalPhone.filter((note) => !game.letterAcked(`rival:${note.id}`)),
     nudges: game.hubNudges.map((row) => ({
       airlineId: row.airlineId,
@@ -245,6 +283,9 @@ export function readPhoneCards(game: Game): PhoneCard[] {
     else if (item.id === 'cargo-vol') item.left = () => Math.ceil(game.cargoVolumeLeft())
     else if (item.id === 'layover-live') item.left = () => Math.ceil(game.layover?.remaining ?? 0)
     else if (item.id === 'fuel-spot') item.left = () => Math.max(0, Math.ceil((game.spotOffer?.expiresAt ?? game.clock) - game.clock))
+    else if (item.id === 'inbound') item.left = () => Math.ceil(game.inboundOffer()?.secondsLeft ?? 0)
+    else if (item.id === 'threat') item.left = () => Math.ceil(game.pendingThreat?.deadline ?? 0)
+    else if (item.id === 'emergency') item.left = () => Math.ceil(game.pendingEmergency?.deadline ?? 0)
   }
   return cards
 }

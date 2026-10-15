@@ -32,6 +32,16 @@ export function phoneHost(game: Game): PhoneCommandHost {
     dropFuelTerm: () => game.dropFuelTerm(),
     orderPipelineSpot: () => game.orderPipelineSpot(),
     orderBargeSpot: () => game.orderBargeSpot(),
+    acceptInbound: (requestId) => {
+      game.acceptInbound(requestId)
+    },
+    refuseInbound: (requestId) => {
+      game.refuseInbound(requestId)
+    },
+    scrambleThreat: () => game.resolveThreat('scramble'),
+    ignoreThreat: () => game.resolveThreat('ignore'),
+    hostEmergency: () => game.resolveEmergency('accept'),
+    refuseEmergency: () => game.resolveEmergency('refuse'),
     emit: () => game.emit(),
   }
 }
@@ -113,6 +123,24 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'order-barge-spot':
       host.orderBargeSpot()
+      return
+    case 'accept-inbound':
+      host.acceptInbound(action.requestId)
+      return
+    case 'refuse-inbound':
+      host.refuseInbound(action.requestId)
+      return
+    case 'scramble-threat':
+      host.scrambleThreat()
+      return
+    case 'ignore-threat':
+      host.ignoreThreat()
+      return
+    case 'host-emergency':
+      host.hostEmergency()
+      return
+    case 'refuse-emergency':
+      host.refuseEmergency()
       return
     default: {
       const never: never = action

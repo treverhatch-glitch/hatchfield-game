@@ -27,6 +27,9 @@ const MESSAGE_KINDS = new Set([
   'message',
   'rival',
   'nudge',
+  'inbound',
+  'threat',
+  'emergency',
 ])
 
 /** Letter-stack ids that move onto the phone on desktop. Emergencies and threats stay off it. */
@@ -40,6 +43,8 @@ const OWNED_LETTER_IDS = new Set([
   'field',
   'cargo-vol',
   'warn',
+  'threat',
+  'emergency',
 ])
 
 export function createPhoneShell(): PhoneShell {
@@ -74,14 +79,20 @@ export function phoneOwnsLetter(id: string): boolean {
   return OWNED_LETTER_IDS.has(id) || id.startsWith('advisor-standing-')
 }
 
+/** Letters that may cover the play view. Everything else rides the phone. */
+const SCREEN_INTERRUPT_IDS = new Set(['crash', 'fuel-out'])
+
+export function screenInterrupt(id: string): boolean {
+  return SCREEN_INTERRUPT_IDS.has(id)
+}
+
 /**
- * Desktop reads phone-owned letters on the handset. The contract letter stays
- * on the stack as well, and the phone still flashes its preview.
+ * Desktop reads phone-owned letters on the handset, including contracts.
+ * Only a crash or a fuel outage stays on the stack.
  */
 export function letterOnStack(id: string, desktopPhone: boolean): boolean {
   if (!desktopPhone) return true
-  if (id === 'contract') return true
-  return !phoneOwnsLetter(id)
+  return screenInterrupt(id)
 }
 
 export function arrivalKeys(cards: readonly Pick<PhoneCard, 'key' | 'arrives'>[]): string[] {

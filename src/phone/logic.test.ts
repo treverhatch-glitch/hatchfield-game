@@ -109,26 +109,42 @@ describe('phone shell', () => {
 
 describe('what stays off the phone', () => {
   it('drops hints, tip chips, alerts, and emergencies', () => {
-    for (const kind of ['hint', 'tip', 'alert', 'emergency', 'threat']) {
+    for (const kind of ['hint', 'tip', 'alert']) {
       expect(classifyPhoneKind(kind)).toBeNull()
     }
+    expect(classifyPhoneKind('inbound')).toBe('messages')
+    expect(classifyPhoneKind('threat')).toBe('messages')
+    expect(classifyPhoneKind('emergency')).toBe('messages')
     expect(classifyPhoneKind('contract')).toBe('messages')
     expect(classifyPhoneKind('signed')).toBe('contracts')
     expect(classifyPhoneKind('layover')).toBe('messages')
   })
 
-  it('claims contract letters and desk notes, not threats or emergencies', () => {
+  it('claims contract letters and desk notes, and keeps crash and fuel-out off the handset', () => {
     expect(phoneOwnsLetter('contract')).toBe(true)
     expect(phoneOwnsLetter('field')).toBe(true)
+    expect(phoneOwnsLetter('cargo-vol')).toBe(true)
+    expect(phoneOwnsLetter('warn')).toBe(true)
     expect(phoneOwnsLetter('advisor-standing-northline-10')).toBe(true)
-    expect(phoneOwnsLetter('threat')).toBe(false)
-    expect(phoneOwnsLetter('emergency')).toBe(false)
+    expect(phoneOwnsLetter('threat')).toBe(true)
+    expect(phoneOwnsLetter('emergency')).toBe(true)
+    expect(phoneOwnsLetter('crash')).toBe(false)
+    expect(phoneOwnsLetter('fuel-out')).toBe(false)
   })
 
-  it('keeps the contract letter on the stack while the phone still owns it', () => {
-    expect(letterOnStack('contract', true)).toBe(true)
+  it('keeps only a crash or a fuel outage on the desktop stack', () => {
+    expect(phoneOwnsLetter('contract')).toBe(true)
+    expect(phoneOwnsLetter('field')).toBe(true)
+    expect(phoneOwnsLetter('cargo-vol')).toBe(true)
+    expect(phoneOwnsLetter('warn')).toBe(true)
+    expect(letterOnStack('contract', true)).toBe(false)
     expect(letterOnStack('field', true)).toBe(false)
-    expect(letterOnStack('threat', true)).toBe(true)
-    expect(letterOnStack('field', false)).toBe(true)
+    expect(letterOnStack('cargo-vol', true)).toBe(false)
+    expect(letterOnStack('warn', true)).toBe(false)
+    expect(letterOnStack('threat', true)).toBe(false)
+    expect(letterOnStack('inbound', true)).toBe(false)
+    expect(letterOnStack('crash', true)).toBe(true)
+    expect(letterOnStack('fuel-out', true)).toBe(true)
+    expect(letterOnStack('contract', false)).toBe(true)
   })
 })

@@ -8,7 +8,8 @@ export type PhoneTab = 'contracts' | 'messages'
 export type PhoneTone = 'ok' | 'good' | 'warn' | 'bad'
 
 /** Kinds the phone refuses. They stay on their own panels. */
-export const PHONE_EXCLUDED_KINDS = ['hint', 'tip', 'alert', 'emergency', 'threat'] as const
+/** Hints, tips, and the alert dock stay off the handset. Crash and fuel-out are screen interrupts, not cards. */
+export const PHONE_EXCLUDED_KINDS = ['hint', 'tip', 'alert'] as const
 
 export type PhoneExcludedKind = (typeof PHONE_EXCLUDED_KINDS)[number]
 
@@ -38,6 +39,12 @@ export type PhoneAction =
   | { type: 'drop-fuel-term' }
   | { type: 'order-pipeline-spot' }
   | { type: 'order-barge-spot' }
+  | { type: 'accept-inbound'; requestId: string }
+  | { type: 'refuse-inbound'; requestId: string }
+  | { type: 'scramble-threat' }
+  | { type: 'ignore-threat' }
+  | { type: 'host-emergency' }
+  | { type: 'refuse-emergency' }
 
 export interface PhoneButton {
   id: string
@@ -111,5 +118,11 @@ export interface PhoneCommandHost {
   dropFuelTerm(): void
   orderPipelineSpot(): void
   orderBargeSpot(): void
+  acceptInbound(requestId: string): void
+  refuseInbound(requestId: string): void
+  scrambleThreat(): void
+  ignoreThreat(): void
+  hostEmergency(): void
+  refuseEmergency(): void
   emit(): void
 }

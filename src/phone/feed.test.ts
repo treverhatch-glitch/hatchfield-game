@@ -73,6 +73,26 @@ describe('phone feed', () => {
     ])
     expect(cards.find((card) => card.id === 'field')?.body).toContain('fine $1,600 if left to expire')
     expect(cards.find((card) => card.id === 'field')?.actions[0]?.disabled).toBe(true)
+    const inbound = buildPhoneFeed(
+      world({
+        inbound: {
+          id: 'in-1',
+          title: 'Night freighter',
+          blurb: 'Wants a stand tonight',
+          priority: true,
+          needs: 'A code-C stand',
+          pay: 'Fee $4,000 · 1d',
+          secondsLeft: 40,
+        },
+      }),
+    )
+    expect(inbound[0]).toMatchObject({
+      id: 'inbound',
+      kind: 'inbound',
+      tab: 'messages',
+      from: 'Priority traffic',
+    })
+    expect(inbound[0]?.actions.map((action) => action.action.type)).toEqual(['accept-inbound', 'refuse-inbound'])
     for (const kind of PHONE_EXCLUDED_KINDS) {
       expect(cards.some((card) => card.kind === kind)).toBe(false)
     }

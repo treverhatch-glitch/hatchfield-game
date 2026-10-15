@@ -92,8 +92,9 @@ describe('hall mood stays on the 0–100 scale', () => {
 })
 
 describe('the opening contract letter', () => {
-  it('is on the letter stack and flashes the phone preview within 20s', () => {
-    expect(letterOnStack('contract', true)).toBe(true)
+  it('flashes the phone preview within 20s and stays off the letter stack', () => {
+    expect(letterOnStack('contract', true)).toBe(false)
+    expect(letterOnStack('crash', true)).toBe(true)
     for (const seed of [1, 7, 11, 23]) {
       withSeed(seed, () => {
         const game = passengerField()
@@ -102,10 +103,11 @@ describe('the opening contract letter', () => {
         expect(game.offer, `seed ${seed}`).not.toBeNull()
         expect(game.clock, `seed ${seed} at ${game.clock}s`).toBeLessThanOrEqual(20)
         const cards = readPhoneCards(game)
+        const contract = cards.find((card) => card.id === 'contract')
+        expect(contract?.arrives, `seed ${seed}`).toBe(true)
+        expect(contract?.preview, `seed ${seed}`).toMatch(/wants a contract/)
         const shell = phoneSync(createPhoneShell(), arrivalKeys(cards))
-        const preview = flashPreview(cards, shell.flashKey)
-        expect(preview, `seed ${seed}`).toMatch(/wants a contract/)
-        expect(cards.some((card) => card.id === 'contract' && card.arrives)).toBe(true)
+        expect(flashPreview(cards, shell.flashKey), `seed ${seed}`).toBeTruthy()
       })
     }
   })

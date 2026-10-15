@@ -3,7 +3,7 @@ import { Game } from '../game/sim.ts'
 import { readPhoneCards } from './readGame.ts'
 
 describe('readPhoneCards', () => {
-  it('reads a contract letter and leaves emergencies, threats, hints, and alerts out', () => {
+  it('reads a contract letter, routes threat and divert to the phone, and leaves hints and alerts out', () => {
     const game = new Game()
     game.offer = { airline: 'northline', age: 0, deadline: 90 }
     game.pendingThreat = {
@@ -30,7 +30,7 @@ describe('readPhoneCards', () => {
     )
 
     const cards = readPhoneCards(game)
-    expect(cards.map((card) => card.id)).toEqual(['contract', 'contract-file'])
+    expect(cards.map((card) => card.id)).toEqual(['contract', 'contract-file', 'threat', 'emergency'])
     const letter = cards.find((card) => card.id === 'contract')
     expect(letter?.tab).toBe('messages')
     expect(letter?.actions.map((action) => action.id)).toEqual(['sign', 'decline', 'negotiate', 'later'])
@@ -41,8 +41,10 @@ describe('readPhoneCards', () => {
     )
     expect(cards.find((card) => card.id === 'contract-file')?.tab).toBe('contracts')
     const blob = JSON.stringify(cards)
-    expect(blob).not.toContain('Hard threat')
-    expect(blob).not.toContain('Weather divert')
+    expect(blob).toContain('Hard threat')
+    expect(blob).toContain('Weather divert')
+    expect(cards.find((card) => card.id === 'threat')?.actions.map((action) => action.id)).toEqual(['scramble', 'ignore'])
+    expect(cards.find((card) => card.id === 'emergency')?.actions.map((action) => action.id)).toEqual(['host', 'refuse'])
     expect(blob).not.toContain('Sign a carrier')
     expect(blob).not.toContain('Fuel farm dry')
     expect(game.pendingEmergency?.id).toBe('em-1')
