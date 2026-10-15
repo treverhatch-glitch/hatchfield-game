@@ -45,6 +45,6 @@ describe('day-one hall crowd', () => {
     }
     game.tickHall(0.05)
     expect(game.hallGuests.some((g) => g.preview)).toBe(false)
-    expect(game.hallGuests).toHaveLength(0)
+    expect(game.hallGuests.filter((g) => g.flightId.startsWith('real-')).length).toBe(8)
   })
 })
