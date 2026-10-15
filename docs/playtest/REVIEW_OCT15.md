@@ -37,7 +37,7 @@ Every fix below landed in its own commit with a test that fails on the old code.
 
 | Area | Bug | Fix |
 |---|---|---|
-| Desk locks | The save dropped each lock's mode, so a Preferred desk came back as Dedicated. That counted toward hub tiers the player had not paid for. | The mode is saved and restored. |
+| Desk locks | The save dropped each lock's mode, so a Preferred desk came back as Dedicated. That counted toward hub tiers the player had not paid for. | Fixed on `main` in parallel by be73061. This branch uses that fix. |
 | Stand migration | Old saves migrated without `standAccess`, so the legacy proximity rule kept applying. A migrated remote stand later got a free jetway when a hall was built nearby. | Migration pins `jetway` or `remote`. |
 
 I also probed old saves (schema 1 to 5, missing fields, stray NaN) and found no crash or NaN after load.
