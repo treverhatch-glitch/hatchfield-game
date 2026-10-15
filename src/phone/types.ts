@@ -2,6 +2,7 @@
  * In-game phone. These types are the sim-side model: no DOM, no React.
  * Hints, tip chips, alerts, and emergencies are not phone material.
  */
+import type { CouncilChoiceId } from '../council/types.ts'
 
 export type PhoneTab = 'contracts' | 'messages'
 
@@ -45,6 +46,7 @@ export type PhoneAction =
   | { type: 'ignore-threat' }
   | { type: 'host-emergency' }
   | { type: 'refuse-emergency' }
+  | { type: 'vote-council'; requestId: string; choiceId: CouncilChoiceId }
 
 export interface PhoneButton {
   id: string
@@ -124,5 +126,6 @@ export interface PhoneCommandHost {
   ignoreThreat(): void
   hostEmergency(): void
   refuseEmergency(): void
+  voteCouncil(requestId: string, choiceId: CouncilChoiceId): void
   emit(): void
 }

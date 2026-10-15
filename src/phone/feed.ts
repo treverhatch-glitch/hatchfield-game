@@ -133,6 +133,22 @@ export interface PhoneWorld {
     pay: string
     secondsLeft: number
   } | null
+  council: {
+    id: string
+    title: string
+    sponsor: string
+    request: string
+    threshold: number
+    choices: {
+      id: 'full' | 'compromise' | 'decline'
+      label: string
+      detail: string
+      costText: string
+      support: number
+      pass: boolean
+      disabled: boolean
+    }[]
+  } | null
   threat: { title: string; blurb: string; secondsLeft: number } | null
   emergency: { title: string; blurb: string; secondsLeft: number } | null
   advisor: {
@@ -179,6 +195,7 @@ export function emptyPhoneWorld(): PhoneWorld {
     cargo: null,
     warn: null,
     inbound: null,
+    council: null,
     threat: null,
     emergency: null,
     advisor: [],
@@ -612,6 +629,35 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
         btn('accept', 'Accept', { type: 'accept-inbound', requestId: inbound.id }, { primary: true }),
         btn('refuse', 'Refuse', { type: 'refuse-inbound', requestId: inbound.id }),
       ],
+    })
+    if (built) cards.push(built)
+  }
+
+  const council = world.council
+  if (council) {
+    const title = council.title
+    const built = card({
+      id: 'council',
+      key: `council:${council.id}`,
+      tab: 'messages',
+      kind: 'council',
+      from: council.sponsor,
+      title,
+      preview: phonePreview(title),
+      body: `${council.request}\nNeeds ${council.threshold}% support.\n${council.choices
+        .map((choice) => `${choice.label} · ${choice.costText} · ${choice.support}% ${choice.pass ? 'likely pass' : 'likely fall'}`)
+        .join('\n')}`,
+      tone: 'warn',
+      arrives: true,
+      secondsLeft: null,
+      actions: council.choices.map((choice) =>
+        btn(
+          choice.id,
+          choice.label,
+          { type: 'vote-council', requestId: council.id, choiceId: choice.id },
+          { primary: choice.id === 'full', disabled: choice.disabled },
+        ),
+      ),
     })
     if (built) cards.push(built)
   }

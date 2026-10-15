@@ -93,6 +93,29 @@ describe('phone feed', () => {
       from: 'Priority traffic',
     })
     expect(inbound[0]?.actions.map((action) => action.action.type)).toEqual(['accept-inbound', 'refuse-inbound'])
+    const council = buildPhoneFeed(
+      world({
+        council: {
+          id: 'surface-access',
+          title: 'Regional access compact',
+          sponsor: 'Transit committee',
+          request: 'Share the cost of late buses.',
+          threshold: 64,
+          choices: [
+            { id: 'full', label: 'Underwrite the compact', detail: 'Full package', costText: '$45,000', support: 70, pass: true, disabled: false },
+            { id: 'compromise', label: 'Fund the curb works', detail: 'Smaller package', costText: '$18,000', support: 55, pass: false, disabled: false },
+            { id: 'decline', label: 'Decline funding', detail: 'Keep the cash', costText: 'no cash cost', support: 40, pass: false, disabled: false },
+          ],
+        },
+      }),
+    )
+    expect(council[0]).toMatchObject({ id: 'council', kind: 'council', tab: 'messages', arrives: true, from: 'Transit committee' })
+    expect(council[0]?.actions.map((action) => action.action)).toEqual([
+      { type: 'vote-council', requestId: 'surface-access', choiceId: 'full' },
+      { type: 'vote-council', requestId: 'surface-access', choiceId: 'compromise' },
+      { type: 'vote-council', requestId: 'surface-access', choiceId: 'decline' },
+    ])
+    expect(council[0]?.actions[0]?.primary).toBe(true)
     for (const kind of PHONE_EXCLUDED_KINDS) {
       expect(cards.some((card) => card.kind === kind)).toBe(false)
     }

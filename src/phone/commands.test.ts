@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { dispatchPhoneAction, phoneHost } from './commands.ts'
 import type { PhoneCommandHost } from './types.ts'
+import { FIELD_LEVEL_XP } from '../game/catalog.ts'
 import { Game } from '../game/sim.ts'
+import { readPhoneCards } from './readGame.ts'
 
 function host(): PhoneCommandHost {
   return {
@@ -36,6 +38,7 @@ function host(): PhoneCommandHost {
     ignoreThreat: vi.fn(),
     hostEmergency: vi.fn(),
     refuseEmergency: vi.fn(),
+    voteCouncil: vi.fn(),
     emit: vi.fn(),
   }
 }
@@ -69,6 +72,24 @@ describe('phone commands', () => {
     expect(desk.declineFieldTask).toHaveBeenCalledOnce()
     expect(desk.dismissAdvisor).toHaveBeenCalledWith('advisor-standing-northline-1')
     expect(desk.emit).toHaveBeenCalledOnce()
+  })
+
+  it('pings a pending council request and records the vote from the phone', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.fieldXp = FIELD_LEVEL_XP[8]
+    game.cash = 200_000
+    game.pokeCouncil()
+    const pending = game.councilView().pending
+    expect(pending).not.toBeNull()
+    const council = readPhoneCards(game).find((card) => card.kind === 'council')
+    expect(council?.arrives).toBe(true)
+    expect(council?.key).toBe(`council:${pending!.id}`)
+    dispatchPhoneAction(phoneHost(game), { type: 'vote-council', requestId: pending!.id, choiceId: 'decline' })
+    expect(game.councilView().pending).toBeNull()
+    expect(game.councilView().votes[0]?.choiceId).toBe('decline')
   })
 
   it('accepts and refuses an inbound card', () => {

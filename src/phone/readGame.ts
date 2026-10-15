@@ -49,6 +49,27 @@ function hubPhoneOffer(game: Game, airlineName: string): NonNullable<PhoneWorld[
   }
 }
 
+function councilPhone(game: Game): PhoneWorld['council'] {
+  const pending = game.councilView().pending
+  if (!pending) return null
+  return {
+    id: pending.id,
+    title: pending.title,
+    sponsor: pending.sponsor,
+    request: pending.request,
+    threshold: pending.threshold,
+    choices: pending.choices.map((choice) => ({
+      id: choice.id,
+      label: choice.label,
+      detail: choice.detail,
+      costText: choice.cost ? money(choice.cost) : 'no cash cost',
+      support: choice.projectedSupport,
+      pass: choice.projectedPass,
+      disabled: !choice.affordable,
+    })),
+  }
+}
+
 function inboundPhone(game: Game): PhoneWorld['inbound'] {
   const card = game.inboundOffer()
   if (!card) return null
@@ -227,6 +248,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
           }
         : null,
     inbound: inboundPhone(game),
+    council: councilPhone(game),
     threat: game.pendingThreat
       ? {
           title: game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security alert',

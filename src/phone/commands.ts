@@ -42,6 +42,7 @@ export function phoneHost(game: Game): PhoneCommandHost {
     ignoreThreat: () => game.resolveThreat('ignore'),
     hostEmergency: () => game.resolveEmergency('accept'),
     refuseEmergency: () => game.resolveEmergency('refuse'),
+    voteCouncil: (requestId, choiceId) => game.answerCouncilRequest(requestId, choiceId),
     emit: () => game.emit(),
   }
 }
@@ -141,6 +142,9 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'refuse-emergency':
       host.refuseEmergency()
+      return
+    case 'vote-council':
+      host.voteCouncil(action.requestId, action.choiceId)
       return
     default: {
       const never: never = action
