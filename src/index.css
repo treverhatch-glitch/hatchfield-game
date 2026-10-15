@@ -3752,6 +3752,11 @@ h1.game-title::after {
   padding: 12px;
 }
 
+.hub-assign h3 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+
 .hub-assign-modes {
   display: flex;
   gap: 4px;

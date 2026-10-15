@@ -403,17 +403,17 @@ Decline records `{ airlineId, step }` and drops the card. That step does not tex
 └────────────────────────────────────────────┘
 ```
 
-### Assign screen — Review
+### Assign screen
 
-A Cities-style side panel. The apron stays visible. Esc closes it before the pause sheet, in the same place as the flight card. It is the only place a lease mode is written, and it writes through `requestLease` / `releaseLease`. The Airlines desk reads the result. It does not keep its own copy.
+A Cities-style side panel. The apron stays visible. It writes the existing desk, lane, facility, and vehicle rows. It does not call `requestLease`, because that export is not on the allocator. The Airlines hub reads the same rows.
 
 One airline at a time. Rows are the points that can be leased: check-in desks, security lanes, gates, lounges, hangar bays, and turnaround vehicles. Each row shows the current mode for this airline: Common, Preferred, or Dedicated. The player sets the mode on that row.
 
-The desk-only panel is built (`HubAssign`). This fuller screen stays unbuilt. Vehicles, lounges, gates, and hangars are still buttons on the airline profile. When the fuller screen is built, a locked row stays locked and shows the reason in the row:
+The assign panel (`HubAssign`) lists desks, lanes, stands, lounges, hangars (a heavy-check tile is a maintenance bay), and turnaround trucks. The player sets Common or Dedicated on a row. Desks stay on `dedicatedDesks`. Lanes stay on `dedicatedLanes` because `leasesFor` is not exported. Stands, lounges, and hangars stay on `hubLeases`. Trucks stay on `hubVehicleLeases`. World badges and bulk paint stay unbuilt. When a row is locked it shows the holder:
 
 | Reason | When |
 | --- | --- |
-| Waiting on the desk allocator | Desks, lanes, and vehicles, until `leasesFor` exists. This is the row the player sees today. |
+| Waiting on the desk allocator | Not the live row. Desks and lanes count from `dedicatedDesks` and `dedicatedLanes`. `leasesFor` is still not exported. |
 | Unstaffed | No clerk on the post. |
 | Not built | The stand, lounge, bay, pad, or depot is not on the field. |
 | Dedicated to Gulf Pearl | Another carrier already holds it dedicated. |

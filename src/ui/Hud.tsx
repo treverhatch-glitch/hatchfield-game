@@ -2353,10 +2353,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               type="button"
               className="bar-cluster"
               data-testid="hud-airlines"
-              title="Airlines and hub progress"
+              title="Airlines hub"
               onClick={() => {
                 setInfoGroup('airlines')
-                openPanel('hubs')
+                openPanel('relations')
               }}
             >
               Airlines

@@ -70,6 +70,13 @@ export function spareIndex(type: string, owned: number, leases: readonly Vehicle
   return null
 }
 
+export function roleOfType(type: string): VehicleRole | null {
+  for (const role of VEHICLE_ROLES) {
+    if ((VEHICLE_ROLE_TYPES[role] as readonly string[]).includes(type)) return role
+  }
+  return null
+}
+
 export function firstSpare(
   role: VehicleRole,
   fleet: Readonly<Record<string, number>>,

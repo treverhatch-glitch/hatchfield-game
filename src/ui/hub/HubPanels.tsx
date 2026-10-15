@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react'
 import type { Game } from '../../game/sim.ts'
+import { assignSentences } from '../../hubprogress/assign.ts'
 import { HUB_TIER_LABEL } from '../../hubprogress/config.ts'
+import type { FacilityLeaseKind } from '../../hubprogress/leases.ts'
 import { hubProgressRows, hubShowcase } from '../../hubprogress/present.ts'
 import {
   closeHubAssign,
@@ -156,12 +158,16 @@ export function HubSection({ game, id }: { game: Game; id: string }) {
   )
 }
 
-/** Left side panel. Common, Preferred, and Dedicated stay on the one desk list. */
+/** Left side panel. Desks, lanes, stands, lounges, hangars, and trucks. */
 export function HubAssign({ game }: { game: Game }) {
   const airlineId = useSyncExternalStore(subscribeHubProfile, hubAssignSnapshot, hubAssignSnapshot)
   if (!airlineId) return null
   const name = game.airline(airlineId).name
-  const rows = game.hubDeskRows(airlineId)
+  const anger = game.hubAngerPreview(airlineId)
+  const desks = game.hubDeskRows(airlineId)
+  const lanes = game.securityLaneRows()
+  const vehicles = game.vehicleAssignRows()
+  const leaseCopy = assignSentences({ airlineName: name, waits: false, anger: anger.anger, spared: anger.spared })
   return (
     <aside className="hub-assign" data-testid="hub-assign">
       <div className="panel-head">
@@ -170,32 +176,172 @@ export function HubAssign({ game }: { game: Game }) {
           Close
         </button>
       </div>
+      <section>
+        <h3>Desks</h3>
+        <p className="muted" data-testid="assign-relationship-desk">
+          A named desk counts on the checklist. It does not add the daily dedicated score.
+        </p>
+        {desks.length === 0 ? (
+          <p className="muted">No check-in desk is built. A kiosk cannot take a name.</p>
+        ) : (
+          <ul className="hub-lines">
+            {desks.map((row) => (
+              <li key={row.deskId} data-testid={`hub-desk-${row.deskId}`}>
+                <span>{row.staffed ? 'Staffed' : 'Dark'}</span>
+                <span>{row.label}</span>
+                <span className="hub-assign-modes">
+                  {(['common', 'preferred', 'dedicated'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={row.mode === mode ? 'on' : ''}
+                      data-testid={`hub-mode-${row.deskId}-${mode}`}
+                      onClick={() => game.leaseDesk(airlineId, row.deskId, mode)}
+                    >
+                      {mode === 'common' ? 'Common' : mode === 'preferred' ? 'Preferred' : 'Dedicated'}
+                    </button>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
+        <h3>Lanes</h3>
+        <p className="muted">A named lane counts on the checklist. The allocator has no lease export yet, so this name stays on the hub list.</p>
+        {lanes.length === 0 ? (
+          <p className="muted">No security lane is built.</p>
+        ) : (
+          <ul className="hub-lines">
+            {lanes.map((row) => (
+              <li key={row.id} data-testid={`hub-lane-${row.id}`}>
+                <span>{row.staffed ? 'Staffed' : 'Dark'}</span>
+                <span>
+                  {row.label}
+                  {row.holderName && row.airlineId !== airlineId ? ` · ${row.holderName}` : ''}
+                </span>
+                <span className="hub-assign-modes">
+                  <button
+                    type="button"
+                    className={row.airlineId === airlineId ? '' : 'on'}
+                    data-testid={`hub-lane-common-${row.id}`}
+                    onClick={() => game.leaseLane(airlineId, row.id, false)}
+                  >
+                    Common
+                  </button>
+                  <button
+                    type="button"
+                    className={row.airlineId === airlineId ? 'on' : ''}
+                    disabled={row.airlineId != null && row.airlineId !== airlineId}
+                    data-testid={`hub-lane-dedicated-${row.id}`}
+                    onClick={() => game.leaseLane(airlineId, row.id, true)}
+                  >
+                    Dedicated
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <FacilityAssign game={game} airlineId={airlineId} kind="gate" title="Stands" copy={leaseCopy.relationship} />
+      <FacilityAssign game={game} airlineId={airlineId} kind="lounge" title="Lounges" copy={leaseCopy.relationship} />
+      <FacilityAssign game={game} airlineId={airlineId} kind="hangar" title="Hangars" copy={leaseCopy.relationship} />
+      <section>
+        <h3>Vehicles</h3>
+        <p className="muted" data-testid="assign-flexibility">
+          {leaseCopy.flexibility}
+        </p>
+        {vehicles.length === 0 ? (
+          <p className="muted">No turnaround truck is in the fleet.</p>
+        ) : (
+          <ul className="hub-lines">
+            {vehicles.map((row) => (
+              <li key={row.id} data-testid={`hub-vehicle-${row.id}`}>
+                <span>{row.label}</span>
+                <span>{row.holderName && row.holderId !== airlineId ? row.holderName : ''}</span>
+                <span className="hub-assign-modes">
+                  <button
+                    type="button"
+                    className={row.holderId === airlineId ? '' : 'on'}
+                    data-testid={`hub-vehicle-common-${row.id}`}
+                    onClick={() => row.holderId === airlineId && game.releaseHubVehicle(airlineId, row.id)}
+                  >
+                    Common
+                  </button>
+                  <button
+                    type="button"
+                    className={row.holderId === airlineId ? 'on' : ''}
+                    disabled={row.holderId != null && row.holderId !== airlineId}
+                    data-testid={`hub-vehicle-dedicated-${row.id}`}
+                    onClick={() => game.leaseNamedVehicle(airlineId, row.type, row.index)}
+                  >
+                    Dedicated
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <p className="muted" data-testid="assign-rival">
+        {leaseCopy.rival}
+      </p>
+    </aside>
+  )
+}
+
+function FacilityAssign({
+  game,
+  airlineId,
+  kind,
+  title,
+  copy,
+}: {
+  game: Game
+  airlineId: string
+  kind: FacilityLeaseKind
+  title: string
+  copy: string
+}) {
+  const rows = game.facilityAssignRows(kind)
+  return (
+    <section>
+      <h3>{title}</h3>
+      <p className="muted">{copy}</p>
       {rows.length === 0 ? (
-        <p className="muted">No check-in desk is built. A kiosk cannot take a name.</p>
+        <p className="muted">None built.</p>
       ) : (
         <ul className="hub-lines">
           {rows.map((row) => (
-            <li key={row.deskId} data-testid={`hub-desk-${row.deskId}`}>
-              <span>{row.staffed ? 'Staffed' : 'Dark'}</span>
+            <li key={row.id} data-testid={`hub-${kind}-${row.id}`}>
               <span>{row.label}</span>
+              <span>{row.holderName && row.holderId !== airlineId ? row.holderName : ''}</span>
               <span className="hub-assign-modes">
-                {(['common', 'preferred', 'dedicated'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    className={row.mode === mode ? 'on' : ''}
-                    data-testid={`hub-mode-${row.deskId}-${mode}`}
-                    onClick={() => game.leaseDesk(airlineId, row.deskId, mode)}
-                  >
-                    {mode === 'common' ? 'Common' : mode === 'preferred' ? 'Preferred' : 'Dedicated'}
-                  </button>
-                ))}
+                <button
+                  type="button"
+                  className={row.holderId === airlineId ? '' : 'on'}
+                  data-testid={`hub-${kind}-common-${row.id}`}
+                  onClick={() => row.holderId === airlineId && game.releaseHubLease(airlineId, row.id)}
+                >
+                  Common
+                </button>
+                <button
+                  type="button"
+                  className={row.holderId === airlineId ? 'on' : ''}
+                  disabled={row.holderId != null && row.holderId !== airlineId}
+                  data-testid={`hub-${kind}-dedicated-${row.id}`}
+                  onClick={() => game.leaseNamedFacility(airlineId, kind, row.id)}
+                >
+                  Dedicated
+                </button>
               </span>
             </li>
           ))}
         </ul>
       )}
-    </aside>
+    </section>
   )
 }
 

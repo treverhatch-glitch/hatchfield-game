@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Game } from '../../game/sim.ts'
-import { HubProgress, HubSection } from './HubPanels.tsx'
-import { closeHubProfile, openHubProfile, resetHubProfile } from './session.ts'
+import { HubAssign, HubProgress, HubSection } from './HubPanels.tsx'
+import { closeHubProfile, openHubAssign, openHubProfile, resetHubProfile } from './session.ts'
 
 describe('hub profile panel', () => {
   beforeEach(() => resetHubProfile())
@@ -53,5 +53,21 @@ describe('hub profile panel', () => {
     expect(html.indexOf('hub-row-gulf_pearl')).toBeLessThan(html.indexOf('hub-row-brisa'))
     expect(html).toContain('holds it')
     closeHubProfile()
+  })
+
+  it('lists stands, a maintenance bay, and the wait on desks', () => {
+    const game = new Game()
+    game.signed = ['gulf_pearl']
+    game.tiles[8][3] = 'stand'
+    game.tiles[2][2] = 'mro'
+    openHubAssign('gulf_pearl')
+    const html = renderToStaticMarkup(<HubAssign game={game} />)
+    expect(html).toContain('Assign · Gulf Pearl')
+    expect(html).toContain('Stand 3,8')
+    expect(html).toContain('Maintenance bay 2,2')
+    expect(html).toContain('A named desk counts on the checklist')
+    expect(html).toContain('No rival hit for the lease.')
+    expect(html).toContain('Serves only Gulf Pearl')
+    resetHubProfile()
   })
 })

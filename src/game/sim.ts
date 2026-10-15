@@ -686,7 +686,7 @@ import {
 } from './hubProgress.ts'
 import { FERRY_GAP_DAYS, HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, NUDGE_DESK_ASK, NUDGE_FIELD_CAP, NUDGE_GAP_DAYS, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
 import { backlashRoll, planBacklash, type BacklashPlan } from '../hubprogress/backlash.ts'
-import { VEHICLE_ROLE_LABEL } from '../hubprogress/vehicles.ts'
+import { readLaneLocks } from '../hubprogress/assign.ts'
 import {
   dedicateBlock,
   dedicateLabel,
@@ -707,11 +707,14 @@ import {
   groundVehicleId,
   liveVehicleLeases,
   releaseVehicleLabel,
+  roleOfType,
   vehicleAskMet,
   vehicleBlock,
   vehicleCounts,
   vehicleLeaseId,
   vehicleReleaseBreaks,
+  VEHICLE_ROLE_LABEL,
+  VEHICLE_ROLE_TYPES,
   type VehicleLease,
 } from '../hubprogress/vehicles.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
@@ -1541,6 +1544,8 @@ export class Game {
   showUps: ShowUpPlan[] = []
   /** Common desks the player locked to one airline. They stay branded and are never shared. */
   dedicatedDesks: { deskId: string; airlineId: AirlineId; mode?: 'preferred' | 'dedicated' }[] = []
+  /** Named security lanes. They do not clear the checklist until leasesFor exists. */
+  dedicatedLanes: { laneId: string; airlineId: string }[] = []
   /** Last under-desk refusal, so a held letter does not reprint the news every tick. */
   private checkinBlockNote = ''
   /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
@@ -1880,6 +1885,7 @@ export class Game {
     this.deskStaffCool = 0
     this.hallStaff = []
     this.dedicatedDesks = []
+    this.dedicatedLanes = []
     this.premium = createPremiumState()
     this.landsideUses = 0
     this.landsideFeeWindow = 0
@@ -3179,6 +3185,149 @@ export class Game {
       })
   }
 
+  /** Security lanes on the open hall. A name counts on the checklist. `leasesFor` is not exported. */
+  securityLaneRows(): { id: string; label: string; staffed: boolean; airlineId: string | null; holderName: string | null }[] {
+    const nav = this.hallNav.nav
+    if (!nav) return []
+    return nav.facilities.list
+      .filter((facility) => facility.kind === 'security_lane')
+      .map((lane, index) => {
+        const airlineId = this.dedicatedLanes.find((row) => row.laneId === lane.id)?.airlineId ?? null
+        return {
+          id: lane.id,
+          label: `Lane ${index + 1}`,
+          staffed: lane.staffed,
+          airlineId,
+          holderName: airlineId ? this.airline(airlineId).name : null,
+        }
+      })
+  }
+
+  /** Name a built lane, or send it back to common. */
+  leaseLane(airlineId: string, laneId: string, dedicated: boolean): boolean {
+    if (!this.signed.includes(airlineId)) return false
+    const lane = this.securityLaneRows().find((row) => row.id === laneId)
+    if (!lane) return false
+    if (!dedicated) {
+      const next = this.dedicatedLanes.filter((row) => row.laneId !== laneId || row.airlineId !== airlineId)
+      if (next.length === this.dedicatedLanes.length) return false
+      this.dedicatedLanes = next
+      this.pushNews(`${this.airline(airlineId).name} released the lane.`, 'ok')
+      this.emit()
+      return true
+    }
+    const held = this.dedicatedLanes.find((row) => row.laneId === laneId)
+    if (held && held.airlineId !== airlineId) {
+      this.pushNews('That lane is dedicated to someone else.', 'bad')
+      this.emit()
+      return false
+    }
+    if (!held) this.dedicatedLanes.push({ laneId, airlineId })
+    this.pushNews(`${this.airline(airlineId).name} named a lane.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  /** Lounges, stands, and hangar or maintenance bays the player can name. */
+  facilityAssignRows(kind: FacilityLeaseKind): { id: string; label: string; holderId: string | null; holderName: string | null }[] {
+    const live = this.liveHubLeases()
+    return this.hubLeaseTargets()[kind].map((id) => {
+      const lease = live.find((row) => row.id === id)
+      return {
+        id,
+        label: this.facilityAssignLabel(kind, id),
+        holderId: lease?.airlineId ?? null,
+        holderName: lease ? this.airline(lease.airlineId).name : null,
+      }
+    })
+  }
+
+  /** Name one built lounge, stand, or hangar. An unasked lease still pays the daily credit. */
+  leaseNamedFacility(airlineId: string, kind: FacilityLeaseKind, id: string): boolean {
+    if (!this.signed.includes(airlineId)) return false
+    this.dropMissingHubLeases()
+    if (!this.hubLeaseTargets()[kind].includes(id)) return false
+    const held = this.hubLeases.find((row) => row.id === id)
+    if (held) {
+      if (held.airlineId === airlineId) return true
+      this.pushNews('That building is dedicated to someone else.', 'bad')
+      this.emit()
+      return false
+    }
+    this.hubLeases.push({ id, kind, airlineId })
+    this.clearHubLeaseWarning(airlineId, false)
+    this.pushNews(`${this.airline(airlineId).name} dedicated ${this.facilityAssignLabel(kind, id)}.`, 'good')
+    this.emit()
+    return true
+  }
+
+  /** Owned turnaround units, one row per truck. */
+  vehicleAssignRows(): { id: string; type: string; index: number; label: string; holderId: string | null; holderName: string | null }[] {
+    const fleet = this.fleetNow()
+    const live = this.liveHubVehicles()
+    const out: { id: string; type: string; index: number; label: string; holderId: string | null; holderName: string | null }[] = []
+    for (const role of VEHICLE_ROLES) {
+      for (const type of VEHICLE_ROLE_TYPES[role]) {
+        const owned = Math.floor(fleet[type] ?? 0)
+        for (let index = 1; index <= owned; index++) {
+          const id = vehicleLeaseId(type, index)
+          const lease = live.find((row) => row.id === id)
+          out.push({
+            id,
+            type,
+            index,
+            label: `${VEHICLE_ROLE_LABEL[role]} ${index}`,
+            holderId: lease?.airlineId ?? null,
+            holderName: lease ? this.airline(lease.airlineId).name : null,
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  /** Name one spare unit. It leaves the common pool and keeps the fleet upkeep. */
+  leaseNamedVehicle(airlineId: string, type: string, index: number): boolean {
+    if (!this.signed.includes(airlineId)) return false
+    const role = roleOfType(type)
+    if (!role) return false
+    this.dropMissingHubVehicles()
+    const owned = Math.floor(this.fleetNow()[type] ?? 0)
+    if (index < 1 || index > owned) return false
+    const id = vehicleLeaseId(type, index)
+    const held = this.liveHubVehicles().find((row) => row.id === id)
+    if (held) {
+      if (held.airlineId === airlineId) return true
+      this.pushNews('That truck is dedicated to someone else.', 'bad')
+      this.emit()
+      return false
+    }
+    const paint = rosterAirline(airlineId)
+    this.hubVehicleLeases.push({
+      id,
+      role,
+      type,
+      airlineId,
+      primary: paint?.primary ?? '#888888',
+      secondary: paint?.secondary ?? '#f0f0f0',
+    })
+    this.stampHubVehicleLeases()
+    this.clearHubLeaseWarning(airlineId, true)
+    this.pushNews(`${this.airline(airlineId).name} dedicated a ${VEHICLE_ROLE_LABEL[role]}.`, 'good')
+    this.emit()
+    return true
+  }
+
+  private facilityAssignLabel(kind: FacilityLeaseKind, id: string): string {
+    const match = /:(-?\d+),(-?\d+)/.exec(id)
+    const where = match ? `${match[1]},${match[2]}` : id
+    if (kind === 'lounge') return `Lounge ${where}`
+    if (kind === 'gate') return `Stand ${where}`
+    const c = match ? Number(match[1]) : NaN
+    const r = match ? Number(match[2]) : NaN
+    return this.tiles[r]?.[c] === 'mro' ? `Maintenance bay ${where}` : `Hangar ${where}`
+  }
+
   /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
   panelAirlines(): Airline[] {
     return this.allAirlines().filter((a) => !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(a.id) && !this.signed.includes(a.id)))
@@ -3822,6 +3971,7 @@ export class Game {
       vehicles: vehicleCounts(this.liveHubVehicles(id)),
       preferredDesks: this.dedicatedDesks.filter((row) => row.airlineId === id && row.mode === 'preferred').length,
       dedicatedDesks: this.dedicatedDesks.filter((row) => row.airlineId === id && row.mode !== 'preferred').length,
+      dedicatedLanes: this.dedicatedLanes.filter((row) => row.airlineId === id).length,
     })
     return { id, name: airline.name, type: view.type, checklist: view.checklist }
   }
@@ -5262,6 +5412,7 @@ export class Game {
     this.hydrantArm = false
     this.resetPillar()
     this.dedicatedDesks = []
+    this.dedicatedLanes = []
     this.janitors = 0
     this.hallJanitors = []
     this.seatBooks.clear()
@@ -6924,6 +7075,7 @@ export class Game {
       researchers: this.researchers,
       deskStaff: this.deskStaff,
       dedicatedDesks: this.dedicatedDesks.map((row) => ({ deskId: row.deskId, airlineId: row.airlineId })),
+      dedicatedLanes: this.dedicatedLanes.map((row) => ({ laneId: row.laneId, airlineId: row.airlineId })),
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -7164,6 +7316,7 @@ export class Game {
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
       this.dedicatedDesks = (s.dedicatedDesks ?? []).map((row) => ({ deskId: row.deskId, airlineId: row.airlineId }))
+      this.dedicatedLanes = readLaneLocks(s.dedicatedLanes)
       this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false

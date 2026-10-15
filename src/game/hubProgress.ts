@@ -42,6 +42,7 @@ export interface HubFieldFacts {
   overnight: number
   preferredDesks?: number
   dedicatedDesks?: number
+  dedicatedLanes?: number
   lounges: number
   hangars: number
   fuel: number
@@ -204,6 +205,7 @@ export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; 
   facilities.deskAllocator = true
   facilities.preferredDesks = Math.max(0, Math.floor(facts.preferredDesks ?? 0))
   facilities.dedicatedDesks = Math.max(0, Math.floor(facts.dedicatedDesks ?? 0))
+  facilities.dedicatedLanes = Math.max(0, Math.floor(facts.dedicatedLanes ?? 0))
   const checklist = hubChecklist(
     {
       id: facts.id,
