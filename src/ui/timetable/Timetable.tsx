@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { AirlineMark } from '../AirlineMark'
 import { LiveText } from '../LiveText'
+import { blockInk, timelineAircraft } from './fictionalMetal'
 import { axisTicks, barNote, boardRows, buildGantt, filterFlights, frac, pxToSec, runwayOf, viewSpan, type GanttBar } from './layout'
-import { gameMinToSim, SCHEDULE } from './scheduleConfig'
+import { gameMinToSim, SCHEDULE, SHEET_MOTION, turnBand } from './scheduleConfig'
 import { schedulePillOpen, setSchedulePill, sheetShown, subscribeScheduleSheet } from './scheduleSheet'
 import { capacityPreview, type CapacityLight } from './schedulerBridge'
-import { clampToWindow, clockLabel, dayIndex, durationLabel, standFits } from './time'
+import { dragMomentumPx, useSheetMomentum } from './sheetMotion'
+import { clockLabel, dayIndex, dropTarget, durationLabel, standFits } from './time'
 import type { TimetableAdapter, TtFlight, TtStatus } from './types'
 import './timetable.css'
 
@@ -30,6 +32,8 @@ interface Drag {
   dx: number
   dy: number
   moved: boolean
+  t0: number
+  lastT: number
 }
 
 /**
@@ -57,7 +61,7 @@ export function Timetable({
   const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [userClosed, setUserClosed] = useState(false)
   const [mode, setMode] = useState<Mode>('board')
-  const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(24)
+  const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(6)
   const [dayShift, setDayShift] = useState(0)
   const [airlineFilter, setAirlineFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -71,6 +75,7 @@ export function Timetable({
   const [pinNote, setPinNote] = useState<string | null>(null)
   const [, tick] = useState(0)
   const dragRef = useRef<Drag | null>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
   const plannerTick = plannerOpen ? 1 : 0
   const [seenPlanner, setSeenPlanner] = useState(plannerTick)
   if (seenPlanner !== plannerTick) {
@@ -81,22 +86,39 @@ export function Timetable({
   useEffect(() => setSchedulePill(pillOpen), [pillOpen])
   useEffect(() => subscribeScheduleSheet(() => setPillOpen(schedulePillOpen())), [])
   const shown = !userClosed && sheetShown({ pill: pillOpen, planner: plannerOpen, buildMenu: menuOpen })
+  const [painted, setPainted] = useState(shown)
+  const [closing, setClosing] = useState(false)
+  useEffect(() => {
+    if (shown) {
+      setPainted(true)
+      setClosing(false)
+      return
+    }
+    if (!painted) return
+    setClosing(true)
+    const t = window.setTimeout(() => {
+      setPainted(false)
+      setClosing(false)
+    }, SHEET_MOTION.openMs)
+    return () => window.clearTimeout(t)
+  }, [shown, painted])
+  useSheetMomentum(bodyRef, painted && !closing)
 
   useEffect(() => {
-    if (!shown) return
+    if (!painted) return
     const h = window.setInterval(() => tick((n) => n + 1), 500)
     return () => window.clearInterval(h)
-  }, [shown])
+  }, [painted])
 
   useEffect(() => {
     const hud = document.querySelector('.hud')
     if (!(hud instanceof HTMLElement)) return
-    if (shown) hud.style.setProperty('--tt-h', `${height}px`)
+    if (painted) hud.style.setProperty('--tt-h', `${height}px`)
     else hud.style.removeProperty('--tt-h')
     return () => {
       hud.style.removeProperty('--tt-h')
     }
-  }, [shown, height])
+  }, [painted, height])
 
   const day = adapter.dayLength
   const now = adapter.now()
@@ -155,8 +177,7 @@ export function Timetable({
   const selFlight = sel ? flights.find((f) => f.id === sel) ?? null : null
   const preview = (f: TtFlight): number => {
     if (!drag || drag.id !== f.id) return 0
-    const target = clampToWindow(f.time + pxToSec(drag.dx, drag.widthPx, span), f.window, now)
-    return target - f.time
+    return pxToSec(drag.dx, drag.widthPx, span)
   }
 
   const onBarDown = (e: RPointerEvent<HTMLDivElement>, f: TtFlight) => {
@@ -168,6 +189,7 @@ export function Timetable({
       return
     }
     const lane = (e.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect()
+    const nowMs = performance.now()
     const d: Drag = {
       id: f.id,
       startX: e.clientX,
@@ -176,6 +198,8 @@ export function Timetable({
       dx: 0,
       dy: 0,
       moved: false,
+      t0: nowMs,
+      lastT: nowMs,
     }
     dragRef.current = d
     setDrag(d)
@@ -186,7 +210,7 @@ export function Timetable({
     if (!d || d.id !== f.id) return
     const dx = e.clientX - d.startX
     const dy = e.clientY - d.startY
-    const next = { ...d, dx, dy, moved: d.moved || Math.abs(dx) > 3 || Math.abs(dy) > 8 }
+    const next = { ...d, dx, dy, lastT: performance.now(), moved: d.moved || Math.abs(dx) > 3 || Math.abs(dy) > 8 }
     dragRef.current = next
     setDrag(next)
   }
@@ -196,14 +220,15 @@ export function Timetable({
     setDrag(null)
     if (!d || d.id !== f.id) return
     if (d.moved && f.movable) {
-      if (adapter.caps.move && Math.abs(d.dx) > 3) {
-        adapter.moveTo(f.id, f.time + pxToSec(d.dx, d.widthPx, span))
-      }
+      const momentum = dragMomentumPx(d.dx, Math.max(1, d.lastT - d.t0))
+      const target = dropTarget(f.time, pxToSec(d.dx + momentum, d.widthPx, span), f.window)
+      if (adapter.caps.move && Math.abs(d.dx) > 3 && target != null) adapter.moveTo(f.id, target)
       if (adapter.caps.pin && Math.abs(d.dy) > 8) {
         const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-stand]')
         const standId = hit?.getAttribute('data-stand') || null
         setPinNote(adapter.pinStand(f.id, standId))
       }
+      tick((n) => n + 1)
     }
     setSel(f.id)
   }
@@ -255,11 +280,16 @@ export function Timetable({
     <div
       className="tt-root"
       data-hud-part="timetable"
-      data-open={shown ? '1' : '0'}
+      data-open={painted && !closing ? '1' : '0'}
       data-planner={plannerOpen ? '1' : '0'}
-      style={{ ['--tt-h' as string]: `${height}px` }}
+      style={{
+        ['--tt-h' as string]: `${height}px`,
+        ['--tt-spring' as string]: SHEET_MOTION.spring,
+        ['--tt-open' as string]: `${SHEET_MOTION.openMs}ms`,
+        ['--tt-settle' as string]: `${SHEET_MOTION.settleMs}ms`,
+      }}
     >
-      {!shown ? (
+      {!painted ? (
         <button
           type="button"
           className="tt-pill"
@@ -281,7 +311,12 @@ export function Timetable({
           <span className="tt-caret">▴</span>
         </button>
       ) : (
-        <section className="tt-dock" style={{ height, maxHeight: height }} onPointerDown={() => swapFrom === null && setSel(null)}>
+        <section
+          className="tt-dock"
+          data-closing={closing ? '1' : '0'}
+          style={{ height, maxHeight: height }}
+          onPointerDown={() => swapFrom === null && setSel(null)}
+        >
           <div
             className="tt-resize"
             data-testid="tt-resize"
@@ -335,18 +370,20 @@ export function Timetable({
             </button>
           </header>
           <div className="tt-filter" onPointerDown={(e) => e.stopPropagation()}>
-            <select
-              aria-label="Airline"
-              value={airlineFilter}
-              onChange={(e) => setAirlineFilter(e.target.value)}
-            >
-              <option value="">Airline</option>
-              {airlines.map((a) => (
-                <option key={a.airlineName} value={a.airlineName}>
-                  {a.airlineName}
-                </option>
-              ))}
-            </select>
+            {mode === 'board' ? (
+              <select
+                aria-label="Airline"
+                value={airlineFilter}
+                onChange={(e) => setAirlineFilter(e.target.value)}
+              >
+                <option value="">Airline</option>
+                {airlines.map((a) => (
+                  <option key={a.airlineName} value={a.airlineName}>
+                    {a.airlineName}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <select aria-label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">Status</option>
               <option value="scheduled">On time</option>
@@ -378,8 +415,26 @@ export function Timetable({
             <p className="tt-hint">Pick another flight to swap stands with · <button type="button" onClick={() => setSwapFrom(null)}>Cancel</button></p>
           ) : null}
 
-          <div className="tt-body">
+          <div className="tt-body" ref={bodyRef}>
             {mode === 'timeline' ? (
+              <div className="tt-timeline">
+              <aside className="tt-carriers" onPointerDown={(e) => e.stopPropagation()}>
+                <button type="button" className={!airlineFilter ? 'on' : ''} onClick={() => setAirlineFilter('')}>
+                  <i className="tt-swatch all" />
+                  <span>All carriers</span>
+                </button>
+                {airlines.map((a) => (
+                  <button
+                    key={a.airlineName}
+                    type="button"
+                    className={airlineFilter === a.airlineName ? 'on' : ''}
+                    onClick={() => setAirlineFilter(airlineFilter === a.airlineName ? '' : a.airlineName)}
+                  >
+                    <i className="tt-swatch" style={{ background: a.color }} />
+                    <span>{a.airlineName}</span>
+                  </button>
+                ))}
+              </aside>
               <div className="tt-gantt" data-testid="tt-timeline">
                 {offer.hours.length ? (
                   <div className="tt-offer" data-testid="tt-offer-preview" title={offer.warnings.join(' ') || 'Offer preview'}>
@@ -401,11 +456,11 @@ export function Timetable({
                       <div key={row.stand?.id ?? `none-${ri}`} className="tt-row" data-stand={row.stand?.id ?? ''}>
                         <span
                           className="tt-label"
-                          title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}
+                          title={row.stand ? `${row.stand.label} · up to code ${row.stand.icao}` : 'Tower picks a stand'}
                           style={row.stand?.leaseColor ? { boxShadow: `inset 3px 0 0 ${row.stand.leaseColor}` } : undefined}
                         >
-                          {row.stand ? row.stand.label : ri === 0 ? 'Tower' : ''}
-                          {row.stand?.leaseAirline ? <small> · {row.stand.leaseAirline}</small> : null}
+                          <b>{row.stand ? shortGate(row.stand.label) : ri === 0 ? 'Twr' : ''}</b>
+                          {row.stand?.leaseAirline ? <small>{row.stand.leaseAirline}</small> : null}
                         </span>
                         <div className="tt-lane">
                           {grid}
@@ -449,23 +504,28 @@ export function Timetable({
                                 <div
                                   className="tt-bar"
                                   data-conflict={b.conflict ? '1' : '0'}
+                                  data-tight={!b.conflict && b.buffer ? '1' : '0'}
                                   data-sel={sel === f.id ? '1' : '0'}
                                   data-movable={f.movable ? '1' : '0'}
+                                  data-dragging={drag?.id === f.id ? '1' : '0'}
+                                  data-size={f.sizeBand ?? turnBand(f.icao)}
                                   style={{
                                     left: `${(b.left + frac(span.from + off, span)) * 100}%`,
                                     width: `${b.width * 100}%`,
                                     ['--al' as string]: f.color,
+                                    ['--ink' as string]: blockInk(f.color),
                                     ['--stripe' as string]: f.stripe ?? f.color,
                                   }}
                                   onPointerDown={(e) => onBarDown(e, f)}
                                   onPointerMove={(e) => onBarMove(e, f)}
                                   onPointerUp={(e) => onBarUp(e, f)}
-                                  title={`${f.flightNo} ${clockLabel(f.time + off, day)}`}
+                                  title={`${f.flightNo} · ${timelineAircraft(f.aircraft, f.sizeBand ?? turnBand(f.icao))} · ${clockLabel(f.time + off, day)}${multiRw ? ` · ${rwLabel(f.runwayId)}` : ''}`}
                                 >
-                                  {f.pinned ? '📌' : ''}
-                                  {f.flightNo}
-                                  {multiRw ? <small className="tt-rw"> {rwLabel(f.runwayId)}</small> : null}
-                                  {drag?.id === f.id && drag.moved ? <em> {clockLabel(f.time + off, day)}</em> : null}
+                                  <b>{f.flightNo}{f.pinned ? ' ·' : ''}</b>
+                                  <small>
+                                    {timelineAircraft(f.aircraft, f.sizeBand ?? turnBand(f.icao))}
+                                    {drag?.id === f.id && drag.moved ? ` ${clockLabel(f.time + off, day)}` : ''}
+                                  </small>
                                 </div>
                               </div>
                             )
@@ -475,6 +535,7 @@ export function Timetable({
                     ))}
                   </div>
                 ))}
+              </div>
               </div>
             ) : (
               <div className="tt-board" data-testid="tt-board">
@@ -549,6 +610,13 @@ export function Timetable({
   )
 }
 
+function shortGate(label: string): string {
+  const gate = label.match(/G(\d+)/)
+  if (gate) return `G${gate[1]}`
+  const head = label.split('·')[0]?.trim()
+  return head || label
+}
+
 function emptyBar(flight: TtFlight): GanttBar {
   return { flight, left: 0, width: 0, conflict: false, buffer: false, gapSec: null }
 }
@@ -605,7 +673,7 @@ function FlightCard({
         ) : null}
         <dt>Aircraft</dt>
         <dd>
-          {f.aircraft} · Code {f.icao}
+          {timelineAircraft(f.aircraft, f.sizeBand ?? turnBand(f.icao))} · Code {f.icao}
         </dd>
         <dt>Stand</dt>
         <dd>

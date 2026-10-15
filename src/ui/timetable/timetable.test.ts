@@ -14,7 +14,9 @@ import { capacityPreview, contractSlotWindow } from './schedulerBridge'
 import type { TtFlight } from './types'
 import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { schedulePillEscape, setSchedulePill, setSchedulePlanner, sheetShown } from './scheduleSheet'
-import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
+import { fictionalMetal, timelineAircraft } from './fictionalMetal'
+import { dragMomentumPx } from './sheetMotion'
+import { clampToWindow, clockLabel, dropTarget, durationLabel, standFits } from './time'
 
 describe('clock face', () => {
   it('renders sim seconds as HH:MM on a 180s day', () => {
@@ -559,9 +561,50 @@ describe('offer preview and manual slot labels', () => {
     expect(one.hours.every((h) => h.light === 'green' || h.light === 'amber' || h.light === 'red')).toBe(true)
   })
 
+  it('sizes a banked regional turn shorter than a narrowbody', () => {
+    const f = makeFakeGame({ clock: 100 })
+    f.slot('s1', 'sky', 130, { airframeId: 'e175' })
+    f.slot('s2', 'pink', 160, { airframeId: 'a320neo' })
+    const rows = gameScheduleAdapter(f.game).flights()
+    const regional = rows.find((r) => r.id === 's1:arr')!
+    const narrow = rows.find((r) => r.id === 's2:arr')!
+    expect(regional.sizeBand).toBe('regional')
+    expect(narrow.sizeBand).toBe('narrow')
+    expect(regional.onStandTo - regional.onStandFrom).toBeLessThan(narrow.onStandTo - narrow.onStandFrom)
+    expect(timelineAircraft(regional.aircraft, 'regional')).toMatch(/^Hopper/)
+    expect(timelineAircraft(narrow.aircraft, 'narrow')).toMatch(/^Narrowjet/)
+  })
+
+  it('places a sheet drop on the exact time inside the window', () => {
+    const f = makeFakeGame({ clock: 100 })
+    f.slot('s1', 'sky', 130)
+    f.game.placeSlotTime = (id, eta, standing = 0) => {
+      const s = f.game.schedule.find((x) => x.id === id)
+      if (!s) return null
+      s.eta = eta
+      f.log.push(`place ${id} ${eta} ${standing}`)
+      return s.eta
+    }
+    const a = gameScheduleAdapter(f.game)
+    expect(a.moveTo('s1:arr', 132)).toBe(132)
+    expect(f.game.schedule[0].eta).toBe(132)
+    expect(f.log.at(-1)).toBe('place s1 132 0')
+    expect(f.log.some((line) => line.startsWith('bump') || line.startsWith('pull'))).toBe(false)
+  })
+
   it('does not call a free airline banned', () => {
     expect(manualSlotLabel('Northline', false)).toBe('+ Northline')
     expect(manualSlotLabel('Northline', false)).not.toMatch(/banned/i)
     expect(manualSlotLabel('Northline', true)).toMatch(/banned/i)
+  })
+
+  it('prints fictional metal and snaps a drop past the hard band', () => {
+    expect(fictionalMetal('heavy', 525)).toBe('Heavyjet 530')
+    expect(timelineAircraft('Airbus A320neo', 'narrow', 180)).toBe('Narrowjet 180')
+    expect(timelineAircraft('737-800', 'narrow')).toBe('Narrowjet')
+    expect(dropTarget(100, 4, { start: 90, end: 110, source: 'contract' })).toBe(104)
+    expect(dropTarget(100, 50, { start: 90, end: 110, source: 'contract' })).toBeNull()
+    expect(dragMomentumPx(0, 80)).toBe(0)
+    expect(Math.abs(dragMomentumPx(200, 100))).toBeLessThanOrEqual(96)
   })
 })

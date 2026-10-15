@@ -6,13 +6,14 @@ import { REAL_AIRFRAMES } from '../../render/aircraft/realworld'
 import { footprintLetter, standRefusal } from '../../stands/index'
 import { checkInGhost, isIntlKind } from './checkInGhost'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
+import { gameMinToSim, SCHEDULE, turnBand } from './scheduleConfig'
 import { contractSlotWindow, turnTargetSec } from './schedulerBridge'
 import { clampToWindow, hourSecs } from './time'
 import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtTraffic, TtWindow } from './types'
 
 /**
  * The thin slice of Game the timetable needs. Keeping it structural means tests
- * can feed a fake and nothing in sim.ts has to change.
+ * can feed a fake. A drag uses `placeSlotTime` when the sim has it.
  */
 export type ScheduleGame = Pick<
   Game,
@@ -36,7 +37,10 @@ export type ScheduleGame = Pick<
   | 'standRung'
   | 'closedStandKeys'
   | 'reservedStandKeys'
->
+> & {
+  /** Exact sheet drop. Absent on fakes, which still pull and bump. */
+  placeSlotTime?(slotId: string, eta: number, standingHit?: number): number | null
+}
 
 export const DAY_LENGTH = 180
 
@@ -143,17 +147,27 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
   const standVecs = () => tilesOf(game.tiles, 'stand')
   /** Banked ETA the first time we saw each slot, so drags don't walk the window. */
   const anchors = new Map<string, number>()
+  /** One standing hit per slot per week when a drop leaves the free band. */
+  const outsideSoft = new Set<string>()
   const windowOf = (s: ScheduleSlot) => {
     if (!anchors.has(s.id)) anchors.set(s.id, s.eta - s.delaySec)
     return towerWindow(s, game.clock, anchors.get(s.id))
   }
 
+  const metalOf = (slot: ScheduleSlot) => {
+    const flight = slot.flightId ? game.flights.find((f) => f.id === slot.flightId) : undefined
+    const frameId = flight?.airframeId ?? slot.airframeId ?? null
+    const frame = frameId ? AIRFRAMES[frameId] : undefined
+    const kind = flight?.kind ?? frame?.kind
+    const icao = frameId ? icaoForAirframe(frameId, kind) : 'C'
+    return { flight, kind, icao }
+  }
+
   const slotMovements = (slot: ScheduleSlot): ContractMovement[] => {
     const al = game.airline(slot.airline)
-    const flight = slot.flightId ? game.flights.find((f) => f.id === slot.flightId) : undefined
-    const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
+    const { flight, kind, icao } = metalOf(slot)
     const stand = flight?.stand ?? slot.standPref ?? null
-    const turn = turnFor(icao, flight?.kind)
+    const turn = turnFor(icao, kind)
     const onFrom = slot.eta + TAXI
     const onTo = onFrom + turn
     const standLabel = stand ? game.gateLabel(stand) : 'Tower'
@@ -179,6 +193,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       standPinned: !!slot.standPref,
       icao,
       aircraft: flight?.airframeName ?? 'TBA',
+      sizeBand: turnBand(icao, kind),
       turnTarget: turn,
       services: [] as string[],
       delaySec: slot.delaySec,
@@ -246,6 +261,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         pinned: false,
         icao,
         aircraft: f.airframeName,
+        sizeBand: turnBand(icao, f.kind),
         runwayId: null,
         manual: false,
         movable: false,
@@ -335,6 +351,19 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       const target = clampToWindow(time, windowOf(s), game.clock + 6)
       const delta = target - s.eta
       if (Math.abs(delta) < 0.25) return s.eta
+      if (game.placeSlotTime) {
+        const win = windowOf(s)
+        const mid = (win.start + win.end) / 2
+        let standing = 0
+        if (Math.abs(target - mid) > gameMinToSim(SCHEDULE.softWindowMin) + 1e-3) {
+          const mark = `${s.id}:${Math.floor(game.clock / (DAY_LENGTH * 7))}`
+          if (!outsideSoft.has(mark)) {
+            outsideSoft.add(mark)
+            standing = 1
+          }
+        }
+        return game.placeSlotTime(s.id, target, standing)
+      }
       if (delta < 0) game.pullSlot(s.id, -delta)
       else game.bumpSlot(s.id, delta)
       return s.eta

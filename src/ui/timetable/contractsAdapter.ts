@@ -24,6 +24,8 @@ export interface ContractMovement {
   standPinned?: boolean
   icao: IcaoCode
   aircraft: string
+  /** Visual block height. The scheduler size class stays on the contract. */
+  sizeBand?: TtFlight['sizeBand']
   /** Turnaround target agreed in the contract, sim seconds. */
   turnTarget: number
   services: string[]
@@ -89,6 +91,7 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
       pinned: !!m.standPinned,
       icao: m.icao,
       aircraft: m.aircraft,
+      sizeBand: m.sizeBand,
       runwayId: (m.direction === 'dep' ? m.depRunwayId ?? m.runwayId : m.runwayId) ?? null,
       depRunwayId: m.depRunwayId ?? null,
       manual: m.manual ?? false,

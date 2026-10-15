@@ -55,6 +55,8 @@ export interface TtFlight {
   pinned: boolean
   icao: IcaoCode
   aircraft: string
+  /** Block height. A regional sits shorter than a heavy. */
+  sizeBand?: 'regional' | 'narrow' | 'wide' | 'heavy'
   /** Assigned runway id (matches TtRunway.id); null = tower/auto picks. */
   runwayId: string | null
   /** Departure runway when it differs from the arrival one (contracts). */

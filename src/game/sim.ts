@@ -17617,6 +17617,40 @@ export class Game {
     this.emit()
   }
 
+  /**
+   * Put a banked slot on an exact ETA. The sheet uses this so a drag lands
+   * where it was dropped. Pull and bump stay the standing buttons.
+   */
+  placeSlotTime(slotId: string, eta: number, standingHit = 0): number | null {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return null
+    const floor = Math.max(this.clock + 6, this.leadGateClock(s.airline))
+    const next = Math.max(floor, eta)
+    if (Math.abs(next - s.eta) < 0.05) return s.eta
+    const planned = s.eta - s.delaySec
+    s.eta = next
+    s.manual = true
+    const late = Math.max(0, next - planned)
+    s.delaySec = Math.min(120, late)
+    if (late > 0.5) {
+      s.status = 'delayed'
+      s.delayReason = standingHit > 0 ? 'Outside the contract window' : 'Schedule sheet'
+    } else if (s.status === 'delayed') {
+      s.status = 'scheduled'
+      s.delayReason = null
+    }
+    if (standingHit > 0) this.adjustHeat(s.airline, -standingHit, 'schedule')
+    this.invalidateRunwayLoad()
+    this.pushNews(
+      standingHit > 0
+        ? `${s.flightNo} moved outside the free window — Standing dips.`
+        : `${s.flightNo} retimed on the schedule sheet.`,
+      standingHit > 0 ? 'bad' : 'ok',
+    )
+    this.emit()
+    return s.eta
+  }
+
   /** Nudge ETA by delta seconds (floor 6s ahead). Planner drag polish. */
   nudgeSlotEta(slotId: string, deltaSec: number) {
     if (deltaSec < 0) this.pullSlot(slotId, Math.abs(deltaSec))

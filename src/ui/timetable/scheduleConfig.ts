@@ -30,6 +30,17 @@ export const SCHEDULE = {
   dragStepMin: 16,
 } as const
 
+/** Sheet motion. A later pass can tune the spring; the chart does not wait on it. */
+export const SHEET_MOTION = {
+  openMs: 460,
+  settleMs: 420,
+  /** Flick distance, in ms of release velocity, added to a drag. */
+  momentumMs: 140,
+  momentumCapPx: 96,
+  /** A little overshoot, then settle. */
+  spring: 'cubic-bezier(0.22, 1.28, 0.36, 1)',
+} as const
+
 export type TurnBand = keyof typeof SCHEDULE.turnMin
 
 export function gameMinToSim(min: number): number {

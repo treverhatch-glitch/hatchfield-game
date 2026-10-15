@@ -25,6 +25,13 @@ export function durationLabel(sec: number, dayLength = 180): string {
   return m ? `${sign}${h}h ${m}m` : `${sign}${h}h`
 }
 
+/** A drop outside the hard band is refused so the bar springs back. */
+export function dropTarget(time: number, delta: number, window: TtWindow | null): number | null {
+  const next = time + delta
+  if (window && (next < window.start || next > window.end)) return null
+  return next
+}
+
 export function clampToWindow(t: number, w: TtWindow | null, floor = -Infinity): number {
   const lo = Math.max(floor, w ? w.start : -Infinity)
   const hi = w ? w.end : Infinity
