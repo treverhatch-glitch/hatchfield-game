@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, MOVING_TRAYS, TERMINAL_ITEM_TO_PROP, TERMINAL_PROP_TYPES, TERMINAL_PROPS, terminalProp, trayPositions } from './index'
+import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, MOVING_TRAYS, setNearPropDetail, TERMINAL_ITEM_TO_PROP, TERMINAL_PROP_TYPES, TERMINAL_PROPS, terminalProp, trayPositions } from './index'
 import { MATERIALS } from './materials'
 
 describe('terminal props registry', () => {
@@ -64,5 +64,29 @@ describe('terminal props registry', () => {
   it('round 4: hall has recessed doors on quality high only', () => {
     expect(buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'high' }).getObjectByName('recessedDoors')).toBeDefined()
     expect(buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'low' }).getObjectByName('recessedDoors')).toBeUndefined()
+  })
+  it('interior plates show on claim, restrooms, menus, and near seating trim', () => {
+    expect(terminalProp('baggage_carousel').parts.some((p) => p.mat === 'intBelt')).toBe(true)
+    expect(terminalProp('restroom_block').parts.some((p) => p.mat === 'intTile')).toBe(true)
+    expect(terminalProp('restroom_block').parts.some((p) => p.mat === 'intRestroomFloor')).toBe(true)
+    expect(terminalProp('food_court').parts.some((p) => p.mat === 'sgnGrill')).toBe(true)
+    expect(terminalProp('food_court').parts.some((p) => p.mat === 'intCounter')).toBe(true)
+    expect(terminalProp('checkin_row').parts.some((p) => p.mat === 'sgnArrivals')).toBe(true)
+    expect(terminalProp('seat_row').parts.some((p) => p.near && p.mat === 'lampCool')).toBe(true)
+    expect(terminalProp('seat_row').parts.some((p) => p.mat === 'leather')).toBe(true)
+    expect(terminalProp('jet_bridge').parts.some((p) => p.near && p.mat === 'intCarpet')).toBe(true)
+    expect(terminalProp('jet_bridge').parts.some((p) => p.mat === 'intJet')).toBe(true)
+    expect(terminalProp('menu_counter').size.h).toBeLessThan(2.2)
+    expect(terminalProp('restroom_stall').size.d).toBeLessThan(1.2)
+    expect(terminalProp('lounge_cluster').parts.some((p) => p.mat === 'intCarpet')).toBe(true)
+    expect(terminalProp('staff_office').parts.some((p) => p.mat === 'intOffice')).toBe(true)
+    expect(terminalProp('arrivals_sign').parts.some((p) => p.mat === 'sgnArrivals')).toBe(true)
+    const g = buildTerminalProps([{ type: 'seat_row', x: 0, z: 0 }])
+    setNearPropDetail(g, false)
+    const hidden = g.children.filter((c) => c.userData.nearDetail)
+    expect(hidden.length).toBeGreaterThan(0)
+    expect(hidden.every((c) => c.visible === false)).toBe(true)
+    setNearPropDetail(g, true)
+    expect(hidden.every((c) => c.visible === true)).toBe(true)
   })
 })

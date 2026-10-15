@@ -141,7 +141,7 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
       e.set(...(part.rot ?? [0, 0, 0]))
       q.setFromEuler(e)
       local.compose(new THREE.Vector3(...part.pos), q, new THREE.Vector3(...part.size))
-      const key = `${part.prim}|${part.mat}`
+      const key = `${part.prim}|${part.mat}|${part.near ? 1 : 0}`
       let list = buckets.get(key)
       if (!list) buckets.set(key, (list = []))
       list.push(item.clone().multiply(local))
@@ -163,7 +163,7 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
   const moving = buildMovingTrays(placements, !!opts.shadows)
   if (moving) group.add(moving)
   for (const [key, mats] of buckets) {
-    const [prim, mat] = key.split('|') as [Prim, string]
+    const [prim, mat, nearFlag] = key.split('|') as [Prim, string, string]
     const m = new THREE.InstancedMesh(geom(prim), material(mat), mats.length)
     mats.forEach((mx, i) => m.setMatrixAt(i, mx))
     m.instanceMatrix.needsUpdate = true
@@ -171,9 +171,17 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
     m.castShadow = !!opts.shadows && !material(mat).transparent
     m.receiveShadow = !!opts.shadows
     m.name = key
+    m.userData.nearDetail = nearFlag === '1'
     group.add(m)
   }
   return group
+}
+
+/** Show or hide parts tagged for hall-camera range, including a dressing group. */
+export function setNearPropDetail(root: THREE.Object3D, on: boolean) {
+  root.traverse((obj) => {
+    if (obj.userData.nearDetail) obj.visible = on
+  })
 }
 
 /** Pure: positions (prop-local x) of the trays on a track at time t seconds. */

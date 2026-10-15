@@ -61,7 +61,9 @@ import { FidsStage, mountFids } from '../../fids/stage'
 import { deskHeaderTexture, fidsBoardTexture, signPanelMaterial, wayfindingSheetTexture } from '../signage/load'
 import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
-import { buildHiDetailProps, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
+import { buildHiDetailProps, buildInteriorDressing, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
+import { HALL_NEAR_DIST } from '../hallCamera'
+import { setNearPropDetail } from '../terminalProps'
 import { CELL, cellX, cellZ } from './view'
 import {
   DESK_KINDS,
@@ -234,6 +236,7 @@ export class TerminalBuilding {
   private hiddenRooms = new Set<number>()
   private hiddenSig = ''
   private poseKey = ''
+  private nearShown = true
   private roofTarget = 1
   private propTarget = 0
   private lifeTarget = 0
@@ -1005,7 +1008,10 @@ export class TerminalBuilding {
       mesh.frustumCulled = false
       this.detail.add(mesh)
     }
-    if (hi) this.props.add(buildHiDetailProps(this.plan.props, this.shared.parts, WORLD_PER_METER, FLOOR_Y))
+    if (hi) {
+      this.props.add(buildHiDetailProps(this.plan.props, this.shared.parts, WORLD_PER_METER, FLOOR_Y))
+      this.props.add(buildInteriorDressing(this.plan.rooms, WORLD_PER_METER, FLOOR_Y))
+    }
   }
 
   private buildLife() {
@@ -1092,11 +1098,16 @@ export class TerminalBuilding {
     camera?: THREE.Camera,
   ) {
     const look = focus ?? { x: this.center.x, z: this.center.z }
+    const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
+    const near = dist <= HALL_NEAR_DIST * WORLD_PER_METER
+    if (near !== this.nearShown) {
+      this.nearShown = near
+      setNearPropDetail(this.props, near)
+    }
     const pose = `${interiorPoseKey(camPos, look, lodScale, night, enclosed)}|${this.ceilingForce ? 1 : 0}`
     if (pose === this.poseKey && this.settled()) return
     this.poseKey = pose
 
-    const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
     const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.

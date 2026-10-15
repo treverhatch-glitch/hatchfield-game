@@ -11,6 +11,7 @@ import { buildingReflectionsActive } from '../reflections'
 import type { QualityLevel } from './quality'
 import type { PropKind, Prop } from './plan'
 import type { PropPart } from './kit'
+import type { Room, RoomKind, RoomPlan } from './rooms'
 
 /**
  * Plan prop kind → detailed model. Kinds not listed keep their low-poly mesh.
@@ -20,12 +21,13 @@ import type { PropPart } from './kit'
 export const HI_DETAIL_KIND: Partial<Record<PropKind, TerminalPropType>> = {
   xray: 'xray_machine',
   arch: 'body_scanner',
-  kiosk: 'shop_kiosk',
+  kiosk: 'menu_counter',
   board: 'departures_wall',
   bench: 'seat_row',
   planter: 'planter',
   bin: 'bin',
   stanchion: 'stanchion',
+  wc: 'restroom_stall',
 }
 /** Kinds dropped at High because the detailed model already includes them. */
 export const HI_DETAIL_ABSORBED: ReadonlySet<PropKind> = new Set<PropKind>(['awning'])
@@ -58,6 +60,8 @@ export function lowPolyFootprint(kind: string, parts: PropPart[] | undefined): {
 /** Slack over the low-poly footprint; the detailed models carry more trim. */
 const SLACK = 1.35
 
+const MENU_COUNTERS: TerminalPropType[] = ['menu_counter', 'menu_noodle', 'menu_brew', 'menu_grab']
+
 /**
  * Detailed group for a plan's props, in world units (props are authored in
  * metres, the world is WORLD_PER_METER per metre).
@@ -71,8 +75,10 @@ export function buildHiDetailProps(
   // With the High studio probe, authored metalness reads correctly. Without it, full metal goes black.
   capTerminalPropMetal(buildingReflectionsActive() ? 1 : 0.4)
   const placements: PropPlacement[] = []
+  let menus = 0
   for (const p of props) {
-    const type = HI_DETAIL_KIND[p.kind]
+    let type = HI_DETAIL_KIND[p.kind]
+    if (p.kind === 'kiosk') type = MENU_COUNTERS[menus++ % MENU_COUNTERS.length]
     if (!type) {
       // Gate podiums stay low-poly; a lit gate pylon stands beside each one.
       if (p.kind === 'podium') placements.push({ type: 'gate_pylon', x: p.x / worldPerMeter + Math.cos(p.yaw) * 1.4, z: p.z / worldPerMeter - Math.sin(p.yaw) * 1.4, y: floorY / worldPerMeter, yaw: p.yaw, scale: 0.6 })
@@ -85,5 +91,87 @@ export function buildHiDetailProps(
   const g = buildTerminalProps(placements, { shadows: false })
   g.scale.setScalar(worldPerMeter)
   g.name = 'props-hidetail'
+  return g
+}
+
+function roomSpan(plan: RoomPlan, room: Room) {
+  let minX = Infinity
+  let maxX = -Infinity
+  let minZ = Infinity
+  let maxZ = -Infinity
+  for (const s of room.squares) {
+    const i = s % plan.w
+    const j = Math.floor(s / plan.w)
+    const x = plan.x0 + i * plan.size
+    const z = plan.z0 + j * plan.size
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x + plan.size)
+    minZ = Math.min(minZ, z)
+    maxZ = Math.max(maxZ, z + plan.size)
+  }
+  return { minX, maxX, minZ, maxZ }
+}
+
+function biggestRoom(plan: RoomPlan, kind: RoomKind): Room | null {
+  let best: Room | null = null
+  for (const room of plan.rooms) {
+    if (room.kind !== kind) continue
+    if (!best || room.squares.length > best.squares.length) best = room
+  }
+  return best
+}
+
+/**
+ * Render-only furniture the room plan does not already place: arrivals
+ * wayfinding and a claim carousel in check-in, a lounge in the concourse,
+ * cubicles in the staff office. Hidden outside hall-camera range.
+ * Plan squares, sockets, and footprints are not moved.
+ */
+export function buildInteriorDressing(plan: RoomPlan, worldPerMeter: number, floorY: number): THREE.Group {
+  capTerminalPropMetal(buildingReflectionsActive() ? 1 : 0.4)
+  const placements: PropPlacement[] = []
+  const anchors: Record<string, { x: number; z: number }> = {}
+  const push = (type: TerminalPropType, x: number, z: number, yaw: number, scale: number, anchor?: string) => {
+    if (scale < 0.22) return
+    placements.push({ type, x: x / worldPerMeter, z: z / worldPerMeter, y: floorY / worldPerMeter, yaw, scale })
+    if (anchor) anchors[anchor] = { x, z }
+  }
+  const checkin = biggestRoom(plan, 'checkin')
+  if (checkin) {
+    const s = roomSpan(plan, checkin)
+    const alongX = s.maxX - s.minX >= s.maxZ - s.minZ
+    const cx = (s.minX + s.maxX) / 2
+    const cz = (s.minZ + s.maxZ) / 2
+    const along = alongX ? s.maxX - s.minX : s.maxZ - s.minZ
+    const across = alongX ? s.maxZ - s.minZ : s.maxX - s.minX
+    const end = (t: number) => {
+      const d = (t - 0.5) * along
+      return alongX ? { x: cx + d, z: cz } : { x: cx, z: cz + d }
+    }
+    const sign = end(0.18)
+    push('arrivals_sign', sign.x, sign.z, alongX ? 0 : Math.PI / 2, 1, 'arrivals')
+    const claim = end(0.82)
+    const carousel = fitScale('baggage_carousel', (along / worldPerMeter) * 0.38, (across / worldPerMeter) * 0.72)
+    push('baggage_carousel', claim.x, claim.z, alongX ? 0 : Math.PI / 2, Math.min(0.7, carousel), 'claim')
+  }
+  const airside = biggestRoom(plan, 'airside')
+  if (airside) {
+    const s = roomSpan(plan, airside)
+    const w = (s.maxX - s.minX) / worldPerMeter
+    const d = (s.maxZ - s.minZ) / worldPerMeter
+    push('lounge_cluster', airside.x, airside.z, 0, Math.min(1, fitScale('lounge_cluster', w * 0.55, d * 0.55)), 'lounge')
+  }
+  const office = biggestRoom(plan, 'office')
+  if (office) {
+    const s = roomSpan(plan, office)
+    const w = (s.maxX - s.minX) / worldPerMeter
+    const d = (s.maxZ - s.minZ) / worldPerMeter
+    push('staff_office', office.x, office.z, 0, Math.min(1, fitScale('staff_office', w * 0.7, d * 0.7)), 'office')
+  }
+  const g = buildTerminalProps(placements, { shadows: false })
+  g.scale.setScalar(worldPerMeter)
+  g.name = 'interior-dressing'
+  g.userData.nearDetail = true
+  g.userData.anchors = anchors
   return g
 }

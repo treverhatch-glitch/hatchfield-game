@@ -6,7 +6,7 @@ import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
 import { buildHallDetail } from './hallKitDetail'
-import { buildTerminalProps, capTerminalPropMetal } from './terminalProps'
+import { buildTerminalProps, capTerminalPropMetal, setNearPropDetail } from './terminalProps'
 import { SupplyCartLayer } from './supplyCart'
 import { hiDetailOn } from './world/terminalHiDetail'
 import { canvasToPng } from '../camera/capture.ts'
@@ -23,6 +23,7 @@ import {
   HALL_CAM_NEAR,
   HALL_CAM_PITCH,
   HALL_CAM_YAW,
+  HALL_NEAR_DIST,
   HALL_OCCLUDE_M,
 } from './hallCamera'
 import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
@@ -719,7 +720,7 @@ export class HallWorld {
 
   /** High / Ultra: a detailed jet bridge docked outside the east jetway door. Kept out of roomGroup so its shared materials survive rebuilds. */
   private jetBridge: THREE.Group | null = null
-  private placeJetBridge(x: number, z: number) {
+  private placeJetBridge(x: number, z: number, yaw = 0) {
     if (!hiDetailOn(graphicsQuality())) return
     if (!this.jetBridge) {
       capTerminalPropMetal(0.4)
@@ -727,9 +728,11 @@ export class HallWorld {
       this.jetBridge.name = 'hall-jet-bridge'
       this.scene.add(this.jetBridge)
     }
-    // Apron level matches the hall floor; the bridge rises to the 3.6 m cab sill.
-    this.jetBridge.position.set(x + 2.2, 0, z)
+    this.jetBridge.rotation.y = yaw
+    const out = 2.2
+    this.jetBridge.position.set(x + Math.cos(yaw) * out, 0, z - Math.sin(yaw) * out)
     this.jetBridge.visible = true
+    setNearPropDetail(this.jetBridge, this.dist <= HALL_NEAR_DIST)
   }
 
   private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
@@ -776,6 +779,23 @@ export class HallWorld {
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.minZ)
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.maxZ)
     this.brandMark(b.minX - 0.04, 2.15, cz)
+    const gates = plan.rooms.filter((room) => room.kind === 'gate')
+    let gate: (typeof gates)[number] | undefined
+    for (const room of gates) if (!gate || room.squares.length > gate.squares.length) gate = room
+    if (gate) {
+      const hall = apronToHall(gate.x, gate.z, fit)
+      const midX = (b.minX + b.maxX) / 2
+      const midZ = (b.minZ + b.maxZ) / 2
+      const dx = hall.x - midX
+      const dz = hall.z - midZ
+      if (Math.abs(dx) >= Math.abs(dz)) {
+        const dir = dx < 0 ? -1 : 1
+        this.placeJetBridge(dir < 0 ? b.minX : b.maxX, hall.z, dir < 0 ? Math.PI : 0)
+      } else {
+        const dir = dz < 0 ? -1 : 1
+        this.placeJetBridge(hall.x, dir < 0 ? b.minZ : b.maxZ, dir > 0 ? -Math.PI / 2 : Math.PI / 2)
+      }
+    }
   }
 
   /** Hatchfield mark on the landside face, above the door. */
@@ -1070,6 +1090,7 @@ export class HallWorld {
     building.ceilingForce = ceiling
     building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false, this.camera)
     this.hideTerminalShell(building)
+    if (this.jetBridge) setNearPropDetail(this.jetBridge, this.dist <= HALL_NEAR_DIST)
   }
 
   private clearInterior() {

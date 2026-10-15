@@ -4,7 +4,7 @@
  * Dimensions follow real kit: 1.0 m check-in desks, 0.9 m x-ray tunnels,
  * 0.76 m bench seats, 2.1 m arches, 0.75 m tables.
  */
-import { box, cyl, part, place, type Part } from './parts'
+import { box, cyl, markNear, part, place, type Part } from './parts'
 
 const H = Math.PI / 2
 
@@ -197,6 +197,7 @@ function checkinRow(n = 6): Part[] {
   out.push(box([len + 0.4, 3.2, 0.25], [0.4, 1.6, -1.8], 'cream'))
   out.push(box([len + 0.5, 0.25, 0.35], [0.4, 3.3, -1.75], 'hatchBlue'))
   out.push(box([2.2, 1.02, 0.03], [0.4, 3.15, -0.55], 'sgnCheckin'))
+  out.push(box([1.8, 0.42, 0.03], [-2.2, 2.55, -1.66], 'sgnArrivals'))
   out.push(box([len + 0.4, 0.06, 0.06], [0.4, 3.0 - 0.3, -1.6], 'lamp'))
   // strip curtain opening where the belt exits
   out.push(box([0.9, 0.6, 0.3], [len / 2 + 0.55, 0.75, -1.15], 'darkSteel'))
@@ -449,11 +450,13 @@ function foodCourt(): Part[] {
   const out: Part[] = []
   for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) out.push(...place(cafeTable(r === 1 ? 2 : 4), (c - 1.5) * 2.4, (r - 1) * 2.4))
   // long communal bench along the back with high table
-  out.push(box([8.4, 1.05, 0.7], [0, 0.525, -4.0], 'oak'), box([8.6, 0.05, 0.8], [0, 1.07, -4.0], 'walnut'))
+  out.push(box([8.4, 1.05, 0.7], [0, 0.525, -4.0], 'intCounter'), box([8.6, 0.05, 0.8], [0, 1.07, -4.0], 'granite'))
   for (let i = 0; i < 9; i++) out.push(cyl([0.38, 0.05, 0.38], [-3.8 + i * 0.95, 0.75, -3.35], 'leather'), cyl([0.05, 0.72, 0.05], [-3.8 + i * 0.95, 0.37, -3.35], 'chrome'))
+  const menus = ['sgnGrill', 'sgnNoodle', 'sgnBrew', 'sgnGrab'] as const
+  for (let i = 0; i < menus.length; i++) out.push(box([1.85, 0.62, 0.04], [-2.85 + i * 1.9, 2.15, -4.32], menus[i]))
+  out.push(box([7.7, 0.12, 0.04], [0, 2.55, -4.32], 'signDark'))
   for (const x of [-4.6, 4.6]) out.push(...place(plant(1.1, 'walnut'), x, 3.2))
   out.push(...place(binUnit(), 4.6, -2.6, -H))
-  out.push(box([3, 0.5, 0.06], [0, 3.6, -4.4], 'sgnFood'))
   for (let x = -3.6; x <= 3.6; x += 2.4) out.push(cyl([0.5, 0.6, 0.5], [x, 3.1, 0], 'amber'), cyl([0.01, 1.3, 0.01], [x, 4.0, 0], 'black'))
   return out
 }
@@ -477,7 +480,8 @@ function seatBeam(n = 5, upholstery = 'seatBlue'): Part[] {
   }
   for (let i = 0; i <= n; i++) {
     const x = (i - n / 2) * pitch
-    out.push(box([0.05, 0.04, 0.46], [x, 0.66, 0.02], 'chrome'), box([0.04, 0.2, 0.04], [x, 0.55, 0.2], 'chrome'))
+    out.push(box([0.07, 0.07, 0.46], [x, 0.56, 0.02], 'leather'), box([0.045, 0.16, 0.045], [x, 0.48, 0.18], 'chrome'))
+    if (i % 2 === 0) out.push(...markNear([box([0.05, 0.016, 0.07], [x, 0.605, 0.1], 'lampCool')]))
   }
   return out
 }
@@ -524,11 +528,11 @@ function gatePodium(): Part[] {
 function restroom(): Part[] {
   const w = 7, d = 5, h = 3
   const out: Part[] = [
-    box([w, h, 0.2], [0, h / 2, -d], 'tileWhite'),
-    box([0.2, h, d], [-w / 2, h / 2, -d / 2], 'tileGreen'),
-    box([0.2, h, d], [w / 2, h / 2, -d / 2], 'tileGreen'),
-    box([0.2, h, d], [0, h / 2, -d / 2], 'tileTeal'),
-    box([w, 0.02, d], [0, 0.01, -d / 2], 'pebble'),
+    box([w, h, 0.2], [0, h / 2, -d], 'intTile'),
+    box([0.2, h, d], [-w / 2, h / 2, -d / 2], 'intTile'),
+    box([0.2, h, d], [w / 2, h / 2, -d / 2], 'intTile'),
+    box([0.2, h, d], [0, h / 2, -d / 2], 'intStall'),
+    box([w, 0.02, d], [0, 0.01, -d / 2], 'intRestroomFloor'),
     // front wall with two baffle entrances
     box([w, 0.6, 0.25], [0, h - 0.3, 0], 'cream'),
     box([1.6, h - 0.6, 0.25], [-2.6, (h - 0.6) / 2, 0], 'tileTeal'),
@@ -549,7 +553,7 @@ function restroom(): Part[] {
     // cubicles
     for (let i = 0; i < 3; i++) {
       const x = side * 1.75 - 0.8 + i * 0.8
-      out.push(box([0.03, 2.0, 1.4], [x - 0.4, 1.1, -4.2], 'greyPanel'), box([0.76, 1.9, 0.04], [x, 1.1, -3.5], 'hatchBlue'))
+      out.push(box([0.03, 2.0, 1.4], [x - 0.4, 1.1, -4.2], 'intStall'), box([0.76, 1.9, 0.04], [x, 1.1, -3.5], 'intStall'))
       out.push(box([0.4, 0.4, 0.6], [x, 0.2, -4.5], 'porcelain'))
     }
   }
@@ -564,7 +568,7 @@ function carousel(): Part[] {
   // straight runs
   for (const z of [-R, R]) {
     out.push(box([L, 0.42, 0.9], [0, 0.21, z], 'brushed'))
-    out.push(box([L, 0.04, 0.95], [0, 0.44, z * 1.04], 'plate', [z > 0 ? 0.18 : -0.18, 0, 0]))
+    out.push(box([L, 0.04, 0.95], [0, 0.44, z * 1.04], 'intBelt', [z > 0 ? 0.18 : -0.18, 0, 0]))
     out.push(box([L, 0.06, 0.04], [0, 0.3, z * 1.32], 'rubber'))
   }
   // curved ends: radial plate segments
@@ -574,7 +578,7 @@ function carousel(): Part[] {
       const x = side * (L / 2 + Math.cos(a) * R)
       const z = Math.sin(a) * R
       out.push(box([0.9, 0.42, 0.7], [x, 0.21, z], 'brushed', [0, -a * side + (side < 0 ? Math.PI : 0), 0]))
-      out.push(box([0.95, 0.04, 0.72], [x, 0.44, z], 'plate', [0, -a * side + (side < 0 ? Math.PI : 0), 0]))
+      out.push(box([0.95, 0.04, 0.72], [x, 0.44, z], 'intBelt', [0, -a * side + (side < 0 ? Math.PI : 0), 0]))
     }
   }
   // centre island + feed hood with strip curtain
@@ -733,6 +737,8 @@ function jetBridge(): Part[] {
     cyl([3.8, 0.2, 3.8], [0, fy + 3.0, 0], 'lacquerWhite'),
     cyl([0.7, fy, 0.7], [0, fy / 2, 0], 'lacquerWhite'),
     cyl([1.4, 0.15, 1.4], [0, 0.08, 0], 'apronConcrete'),
+    box([1.15, 2.05, 0.08], [0, fy + 1.15, 1.72], 'intJet'),
+    box([0.9, 1.7, 0.02], [0, fy + 1.1, 1.77], 'darkSteel'),
   ]
   // tunnels: A (outer, larger) then B (inner telescoping), sloping down 0.4 m
   const segs: [number, number, number, number][] = [[1.6, 8.4, 2.9, 2.8], [8.6, 14.6, 2.7, 2.6]]
@@ -743,6 +749,19 @@ function jetBridge(): Part[] {
     out.push(box([w, h, L], [0, y, zc], 'corrugated', [tilt, 0, 0]))
     out.push(box([w + 0.06, 0.12, L], [0, y + h / 2 + 0.05, zc], 'lacquerWhite', [tilt, 0, 0]))
     out.push(box([w + 0.06, 0.18, L], [0, y - h / 2 - 0.07, zc], 'darkSteel', [tilt, 0, 0]))
+    out.push(box([0.05, h * 0.72, 0.08], [w / 2 + 0.03, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
+    out.push(box([0.05, h * 0.72, 0.08], [-w / 2 - 0.03, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
+    out.push(box([0.05, h * 0.72, 0.08], [w / 2 + 0.03, y + 0.05, zc + L * 0.28], 'intJet', [tilt, 0, 0]))
+    out.push(box([0.05, h * 0.72, 0.08], [-w / 2 - 0.03, y + 0.05, zc + L * 0.28], 'intJet', [tilt, 0, 0]))
+    if (z0 < 3) {
+      out.push(
+        ...markNear([
+          box([w - 0.45, 0.04, L - 0.7], [0, y - h / 2 + 0.16, zc], 'intCarpet', [tilt, 0, 0]),
+          box([0.04, 0.05, L - 0.9], [w / 2 - 0.28, y - h / 2 + 0.72, zc], 'chrome', [tilt, 0, 0]),
+          box([0.04, 0.05, L - 0.9], [-(w / 2 - 0.28), y - h / 2 + 0.72, zc], 'chrome', [tilt, 0, 0]),
+        ]),
+      )
+    }
     out.push(box([0.02, 0.9, L - 0.6], [w / 2 + 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
     out.push(box([0.02, 0.9, L - 0.6], [-w / 2 - 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
     out.push(box([0.03, 0.05, L], [w / 2 + 0.03, y - 0.4, zc], 'hatchBlue', [tilt, 0, 0]))
@@ -932,6 +951,104 @@ function checkinDeskSingle(): Part[] {
   return [...checkinDesk(0), box([1.7, 2.6, 0.12], [0, 1.3, -0.75], 'cream'), box([1.2, 0.36, 0.03], [0, 2.3, -0.68], 'logo0'), box([1.7, 0.04, 0.05], [0, 2.62, -0.68], 'led')]
 }
 
+/** Food-court stall sized to the plan kiosk. `sign` is a generic menu band, not a brand. */
+function menuCounter(sign: string): Part[] {
+  return [
+    box([1.08, 0.92, 0.5], [0, 0.46, 0], 'intCounter'),
+    box([1.12, 0.045, 0.56], [0, 0.94, 0.02], 'granite'),
+    box([0.86, 0.38, 0.02], [0, 1.26, 0.2], sign),
+    box([0.9, 0.035, 0.02], [0, 1.48, 0.2], 'ledWarm'),
+    box([0.96, 0.2, 0.015], [0, 0.7, 0.255], 'glass'),
+    box([0.14, 0.1, 0.1], [0.32, 1.02, 0.04], 'stainless'),
+  ]
+}
+
+/** One tiled stall that fits the plan restroom block. */
+function restroomStall(): Part[] {
+  return [
+    box([1.22, 1.9, 0.05], [0, 0.98, -0.28], 'intTile'),
+    box([0.05, 1.9, 0.58], [-0.6, 0.98, 0], 'intTile'),
+    box([0.05, 1.9, 0.58], [0.6, 0.98, 0], 'intTile'),
+    box([0.52, 1.55, 0.035], [-0.28, 0.85, 0.26], 'intStall'),
+    box([0.52, 1.55, 0.035], [0.28, 0.85, 0.26], 'intStall'),
+    box([1.15, 0.02, 0.55], [0, 0.01, 0], 'intRestroomFloor'),
+    box([0.7, 0.06, 0.22], [0, 0.86, -0.16], 'granite'),
+    cyl([0.22, 0.08, 0.18], [-0.18, 0.9, -0.14], 'porcelain'),
+    cyl([0.03, 0.14, 0.03], [-0.18, 1.02, -0.2], 'chrome'),
+    box([0.5, 0.28, 0.015], [0, 1.32, -0.25], 'mirror'),
+    box([0.42, 0.16, 0.02], [0, 1.72, 0.28], 'sgnWC'),
+  ]
+}
+
+function sofa(len: number): Part[] {
+  return [
+    box([len, 0.32, 0.7], [0, 0.28, 0], 'seatGrey'),
+    box([len, 0.4, 0.1], [0, 0.56, -0.3], 'seatGrey'),
+    box([0.1, 0.32, 0.7], [-len / 2, 0.4, 0], 'seatBlue'),
+    box([0.1, 0.32, 0.7], [len / 2, 0.4, 0], 'seatBlue'),
+    ...markNear([
+      box([len * 0.4, 0.07, 0.4], [-len * 0.22, 0.47, 0.02], 'leather'),
+      box([len * 0.4, 0.07, 0.4], [len * 0.22, 0.47, 0.02], 'leather'),
+    ]),
+  ]
+}
+
+function armchair(): Part[] {
+  return [
+    box([0.68, 0.3, 0.66], [0, 0.26, 0], 'seatBlue'),
+    box([0.68, 0.36, 0.08], [0, 0.5, -0.28], 'seatBlue'),
+    box([0.08, 0.28, 0.66], [-0.32, 0.36, 0], 'intWood'),
+    box([0.08, 0.28, 0.66], [0.32, 0.36, 0], 'intWood'),
+    ...markNear([box([0.46, 0.06, 0.4], [0, 0.44, 0.02], 'leather')]),
+  ]
+}
+
+/** Lounge seating for the airside room. Carpet, sofas, chairs, a wood screen. */
+function loungeCluster(): Part[] {
+  return [
+    box([4.4, 0.015, 3.2], [0, 0.008, 0], 'intCarpet'),
+    ...place(sofa(1.8), -0.85, -0.85),
+    ...place(sofa(1.5), 0.85, 0.7, Math.PI),
+    ...place(armchair(), -1.55, 0.55, 0.5),
+    ...place(armchair(), 1.45, -0.45, -0.6),
+    box([0.85, 0.04, 0.5], [0, 0.4, 0], 'intWood'),
+    cyl([0.08, 0.38, 0.08], [0, 0.19, 0], 'intWood'),
+    ...markNear([cyl([0.1, 0.14, 0.1], [0.18, 0.49, 0.04], 'lamp'), box([0.16, 0.02, 0.12], [-0.16, 0.43, 0.06], 'goodsD')]),
+    box([0.1, 1.45, 1.5], [2.05, 0.75, 0], 'intWood'),
+    ...place(plant(0.8, 'walnut'), -1.9, -1.25),
+  ]
+}
+
+/** Cubicle bay for the staff office. Desks in the plan stay where they are. */
+function staffOffice(): Part[] {
+  const out: Part[] = [box([4.2, 0.015, 3.2], [0, 0.008, 0], 'intCarpet')]
+  for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * 1.35
+    out.push(
+      box([1.2, 1.15, 0.05], [x, 0.7, -0.95], 'intOffice'),
+      box([1.1, 0.72, 0.58], [x, 0.36, -0.45], 'intOffice'),
+      box([1.14, 0.03, 0.62], [x, 0.74, -0.45], 'corian'),
+      ...place(monitor(0.4, 0.24), x, -0.55, 0, 0.95),
+      ...place(chair('seatGrey'), x, 0.2, Math.PI),
+    )
+  }
+  out.push(...place(plant(0.65), 1.7, 1.15))
+  return out
+}
+
+/** Arrivals / check-in wayfinding totem. */
+function arrivalsSign(): Part[] {
+  return [
+    box([0.9, 0.04, 0.28], [0, 0.02, 0], 'brushed'),
+    box([0.78, 2.55, 0.18], [0, 1.3, 0], 'signDark'),
+    box([0.68, 0.38, 0.02], [0, 2.25, 0.1], 'sgnArrivals'),
+    box([0.68, 0.34, 0.02], [0, 1.82, 0.1], 'sgnCheckin'),
+    box([0.68, 0.34, 0.02], [0, 1.4, 0.1], 'sgnBags'),
+    box([0.68, 0.34, 0.02], [0, 0.98, 0.1], 'sgnExit'),
+    box([0.64, 0.26, 0.02], [0, 0.55, 0.1], 'screen'),
+  ]
+}
+
 // ---------- registry ----------
 export const TERMINAL_PROP_TYPES = [
   'checkin_row',
@@ -971,6 +1088,14 @@ export const TERMINAL_PROP_TYPES = [
   'shop_gondola',
   'shop_kiosk',
   'checkin_desk',
+  'menu_counter',
+  'menu_noodle',
+  'menu_brew',
+  'menu_grab',
+  'restroom_stall',
+  'lounge_cluster',
+  'staff_office',
+  'arrivals_sign',
 ] as const
 export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
@@ -1012,6 +1137,14 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   shop_gondola: () => gondola(),
   shop_kiosk: shopKiosk,
   checkin_desk: checkinDeskSingle,
+  menu_counter: () => menuCounter('sgnGrill'),
+  menu_noodle: () => menuCounter('sgnNoodle'),
+  menu_brew: () => menuCounter('sgnBrew'),
+  menu_grab: () => menuCounter('sgnGrab'),
+  restroom_stall: restroomStall,
+  lounge_cluster: loungeCluster,
+  staff_office: staffOffice,
+  arrivals_sign: arrivalsSign,
 }
 
 /**

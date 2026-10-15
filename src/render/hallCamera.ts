@@ -24,6 +24,13 @@ export const HALL_CAM_FOV = 40
 export const HALL_CAM_MIN_DIST = 8
 /** Far enough to see the hall with apron around it. */
 export const HALL_CAM_MAX_DIST = 120
+/**
+ * Charging pucks, lounge cushions, jet-bridge cabin trim, and the
+ * additive room dressing draw while the camera is inside this range.
+ * The whole hall zoom stays inside it; the apron view drops it when
+ * the terminal is far.
+ */
+export const HALL_NEAR_DIST = HALL_CAM_MAX_DIST
 /** Pulls the clip plane off the walls and counters. */
 export const HALL_CAM_NEAR = 0.8
 export const HALL_CAM_FAR = 480

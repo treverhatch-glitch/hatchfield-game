@@ -16,6 +16,8 @@ export interface Part {
   mat: string
   /** Euler rotation in radians (XYZ). */
   rot?: [number, number, number]
+  /** Drawn only inside hall-camera range. Repeated trim, not the silhouette. */
+  near?: boolean
 }
 
 export const part = (
@@ -28,6 +30,11 @@ export const part = (
 
 export const box = (s: Part['size'], p: Part['pos'], m: string, r?: Part['rot']) => part('box', s, p, m, r)
 export const cyl = (s: Part['size'], p: Part['pos'], m: string, r?: Part['rot']) => part('cyl', s, p, m, r)
+
+/** Trim that only draws inside hall-camera range. */
+export function markNear(parts: Part[]): Part[] {
+  return parts.map((p) => ({ ...p, near: true }))
+}
 
 /** Move a group of parts by an offset and an optional yaw around the group origin. */
 export function place(parts: Part[], dx: number, dz: number, yaw = 0, dy = 0): Part[] {

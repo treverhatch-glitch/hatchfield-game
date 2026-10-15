@@ -18,6 +18,7 @@ import checkinB64 from './tex/checkin.b64.txt?raw'
 import securityB64 from './tex/security.b64.txt?raw'
 import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../signage/load'
 import { counterSheetTexture } from './counterArt'
+import { interiorTexture } from './interiorTex'
 import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
@@ -279,6 +280,22 @@ export const MATERIALS: Record<string, MatSpec> = {
   cup: { color: '#f4efe6', rough: 0.5 },
   porcelain: { color: '#fafafa', rough: 0.15 },
   tileGreen: { color: '#5e8f86', rough: 0.3 },
+  // concept interior plates (arrivals, claim, food court, lounge, restrooms, office, jet bridge)
+  intFloor: { color: '#d8d0c4', rough: 0.35, map: () => interiorTexture('floor_terrazzo', [2, 2]), clearcoat: 0.35 },
+  intRestroomFloor: { color: '#c4c2bc', rough: 0.4, map: () => interiorTexture('floor_restroom', [2, 2]), clearcoat: 0.25 },
+  intCarpet: { color: '#303848', rough: 0.95, map: () => interiorTexture('floor_carpet', [2, 2]) },
+  intTile: { color: '#f2f2ee', rough: 0.25, map: () => interiorTexture('wall_tile', [2, 2]), clearcoat: 0.45 },
+  intWall: { color: '#e8e2d4', rough: 0.55, map: () => interiorTexture('wall_panel', [1, 1]) },
+  intStall: { color: '#5c6268', rough: 0.45, metal: 0.25, map: () => interiorTexture('wall_stall', [1, 1]) },
+  intCounter: { color: '#ece8e0', rough: 0.35, map: () => interiorTexture('counter_front', [1, 1]), clearcoat: 0.2 },
+  intBelt: { color: '#2a2c30', rough: 0.85, map: () => interiorTexture('belt_claim', [4, 1]) },
+  intOffice: { color: '#243454', rough: 0.8, map: () => interiorTexture('office_panel', [1, 1]) },
+  intJet: { color: '#c6cacf', rough: 0.4, metal: 0.55, map: () => interiorTexture('jetbridge_panel', [2, 1]) },
+  intWood: { color: '#8a623e', rough: 0.55, map: () => interiorTexture('lounge_wood', [1, 2]) },
+  sgnGrill: { color: '#ffffff', map: () => signTex('GRILL', '#c45a28', '#fff6e8', '', 1024, 256), glow: true },
+  sgnNoodle: { color: '#ffffff', map: () => signTex('NOODLES', '#1d4e4a', '#fff6e8', '', 1024, 256), glow: true },
+  sgnBrew: { color: '#ffffff', map: () => signTex('BREW', '#5a3a22', '#f3e2c4', '', 1024, 256), glow: true },
+  sgnGrab: { color: '#ffffff', map: () => signTex('GRAB', '#1e4a86', '#ffffff', '', 1024, 256), glow: true },
 }
 
 const LOGO_FILES = ['logo_zoomjet.jpg', 'logo_crown_pacific.jpg', 'logo_siam_breeze.jpg', 'logo_bushline_local.jpg']
