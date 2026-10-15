@@ -47,6 +47,8 @@ export interface WorldView {
   deskStaff?: number
   /** Airport view keeps the terminal roof on. Hall view may cut it away. */
   view?: 'apron' | 'hall'
+  /** Set while the roof beat plays. The apron shell stays closed for the whole beat. */
+  viewCue?: 'apron' | 'hall' | null
 }
 
 export function tileAt(view: WorldView, c: number, r: number): Tile | null {

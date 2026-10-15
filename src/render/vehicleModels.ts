@@ -8,6 +8,7 @@
  * light bars) are tagged `lit` and drawn unlit so they read as glowing.
  */
 import * as THREE from 'three'
+import { FULL_DETAIL_DIST } from './viewBudget'
 import { PROP_LOOK } from './look'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
@@ -182,11 +183,8 @@ export const LIVERY_CELLS = 16
  * Placards are scaled to this aspect so the brand is not stretched or cropped.
  */
 export const LIVERY_CELL_ASPECT = 1024 / 280
-/**
- * Camera distance in metres. Closer than this, the fleet draws the full rig.
- * Farther, it draws one cheap instanced shell per model.
- */
-export const VEHICLE_LOD_M = 130
+/** Full vehicle mesh inside the play orbit. The cheap shell is only past this. */
+export const VEHICLE_LOD_M = FULL_DETAIL_DIST
 export type TexId = (typeof TEX)[keyof typeof TEX]
 
 function autoTex(hex: string, lit: boolean): TexId {

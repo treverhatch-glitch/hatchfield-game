@@ -4,6 +4,7 @@ import { snapshotFrom, tracksFrom } from '../camera/actors.ts'
 import { pngName, savePng } from '../camera/capture.ts'
 import { pickTrackable } from '../camera/pick.ts'
 import { cameraSession } from '../camera/session.ts'
+import { shownWorld } from '../render/viewCue'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { apronForward, apronRight } from '../camera/pan.ts'
@@ -90,14 +91,15 @@ export function Field({ game }: { game: Game }) {
       if (!alive) return
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      if (game.view === 'apron') {
+      if (shownWorld(game.view, game.viewCue) === 'apron') {
         const w = worldRef.current
         if (w) {
-          if (game.diplomacyTourSeconds > 0) {
+          // The roof beat owns the camera until it finishes or the player skips.
+          if (!game.viewCue && game.diplomacyTourSeconds > 0) {
             w.nudgeYaw(0.45 * dt)
             w.nudgePan(Math.sin(now / 900) * 10 * dt, 5 * dt)
             game.diplomacyTourSeconds = Math.max(0, game.diplomacyTourSeconds - dt)
-          } else if (!cameraSession.following) {
+          } else if (!game.viewCue && !cameraSession.following) {
             const speed = 28 * dt
             const fx = apronRight(inputMap.analog('camera.panRight'), inputMap.analog('camera.panLeft')) * speed
             const fy = apronForward(inputMap.analog('camera.panForward'), inputMap.analog('camera.panBack')) * speed
@@ -107,7 +109,7 @@ export function Field({ game }: { game: Game }) {
             const zoom = inputMap.analog('camera.zoomIn') - inputMap.analog('camera.zoomOut')
             if (zoom) w.nudgeZoom(-zoom * 48 * dt)
             if (w.followHeld) w.releaseFollow()
-          } else {
+          } else if (!game.viewCue) {
             const pose = cameraSession.step(dt, tracksFrom(snapshotFrom(game)), FIELD_LAYOUT)
             if (pose) w.applyFollow(pose.position, pose.aim)
             else if (w.followHeld) w.releaseFollow()

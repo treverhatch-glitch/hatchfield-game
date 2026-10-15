@@ -321,12 +321,12 @@ describe('aircraft model factory', () => {
       prev = w
     }
     const zoomed = lodWeights(LOD_DIST.high - 4)
-    const normal = lodWeights(88)
+    const orbit = lodWeights(280)
     const far = lodWeights(LOD_DIST.low + 8)
     expect(zoomed.high).toBeGreaterThan(0.95)
-    expect(normal.high).toBeLessThan(0.05)
-    expect(normal.mid).toBeGreaterThan(0.95)
-    expect(normal.low).toBeLessThan(0.05)
+    expect(orbit.high).toBeGreaterThan(0.95)
+    expect(orbit.mid).toBeGreaterThan(0.95)
+    expect(orbit.low).toBeLessThan(0.05)
     expect(far.low).toBeGreaterThan(0.95)
     expect(far.mid).toBeLessThan(0.05)
     expect(far.high).toBeLessThan(0.05)
@@ -341,9 +341,9 @@ describe('aircraft model factory', () => {
     camera.updateMatrixWorld()
     aircraft.updateMatrixWorld(true)
     lod.update(camera)
-    expect(lod.buckets?.lowGroup.visible).toBe(true)
-    expect(lod.buckets?.midGroup.visible).toBe(false)
-    expect(lod.buckets?.highGroup.visible).toBe(false)
+    expect(lod.buckets?.lowGroup.visible).toBe(false)
+    expect(lod.buckets?.midGroup.visible).toBe(true)
+    expect(lod.buckets?.highGroup.visible).toBe(true)
     // Airborne: every leg has swung up into its bay and is hidden.
     const gear = mid(aircraft).getObjectByName('gear') as THREE.Group
     const legs = gear.children.filter((c) => c.userData.retract)

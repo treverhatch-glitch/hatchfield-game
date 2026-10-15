@@ -2220,7 +2220,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           <div className="dock-extend">
             {game.view === 'hall' ? (
               <div className="tools">
-                <button type="button" className="on" onClick={() => game.exitHall()}>
+                <button type="button" className="on" onClick={() => game.askView('apron')}>
                   ← Apron outside
                 </button>
                 <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>

@@ -20,6 +20,7 @@ import {
 } from './dayNight'
 import { tintNoonLights } from './noonHint'
 import { setWindowGlow } from './nightArt'
+import type { ShellWeights } from '../viewCue'
 import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
 import {
@@ -502,6 +503,18 @@ export class WorldRenderer {
     return raycaster.intersectObjects(roots, true).some((hit) => objectIsFidsBoard(hit.object))
   }
 
+  /** First terminal, for the view-change dolly. */
+  terminalAim(): { x: number; z: number } | null {
+    const building = this.buildings[0]
+    if (!building) return null
+    return { x: building.center.x, z: building.center.z }
+  }
+
+  /** Roof lift and wall snap. Null seats every shell. The sim does not call this. */
+  setShellCue(weights: ShellWeights | null) {
+    for (const building of this.buildings) building.applyShellCue(weights)
+  }
+
   update(view: WorldView, camera: THREE.Camera, dt: number) {
     // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
     const step = Math.min(0.25, Math.max(0, dt))
@@ -639,7 +652,7 @@ export class WorldRenderer {
       tuft instanceof THREE.MeshLambertMaterial ? tuft : undefined,
     )
 
-    const enclosed = view.view === 'apron'
+    const enclosed = view.view === 'apron' || view.viewCue != null
     setWindowGlow(night.terminalWindows)
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
     const feed = isFidsSource(view)
