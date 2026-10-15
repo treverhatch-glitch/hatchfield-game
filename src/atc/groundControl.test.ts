@@ -63,6 +63,19 @@ describe('ground control reservations', () => {
     expect(atc.canLand('ARR', ['rw'])).toBe(true)
   })
 
+  it('a departure lining up short of the exit does not take the runway from an arrival', () => {
+    const atc = new GroundControl({ finalWindowSec: 10 })
+    atc.register('DEP', 'departure', [g('stand'), g('hold'), g('stub'), rw('r1')])
+    atc.register('ARR', 'arrival', [rw('r0'), g('stub'), g('stand2')])
+    atc.onFinal('ARR', ['rw'], 4)
+    atc.progress('DEP', 1)
+    expect(atc.canLand('ARR', ['rw'])).toBe(true)
+    atc.limit('DEP', RIGHT_OF_WAY.departure)
+    expect(atc.arbitrate()).toEqual([])
+    expect(atc.requestLanding('ARR', ['rw'])).toBe(true)
+    expect(atc.runwayOwner('rw')).toBe('ARR')
+  })
+
   it('right of way: arrival vacating beats a departure, departure beats a taxi crossing', () => {
     const atc = new GroundControl({ finalWindowSec: 0 })
     atc.register('X', 'taxi', [g('a'), rw('c1')])

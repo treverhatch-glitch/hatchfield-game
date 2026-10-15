@@ -2823,24 +2823,33 @@ export class Game {
       building.tile === 'kitchen' ||
       building.tile === 'depot' ||
       building.tile === 'deice'
-    for (let r = 1; r < this.tiles.length - 1; r++) {
-      for (let c = 1; c < this.tiles[r].length - 1; c++) {
-        const v = { c, r }
-        if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
-        if (landside) {
-          const nearRoad = [
-            { c: c + 1, r },
-            { c: c - 1, r },
-            { c, r: r + 1 },
-            { c, r: r - 1 },
-          ].some((p) => this.tile(p) === 'road')
-          if (!nearRoad) continue
+    const prevTool = this.tool
+    const prevHover = this.hover
+    this.tool = tool
+    try {
+      for (let r = 1; r < this.tiles.length - 1; r++) {
+        for (let c = 1; c < this.tiles[r].length - 1; c++) {
+          const v = { c, r }
+          if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
+          if (landside) {
+            const nearRoad = [
+              { c: c + 1, r },
+              { c: c - 1, r },
+              { c, r: r + 1 },
+              { c, r: r - 1 },
+            ].some((p) => this.tile(p) === 'road')
+            if (!nearRoad) continue
+          }
+          if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
+          this.hover = v
+          if (this.ghostReady(this.ghostCells(v))) return v
         }
-        if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
-        return v
       }
+      return null
+    } finally {
+      this.tool = prevTool
+      this.hover = prevHover
     }
-    return null
   }
 
   /** Hide one letter. Later leaves a field ask running; Decline is what retires it. */
@@ -23627,7 +23636,146 @@ export class Game {
     return best ?? nearestPath(this.tiles, stand, strips.flat(), 'jet')
   }
 
+  /** Runway cells at either end. Departures line up here, not on a rapid exit. */
+  private thresholdCells(line: readonly Vec[]): Vec[] {
+    if (line.length < 2) return [...line]
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const ends = new Set<number>(
+      horizontal ? [line[0].c, line[line.length - 1].c] : [line[0].r, line[line.length - 1].r],
+    )
+    const out: Vec[] = []
+    const seen = new Set<string>()
+    for (const p of line) {
+      if (!ends.has(horizontal ? p.c : p.r)) continue
+      const mates = horizontal
+        ? [p, { c: p.c, r: p.r - 1 }, { c: p.c, r: p.r + 1 }]
+        : [p, { c: p.c - 1, r: p.r }, { c: p.c + 1, r: p.r }]
+      for (const m of mates) {
+        if (!inBounds(m.c, m.r) || this.tiles[m.r][m.c] !== 'runway') continue
+        const id = `${m.c},${m.r}`
+        if (seen.has(id)) continue
+        seen.add(id)
+        out.push(m)
+      }
+    }
+    return out.length ? out : [...line]
+  }
+
+  /** Taxi cells beside the strip, off the threshold. */
+  private rapidExitCells(line: readonly Vec[]): Vec[] {
+    if (line.length < 2) return []
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const ends = new Set<number>(
+      horizontal ? [line[0].c, line[line.length - 1].c] : [line[0].r, line[line.length - 1].r],
+    )
+    const out: Vec[] = []
+    const seen = new Set<string>()
+    for (const p of line) {
+      if (ends.has(horizontal ? p.c : p.r)) continue
+      const mates = horizontal
+        ? [p, { c: p.c, r: p.r - 1 }, { c: p.c, r: p.r + 1 }]
+        : [p, { c: p.c - 1, r: p.r }, { c: p.c + 1, r: p.r }]
+      for (const cell of mates) {
+        if (!inBounds(cell.c, cell.r) || this.tiles[cell.r][cell.c] !== 'runway') continue
+        for (const n of neighbors(cell.c, cell.r)) {
+          if (this.tiles[n.r]?.[n.c] !== 'taxi') continue
+          const id = `${n.c},${n.r}`
+          if (seen.has(id)) continue
+          seen.add(id)
+          out.push(n)
+        }
+      }
+    }
+    return out
+  }
+
+  private approachTo(line: readonly Vec[], touch: Vec): Vec[] {
+    let idx = 0
+    let best = Infinity
+    for (let i = 0; i < line.length; i++) {
+      const d = Math.abs(line[i].c - touch.c) + Math.abs(line[i].r - touch.r)
+      if (d < best) {
+        best = d
+        idx = i
+      }
+    }
+    const fromStart = line.slice(0, idx + 1)
+    const fromEnd = [...line].reverse().slice(0, line.length - idx)
+    const approach = (fromStart.length >= fromEnd.length ? fromStart : fromEnd).map((p) => ({ ...p }))
+    const last = approach[approach.length - 1]
+    if (!last || last.c !== touch.c || last.r !== touch.r) approach.push({ c: touch.c, r: touch.r })
+    return approach
+  }
+
+  private runwayBeside(exit: Vec, line: readonly Vec[]): Vec | null {
+    for (const n of neighbors(exit.c, exit.r)) {
+      if (this.tiles[n.r]?.[n.c] !== 'runway') continue
+      if (line.some((p) => Math.abs(p.c - n.c) + Math.abs(p.r - n.r) <= 1)) return n
+    }
+    return null
+  }
+
+  /** Arrival rolls the strip and leaves on a rapid exit, not the lineup threshold. */
+  private landingViaExit(stand: Vec, runwayPref?: number | null): Vec[] | null {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (!strips.length) return null
+    const order: number[] = []
+    if (runwayPref != null && strips[runwayPref]) order.push(runwayPref)
+    for (let i = 0; i < strips.length; i++) if (!order.includes(i)) order.push(i)
+    let best: Vec[] | null = null
+    for (const i of order) {
+      const line = strips[i]
+      if (!line) continue
+      const exits = this.rapidExitCells(line)
+      if (!exits.length) continue
+      let exit = exits[0]!
+      let dist = Infinity
+      for (const cell of exits) {
+        const d = Math.abs(cell.c - stand.c) + Math.abs(cell.r - stand.r)
+        if (d < dist) {
+          dist = d
+          exit = cell
+        }
+      }
+      const off = nearestPath(this.tiles, exit, [stand], 'jet')
+      if (!off || off.length < 2) continue
+      const touch = this.runwayBeside(exit, line)
+      if (!touch) continue
+      const merged = this.approachTo(line, touch)
+      for (const p of off) {
+        const last = merged[merged.length - 1]
+        if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
+      }
+      if (!jetRouteOnGraph(this.tiles, merged)) continue
+      if (runwayPref != null && i === runwayPref) return merged
+      if (!best || merged.length < best.length) best = merged
+    }
+    return best
+  }
+
+  /** Departure taxis to a threshold and rolls the strip. It does not enter on the arrival's exit. */
+  private departureViaThreshold(f: Flight): Vec[] | null {
+    if (!f.stand) return null
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const index = this.flightStrip(f)
+    const line = (index != null && strips[index]) || strips[0]
+    if (!line) return null
+    const taxi = nearestPath(this.tiles, f.stand, this.thresholdCells(line), 'jet')
+    if (!taxi || taxi.length < 2) return null
+    const touch = taxi[taxi.length - 1]!
+    const merged = taxi.map((p) => ({ ...p }))
+    for (const p of [...this.approachTo(line, touch)].reverse()) {
+      const last = merged[merged.length - 1]
+      if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
+    }
+    return jetRouteOnGraph(this.tiles, merged) ? merged : null
+  }
+
   landingRoute(stand: Vec, runwayPref?: number | null): Vec[] | null {
+    const viaExit = this.landingViaExit(stand, runwayPref)
+    if (viaExit) return viaExit
     const toRunway = this.pathStandToRunway(stand, runwayPref)
     if (!toRunway || toRunway.length < 2) return null
     const entry = toRunway[toRunway.length - 1]
@@ -24334,6 +24482,8 @@ export class Game {
         const bus = this.trucks.some((truck) => truck.flightId === flight.id && truck.kind === 'termbus')
         if (!walkers && !bus) return true
       }
+      // Past the boarding cap with nobody left to board: the strip wait is a stall, not a queue.
+      if (outbound && waiting <= 0 && flight.phaseTime > this.boardCap(flight)) return true
     }
     const rolling =
       flight.phase === 'taxi_in' ||
@@ -25861,6 +26011,8 @@ export class Game {
 
   departurePath(f: Flight): Vec[] | null {
     if (!f.stand) return null
+    const viaThreshold = this.departureViaThreshold(f)
+    if (viaThreshold) return viaThreshold
     const inbound = this.landingRoute(f.stand, this.flightStrip(f))
     if (!inbound) return null
     const path = [...inbound].reverse()

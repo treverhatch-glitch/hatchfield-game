@@ -291,7 +291,7 @@ class GamePlayer implements PlayerCommands {
         else far.push(cell)
       }
     }
-    return near.length ? near : far
+    return near.length ? near.concat(far) : far
   }
 
   buyRoom(id: RoomId): CommandResult {
