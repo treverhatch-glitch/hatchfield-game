@@ -12,9 +12,9 @@ describe('contract check-in capacity', () => {
       kiosks: 1,
     })
     expect(blocked.ok).toBe(false)
-    expect(blocked.capacity).toBe(14)
+    expect(blocked.capacity).toBe(18)
     expect(blocked.line).toContain('28 passengers a minute')
-    expect(blocked.line).toContain('Desks and kiosks clear 14')
+    expect(blocked.line).toContain('Desks and kiosks clear 18')
     expect(blocked.line).toContain('Add check-in desks')
     expect(blocked.line).toContain('expand the hall')
     expect(blocked.line).toContain('Room for 1 carrier')

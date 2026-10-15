@@ -336,7 +336,7 @@ export const PAX_UNITS: Record<PaxUnit, PaxUnitDef> = {
     research: null,
     cost: 2_400,
     upkeepPerDay: 35,
-    perMin: 8,
+    perMin: 12,
     channel: 'checkin',
   },
   kiosk: {
