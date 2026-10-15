@@ -1,10 +1,10 @@
 # Bot rerun — 15 Oct 2026, 09:30 window
 
-Headless personas on `4b02521`. That tip includes the strip headway (`d31f542`, `RUNWAY_TURN_SEC` 48) and fuel Phase 1 (`c4c890f`: the starter has no term, a phone card orders one 36,000 L Apex tanker, 60 sim-seconds to answer, 20 sim-seconds of cooldown, 90 game-minutes on the road). No gameplay numbers were changed for this note.
+Headless personas on `1fc1927`. That tip includes the strip headway (`d31f542`, `RUNWAY_TURN_SEC` 48), fuel Phase 1 (`c4c890f`: the starter has no term, a phone card orders one 36,000 L tanker, 60 sim-seconds to answer, 20 sim-seconds of cooldown, 90 game-minutes on the road), and the Oct 15 hub work (lounge, gate, and hangar leases, dedicated turnaround trucks, hub tenure, desk clearance on a passenger contract). No gameplay numbers were changed for this note.
 
-The 90-day Careful / Greedy / Chaotic table is the **tip policy**: sign Apex Local, do not build a second strip, hire no researchers. That is the same decisions as `rerun_oct15_0630`, on the new sim. Seeds are Careful `0x5eed`, Greedy `0x6eed`, Chaotic `0xc0a0`. Standard difficulty, passenger focus, sandbox off. One day is 180 sim seconds. The driver ticks at 0.25s and 5×, and looks at the board every 12 sim seconds.
+The 90-day Careful / Greedy / Chaotic table is the **tip policy**: sign Apex Local, do not build a second strip, hire no researchers. That is the same decisions as `rerun_oct15_0630`, on this sim. Seeds are Careful `0x5eed`, Greedy `0x6eed`, Chaotic `0xc0a0`. Standard difficulty, passenger focus, sandbox off. One day is 180 sim seconds. The driver ticks at 0.25s and 5×, and looks at the board every 12 sim seconds.
 
-`docs/playtest/research_pace.md` is that same 90-day run. `docs/playtest/bots/tip90.json` and `spot90.json` hold the rows. The live policy (second strip, two extra stands, one researcher) is only the day-150 careful run below. `report.json` is the standard-length live-policy playtest (Careful 45, Greedy 60, Chaotic 30) plus the browser smoke, not the 90-day tip table.
+`docs/playtest/research_pace.md` is that same 90-day run. `docs/playtest/bots/tip90.json` and `spot90.json` hold the rows. The live policy (second strip, two extra stands, one researcher) is the day-150 careful run and the standard-length `report.json` (Careful 45, Greedy 60, Chaotic 30, plus the browser smoke). The browser opening reached the first landing.
 
 Counting:
 
@@ -14,34 +14,35 @@ Counting:
 - **Missed-connection $** is the `missed_connection` ledger (a negative expense).
 - **Fuel groundings** are departures whose fuel hold flipped on. Each flight is counted once.
 - **Curb day** is the first sim day the curb pressure was seen above 1, including mid-day.
-- **Preferred / Trusted** are the first day-open samples with a carrier at that relationship tier.
+- **Preferred / Trusted** are the first day-open samples with a carrier at that relationship tier. A later sample can fall back.
 - **Hub tier** is the highest checklist `current` among signed carriers. Station is the floor once anyone is signed.
 
 ## 90-day tip policy
 
 | | Careful | Greedy | Chaotic |
 | --- | ---: | ---: | ---: |
-| Flights (per day) | 442 (4.9) | 360 (4.0) | 437 (4.9) |
-| Day-60 flights | 275 | 231 | 287 |
-| Flight diverts | 12 | 6 | 2 |
-| Connection diverts | 16 | 5 | 0 |
-| Go-arounds | 31 | 10 | 4 |
-| Missed-connection $ | -$29,760 | -$5,580 | $0 |
-| Walk / bag / MCT misses | 0 | 0 | 0 |
-| Curb crossed 1 | day 16 | day 19 | day 20 |
-| Curb peak | 2.6 | 7.4 | 9.3 |
+| Flights (per day) | 309 (3.4) | 279 (3.1) | 277 (3.1) |
+| Day-60 flights | 207 | 186 | 190 |
+| Flight diverts | 9 | 5 | 23 |
+| Connection diverts | 4 | 2 | 21 |
+| Go-arounds | 25 | 16 | 53 |
+| Missed-connection $ | -$3,720 | -$3,720 | -$37,200 |
+| Walk / bag / MCT misses | 0 | 0 | 2 |
+| Curb crossed 1 | day 21 | day 21 | day 21 |
+| Curb peak | 1.8 | 5.6 | 5.8 |
 | Fuel groundings | 0 | 0 | 0 |
-| Tree complete | day 85 | day 74 | day 51 |
-| Cash day 30 / 60 / 90 | $141,513 / $354,306 / $573,105 | $7,443 / $36,855 / $50,984 | $63,155 / $46,694 / $112,086 |
-| Preferred | day 12 | day 14 | day 15 |
-| Trusted | day 25 | day 27 | day 50 |
-| Hub checklist | Station | Station | Station |
-| Stands / runways | 4 / 1 | 6 / 1 | 24 / 1 |
+| Tree complete | day 86 | day 75 | day 51 |
+| Cash day 30 / 60 / 90 | $309,237 / $799,578 / $1,224,939 | $197,550 / $137,720 / $618,643 | $137,269 / $566,193 / $386,814 |
+| Preferred | day 16 | day 17 | day 14 |
+| Trusted | — | — | — |
+| Hub checklist | Station (day 1) | Station (day 1) | Station (day 2) |
+| Stands / runways | 4 / 1 | 6 / 1 | 21 / 1 |
 | Researchers | 0 | 0 | 0 |
-| Field level / stars | FL8 / 0 | FL8 / 0 | FL8 / 0 |
-| Fuel purchase / day | $617 (term) | $636 (term) | $610 (term) |
+| Field level / stars | FL7 / 0 | FL7 / 0 | FL7 / 0 |
+| Fuel purchase / day | $642 (term) | $665 (term) | $758 (term) |
+| Signed at day 90 | 1 carrier | 1 carrier | 1 carrier |
 
-No softlocks and no console errors. Careful’s carrier is Preferred inside the 20–30 day band only if Trusted is the band that matters; Preferred itself landed on day 12, earlier than the 0630 seed (day 18) and earlier than the 20–30 note. Trusted, the next relationship step, is day 25 for Careful.
+No softlocks and no console errors. Each persona ends the 90 days with a single signed carrier (Careful and Greedy on the regional starter, Chaotic on Zoomjet). Preferred is the first day-open sample only. On the shorter live runs that sample does not stick: Careful is Preferred on days 16 and 21–24 and is Published hostile at day 45; Greedy is Preferred on days 14 and 16–26 and is Published hostile at day 60. Trusted does not appear on these unpatched personas, including careful day 150. They never add the desks a second carrier needs. A separate probe that forces 8 check-in desks and 2 kiosks, and stays on the tip policy, still reaches Trusted by day 60. The same probe with the live policy (second strip, one researcher) was at a best score of 39.7 on day 60, short of the Trusted line at 45, with Harbor Heli and Island Heli at Preferred and three other carriers hostile.
 
 ## Against `rerun_oct15_0630` and the pre-`3360f09` careful run
 
@@ -49,22 +50,22 @@ No softlocks and no console errors. Careful’s carrier is Preferred inside the 
 
 | | 0630 | This tip run | Pre-`3360f09` careful |
 | --- | --- | --- | --- |
-| Careful flights | 146 in 45 days (3.2/day). Day 45 on this seed is 199. | 442 in 90 days (4.9/day). Day 60 is 275. | 308 in 60 days (5.1/day) |
-| Careful diverts | 0 | 12 flight diverts across 90 days | 35 in 60 days |
-| Careful missed-connection $ | $0 | -$29,760, all of it divert-tagged (0 walk / bag / MCT misses) | not in that citation |
-| Careful curb | crossed 1 on day 26, then the bay brought it down | crossed 1 on day 16, peak 2.6, still over 1 at day 90 | |
-| Careful cash | day 30 $112,395, day 45 $158,421 | day 30 $141,513, day 60 $354,306, day 90 $573,105 | |
-| Careful Preferred | day 18 | day 12 (Trusted day 25) | |
-| Greedy flights | 225 in 60 days | day 60 is 231; 360 in 90 days | |
-| Greedy cash | day 30 $8,368, day 60 $20,441 | day 30 $7,443, day 60 $36,855, day 90 $50,984 | |
-| Greedy diverts / missed $ | 0 / $0 | 6 flight diverts / -$5,580 | |
-| Chaotic | 104 flights in 30 days, cash $209,834, 0 diverts | day 30 is 115 flights and $63,155; day 90 is 437 flights and $112,086; 2 flight diverts | |
+| Careful flights | 146 in 45 days (3.2/day) | 309 in 90 days (3.4/day). Day 30 is 106. Day 60 is 207. | 308 in 60 days (5.1/day) |
+| Careful diverts | 0 | 9 flight diverts across 90 days | 35 in 60 days |
+| Careful missed-connection $ | $0 | -$3,720, with 0 walk / bag / MCT misses | not in that citation |
+| Careful curb | crossed 1 on day 26, then the bay brought it down | crossed 1 on day 21, peak 1.8 | |
+| Careful cash | day 30 $112,395, day 45 $158,421 | day 30 $309,237, day 60 $799,578, day 90 $1,224,939 | |
+| Careful Preferred | day 18 | first sample day 16 (Trusted never) | |
+| Greedy flights | 225 in 60 days | day 60 is 186; 279 in 90 days | |
+| Greedy cash | day 30 $8,368, day 60 $20,441 | day 30 $197,550, day 60 $137,720, day 90 $618,643 | |
+| Greedy diverts / missed $ | 0 / $0 | 5 flight diverts / -$3,720 | |
+| Chaotic | 104 flights in 30 days, cash $209,834, 0 diverts | day 30 is 98 flights and $137,269; day 90 is 277 flights and $386,814; 23 flight diverts | |
 
-The headway put turns back on the field. Careful’s day-60 count (275) is well above a 3.2/day pace and still 33 flights short of the pre-spacing 308. Diverts came back, and they are fewer than that 60-day 35 even across 90 days. They are also the whole of Careful’s missed-connection bill. The 0630 claim that missed-connection cash stayed at $0 does not hold on this tip.
+Careful’s day-60 count (207) is above a 3.2/day pace and 101 flights short of the pre-spacing 308. It is also short of the 275 recorded on `4b02521` with the same tip policy, so the latest hub and contract commits moved the bank again. Diverts are back, and they are fewer than that 60-day 35. The 0630 claim that missed-connection cash stayed at $0 does not hold, and the bill is small next to the rest of the penalty ledger (below).
 
-Fuel did not ground anyone who signed the term. The 0630 tank note (no departure grounded) still holds for the term path.
+Fuel did not ground anyone who signed the term.
 
-Research pace did not move. `research_pace.md` from `5120ac5` had Careful complete on day 85, Greedy on day 74, Chaotic on day 53, all with 0 researchers. This run is day 85, day 74, and day 51. Careful’s unspent points at day 90 rose from 277 to 319. The wallet cap is still what stops the pile. More flights did not hire a researcher and did not finish the tree sooner.
+Research pace barely moved. `research_pace.md` from `5120ac5` had Careful complete on day 85 (277 unspent), Greedy on day 74, Chaotic on day 53, all with 0 researchers. This run is day 86 (269 unspent), day 75, and day 51. The wallet cap is still what stops the pile. More cash did not hire a researcher and did not finish the tree sooner.
 
 ## Spot-only probe
 
@@ -72,16 +73,18 @@ Same careful decisions and the same seed, with `signFuelTerm` left out. Ninety d
 
 | | Term (the careful row above) | (a) Accept every spot card | (b) Ignore every spot card |
 | --- | ---: | ---: | ---: |
-| Flights | 442 | 434 | 1 |
-| Fuel groundings | 0 | 0 | 496 |
+| Flights | 309 | 312 | 1 |
+| Fuel groundings | 0 | 0 | 384 |
 | First grounding day | — | — | 0 |
-| Fuel $ / day | $617 term | $696 spot | $0 |
-| Cash day 90 | $573,105 | $594,843 | $952,031 |
+| Fuel $ / day | $642 term | $1,128 spot | $0 |
+| Fuel $ total | $57,772 | $101,556 | $0 |
+| Cash day 90 | $1,224,939 | $1,344,035 | $99,656 |
+| Tree complete | day 86 | day 86 | day 85 |
 | Copy on screen before the first hold | term-signed news | spot cards, then tankers | `Spot card for LIF103` |
 
-**(a) does not ground the scheduled bank.** Zero fuel holds in 90 days. The 90 game-minute lead was long enough for these departures. Spot fuel cost about $79/day more than the term ($62,640 versus $55,520). Flights and cash stayed in the same band as the term. One emergency host was missed while a tanker was already on the road: “Firefighting plane went elsewhere — we could not host it (fuel farm empty).” That is not a departure hold. It is a gap between card and delivery for an unscheduled visitor.
+**(a) The 90 game-minute lead covered this bank.** Zero fuel holds in 90 days. Spot fuel cost $486/day more than the term ($101,556 versus $57,772). Flights stayed in the same band (312 versus 309). Flag (a), “accept-all still grounds flights,” stays down.
 
-**(b) grounds on day 0.** 496 flights were held and one turn completed. The phone card was already up: the messages body says the named flight stays grounded if the offer is ignored (`src/phone/feed.ts`). The “no readable warning” flag does not trip. The failure mode is ignoring a card that already says so. Cash still reached $952,031 on that frozen ramp, with the tree stuck at 24 nodes and the field at FL2.
+**(b) The first hold is on day 0, and the spot card is already up.** 384 flights were held and one turn completed. The messages body says the named flight stays grounded if the offer is ignored (`src/phone/feed.ts`). Flag (b), “grounds before day 2 with no readable warning,” stays down. Cash ended at $99,656, with a penalty total of -$938,200. The tree still completed on day 85, with no researcher and one completed turn, because the operations trickle kept paying.
 
 ## Expanded careful, day 150
 
@@ -91,29 +94,31 @@ The previous careful-150 on the checklist (`docs/MIDLATE_CHECKLIST.md`, sim pare
 
 | | Checklist careful-150 | This live careful-150 |
 | --- | ---: | ---: |
-| Flights | 756 | 826 (5.5/day) |
-| Cash | $984,063 | $1,021,035 |
-| Cash day 30 / 60 / 90 | | $189,208 / $432,927 / $702,108 |
-| Stands / runways | 4 / 1 | 6 / 2 (both in by day 45) |
-| Researchers | 0 | 1 (hired on day 1) |
+| Flights | 756 | 469 (3.1/day) |
+| Cash | $984,063 | $1,890,289 |
+| Cash day 30 / 60 / 90 | | $371,976 / $845,425 / $1,250,185 |
+| Stands / runways | 4 / 1 | 6 / 2 (both in by day 45; day 30 is still 4 / 1) |
+| Researchers | 0 | 1 (hired on the day-1 sample) |
 | Tree complete | day 90 | day 69 |
-| FL10 | day 138 | day 126 |
+| Field level | FL10 on day 138 | FL8 on day 117, still FL8 at day 150 |
 | Prestige stars | 0 | 0 |
 | Hub checklist | | Station |
 | Fuel groundings | | 0 |
-| Flight diverts / go-arounds | | 45 / 88 |
-| Missed-connection $ | | -$74,400 (31 walk / bag / MCT misses, plus 48 connection diverts) |
-| Curb | | crossed day 18, peak 5.4 |
-| Preferred / Trusted | | day 14 / day 28 |
+| Flight diverts / go-arounds | | 176 / 147 |
+| Missed-connection $ | | -$96,720 (18 walk / bag / MCT misses, plus 89 connection diverts) |
+| Curb | | crossed day 21, peak 2.8 |
+| Preferred / Trusted | | day 16 / — |
 
-The four-stand, one-runway plateau moved. Flights kept climbing after day 90 (480 at day 90, 826 at day 150). Field level 10 arrived 12 days earlier. Prestige is still 0 stars. The hub checklist is still Station. The extra strip also raised go-arounds, divert bills, and the curb peak. One researcher, not the headway, is what pulled the tree from day 85 to day 69.
+The four-stand, one-runway building plateau moved. The flight plateau did not. Day 90 on this expanded run is 290 flights, against 309 on the same sim with the tip policy (one strip, no researcher). Day 150 is 469 flights, under the checklist’s 756 and under the 826 recorded on `4b02521` with the same live policy. Field level stops at 8. Prestige is still 0 stars. The hub checklist is still Station. One researcher, not the headway, is what pulled the tree from day 86 to day 69.
+
+The standard-length live run (`report.json`, generated 2026-10-15T03:29:57Z) matches that shape at shorter range: Careful 157 flights in 45 days, 2 strips and 6 stands, cash $491,042, 13 flight diverts, missed-connection -$16,740, curb day 21, Preferred first on day 16. Greedy builds 2 strips and 8 stands, finishes day 60 at $34,240 with 192 flights, and completes the tree on day 51 because the researcher is hired. Tip Greedy, which does not build the strip, is at $618,643 on day 90.
 
 ## Proposals
 
 No sim numbers were changed. These are proposals only.
 
-1. **Hub checklist.** Every run, including the day-150 field at FL10 with two strips, is still on Station. The checklist’s desk lines wait on a lease the game does not assign. Proposal: either let a player dedicate the desk the card already names, or do not offer Focus and above until that lease exists.
-2. **Researchers.** The tip policy still finishes the tree with an empty lab (Careful day 85, same day as `5120ac5`). Hiring one researcher moves that day to 69. Proposal: the lab card should name the hire the way the desk card names agents. Leave node costs where they are; this run does not justify a retune.
-3. **Spot fuel.** Accept-every-card matches the term and does not ground departures, at about $79/day more. Ignore-every-card grounds the bank on day 0, and the phone card already says that. Proposal: keep the 90 game-minute lead. Do not add a second warning. Do look at why an ignored ramp still banks $952k by day 90 on one completed turn.
-4. **Diverts and missed connections.** Headway brought flights most of the way back (275 versus 308 at careful day 60) and brought a divert bill the 0630 rerun did not have. On the tip seed the bill is divert-tagged, not a walking-time miss. Proposal: leave the 48-second headway. Do not retune minimum connect time off this seed.
-5. **Curb after the first bay.** Careful crosses pressure 1 on day 16 now, day 26 in the 0630 note, and one bay, one rank, and one lane do not bring it back under 1. The second strip made the peak worse (5.4) because more aircraft reached the door. Proposal: the next player-built curb stamp is the bottleneck, not a slower runway. Prestige staying at 0 stars after FL10 is a separate bar; this run did not hit it as the thing that stopped growth.
+1. **One carrier is the flight cap.** Every tip persona ends on a single airline. Careful’s day-60 count is 207, against 308 before the spacing change and 275 on `4b02521`. On the 45-day live run, 252 failed contract accepts are recorded. A handful say the desks clear 22 passengers a minute against an ask of 28. The rest surface a squeeze-memory news line while the signed list does not grow. Proposal: read that gate before touching headway or stand counts.
+2. **Trusted is a desk choice, and the second strip can spend it.** Unpatched personas stay on one carrier and never sample Trusted. Forcing 8 desks and 2 kiosks, tip-policy Careful still reaches Trusted by day 60. The same desks with the second strip stop at 39.7 (Preferred) on day 60. Proposal: leave the score bands (Preferred at 20, Trusted at 45). The unpatched bank is short of desks. The strip’s divert load is the candidate for the slip from 45, and this run does not justify moving the line.
+3. **Refunds are the bill.** Tip careful’s missed-connection cash is -$3,720 across 90 days. The 45-day live books put refunds at -$135,000, delays at -$15,686, other penalties at -$35,400, and missed connections at -$16,740 (penalty total -$202,826). Proposal: leave minimum connect time. Look at the refund line.
+4. **Spot fuel.** Accept-every-card matches the term on flights and grounds nobody, at $486/day more. Ignore-every-card grounds the bank on day 0, the phone card already says so, and the airport ends at $99,656 rather than a cash pile. The tree still finishes on day 85 from the trickle. Proposal: keep the 90 game-minute lead and the existing card sentence. The trickle completing a frozen tree is the item to look at.
+5. **The second strip did not lift day 150.** Six stands and two runways are in by day 45. Flights at day 150 are 469 and the field stops at FL8. Prestige stays at 0. Hub stays Station because these personas have no command for a lounge, a gate, a hangar, or a turnaround truck. Proposal: leave runway cost and the checklist numbers. Give the next playtest a way to accept a hub lease before anyone calls Station a stuck rung. One researcher moving the tree from day 86 to day 69 is enough evidence to leave node costs where they are.

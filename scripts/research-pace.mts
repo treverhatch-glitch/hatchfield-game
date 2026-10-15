@@ -41,7 +41,7 @@ function render(reports: PersonaReport[]): string {
   lines.push('# Research pace — 90-day headless')
   lines.push('')
   lines.push(
-    'Measured on `4b02521` (15 Oct 2026). Headway is 48s. These three runs sign the Apex term and do not hire.',
+    'Measured on `1fc1927` (15 Oct 2026). Headway is 48s. These three runs sign the Apex term and do not hire.',
   )
   lines.push('')
   lines.push(
