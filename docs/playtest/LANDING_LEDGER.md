@@ -4,6 +4,8 @@ Merge-captain pass against `origin/main` at `4bd73e2` (15 Oct 2026). Inventory: 
 
 `docs/LANDING_LEDGER.md` is a separate producer queue (play audio, then the building-port P1). This file is the captain's classification of everything still off main.
 
+Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs") went idle with no branch of its own: PR #86 and #83 through #87 are already on main (hub `8acaaded`, Tower III `6dc29b60`, Spotters `b67c52b4`, Council `0f006656`, carbon `b6de09c9`). They were not landed again. PR #98 is in flight with `bc-c2f61850` and was left alone.
+
 ## Landed on main this pass
 
 | Item | Feature SHA | Gate record on main | Notes |
@@ -13,6 +15,7 @@ Merge-captain pass against `origin/main` at `4bd73e2` (15 Oct 2026). Inventory: 
 | Spotters deck | `b67c52b4` | `6779e61c` | Added beside landmarks and cargo hub II. Stamp is on Landside > Landmarks. |
 | Airport Council | `0f006656` | `c17f68ab` | Airlines > Council. Civic spend is `civic_programs` (`331c757d`). |
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
+| Vision expansion design note | `d0ed02df` | this pass | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
@@ -56,10 +59,9 @@ Valuable ideas that are too far behind, or that would fight a landed system. Not
 
 | Branch | Why |
 | --- | --- |
-| `cursor/j36-daynight-cycle-4799` (PR #98) | Still open. It keeps editing `GameSettings.tsx` and `graphicsPrefs.ts` (a noon hold in graphics settings) after the sunrise switch landed. A second store would fight the settings switch. Left for that PR. |
+| `cursor/j36-daynight-cycle-4799` (PR #98) | Noon hold in graphics settings, plus edits to `GameSettings.tsx`. `bc-c2f61850` is landing it. Left alone. |
 | `claude/finance-screen-18359518024439908719`, `tmp/pr265` | `FinanceScreen` from an older economy panel. Main's wallet and finance card are newer. 404 commits behind. |
 | `claude/issue-228-20261014-1515` | Connections, hotels, and stranded passengers as a 3k-line branch. Hub connections on main overlap it. 340 behind. |
-| `design/vision-expansion` | Design doc only, 334 behind. |
 | `claude/issue-195-*` | Guest traits and terminal pathing from before the hall-nav rewrite. |
 | `cursor/art-wire-c08d`, `cursor/art-landing-p1-9acb` | Art-agent work (night glow, art wiring). Not rebased by this captain. |
 | `grok/lategame`, `cursor/connectivity-hub-0588`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `head-sim-suite-562d-*`, `cursor/audit-playtest-562d-scripted150-*` | Old trunks and prototypes. The playtest trunk's useful tests are already on main. |
@@ -117,7 +119,7 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 | 340 | 1 | 2026-10-14 | `9e5034db` | `claude/issue-228-20261014-1515` | NEEDS-WORK. |
 | 396–418 | 1–47 | 2026-10-14 | various | `building-visuals`, `bv`, `tmp/pr252`, issue 229/231/232 stacks, `p6`, `art/pack6-refs` | SUPERSEDED copies. |
 | 404 | 2 | 2026-10-14 | `e3f619ea` | `claude/finance-screen-*`, `tmp/pr265` | NEEDS-WORK. |
-| 334 | 1 | 2026-10-14 | `a3325450` | `design/vision-expansion` | NEEDS-WORK. Docs only. |
+| 334 | 1 | 2026-10-14 | `a3325450` | `design/vision-expansion` | LANDED as `docs/design/VISION_EXPANSION.md`. |
 | 689–880 | 1–439 | 2026-10-13/14 | various | `grok/*`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `preview-dist`, `trunk-snapshot`, media clips | NEEDS-PORT was declined. Prototypes, not a replay. |
 
 ---
