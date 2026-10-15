@@ -14987,12 +14987,12 @@ export class Game {
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
     fit.zones = schemeZones(next)
-    const kept = (fit.items ?? []).filter((it) => !it.bundle)
+    const kept = ((fit.items ?? []) as PlacedItem[]).filter((it) => !it.bundle)
     const bundled = schemeItems(next)
     const taken = new Set(bundled.map((it) => `${it.c},${it.r}`))
     for (const extra of kept) {
       const def = itemDef(extra.def)
-      const zone = fit.zones[extra.r]?.[extra.c]
+      const zone = fit.zones[extra.r]?.[extra.c] as ZoneId | undefined
       const key = `${extra.c},${extra.r}`
       if (!def || !zone || !def.zones.includes(zone) || taken.has(key)) continue
       bundled.push({ ...extra })
