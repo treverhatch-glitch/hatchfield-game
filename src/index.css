@@ -2675,6 +2675,42 @@ html[data-gfx='low'] .view-layer.dim {
   padding: 0 6px;
 }
 
+.interior-bar {
+  position: absolute;
+  top: calc(var(--hud-top) + 52px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.interior-bar > * {
+  pointer-events: auto;
+}
+
+.interior-room {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  background: rgba(10, 20, 16, 0.85);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: #e8eef4;
+  font-size: 12px;
+  max-width: 520px;
+}
+
+.interior-room .bad {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .kit-cards {
   display: flex;
   gap: 6px;

@@ -14,7 +14,8 @@
  * boarding still come from the sim's own hall model.
  */
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
-import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, Room, Tile } from '../terminalbuild/types.ts'
+import { applyInterior } from '../terminalbuild/interior.ts'
+import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, InteriorEdit, Room, Tile } from '../terminalbuild/types.ts'
 import {
   CrewNav,
   PaxNav,
@@ -341,8 +342,8 @@ export function prefabClaimHall(zones: Zones, items: readonly PlacedItem[], tile
   return { tiles: [...tiles, ...solid], solid, belts }
 }
 
-/** The layout a hall's walkers use: its own build, else a read of its prefab zones and kit. */
-export function hallNavLayout(fit: {
+/** The layout before the player's interior edit. Its own build, else a read of its prefab zones and kit. */
+export function hallBaseLayout(fit: {
   build?: BuildLayout
   zones?: (string | null)[][]
   items?: readonly unknown[]
@@ -350,6 +351,18 @@ export function hallNavLayout(fit: {
   if (fit.build) return fit.build
   if (!fit.zones?.length) return null
   return prefabNavLayout(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
+}
+
+/** The layout a hall's walkers use, with interior walls, doors, paint, and rooms merged on. */
+export function hallNavLayout(fit: {
+  build?: BuildLayout
+  zones?: (string | null)[][]
+  items?: readonly unknown[]
+  interior?: InteriorEdit
+}): BuildLayout | null {
+  const base = hallBaseLayout(fit)
+  if (!base || !fit.interior) return base
+  return applyInterior(base, fit.interior)
 }
 
 /** A hall's claim hall for arrivals. Built halls have none (their bag hall is staff only): arrivals use the exit doors. */

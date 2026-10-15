@@ -64,7 +64,7 @@ import { releasePerfOverlay, retainPerfOverlay } from '../perf'
 import { HallServiceFx } from './hallService'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
-import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
+import { BUILD_TUNING, type Edge, type RoomKind } from '../terminalbuild/index.ts'
 import { WORLD_PER_METER } from './aircraft/specs'
 import {
   apronToHall,
@@ -90,6 +90,9 @@ import { makeTextures, type WorldTextures } from './world/textures'
 import { hallQueues, type HallQueue } from '../terminalplay/queues'
 import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
 import { cellCenterInFloor, cellInFloor } from '../game/shellFloor.ts'
+import { hallBaseLayout } from '../game/hallNav.ts'
+import { dragRect, nearestEdge, tileAtPoint, tilesInRect, wallRun } from '../terminalbuild/interior.ts'
+import { interiorEditSig, roomContains, syncInteriorEdit, syncInteriorGhost } from './interiorBuild.ts'
 import { queueAnchor, queueOrder, slotsAlong, standingInQueue, type QueueSlot } from '../terminalplay/lines'
 import { PLAY_TUNING } from '../terminalplay/config'
 
@@ -98,6 +101,11 @@ export type HallBuildMode =
   | { kind: 'place'; def: ItemId; rot: number }
   | { kind: 'bulldoze' }
   | { kind: 'move'; itemId: string | null; def: ItemId | null; rot: number }
+  | { kind: 'wall'; erase: boolean }
+  | { kind: 'door' }
+  | { kind: 'floor'; paint: string }
+  | { kind: 'wallpaper'; paint: string }
+  | { kind: 'room'; room: RoomKind; selected: string | null }
   | null
 
 /** What sits under the cursor while building. Feeds the cost tooltip. */
@@ -173,10 +181,17 @@ export class HallWorld {
   dist = HALL_CAM_DIST
   maxDist = HALL_CAM_MAX_DIST
   shellBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null
-  dragging: 'orbit' | 'pan' | null = null
+  dragging: 'orbit' | 'pan' | 'draw' | null = null
   lastX = 0
   lastY = 0
   roomGroup = new THREE.Group()
+  /** Walls, paint, and room slabs from the interior edit. */
+  interiorEdit = new THREE.Group()
+  interiorGhost = new THREE.Group()
+  private interiorSig = { sig: '' }
+  private drawA: { x: number; y: number } | null = null
+  private drawB: { x: number; y: number } | null = null
+  private drawHit = new THREE.Vector3()
   guestGroup = new THREE.Group()
   /** Departures and arrivals from the hall's PaxNav. Stand in for the old hall figures while live. */
   readonly navCrowd = new HallNavCrowd()
@@ -254,6 +269,8 @@ export class HallWorld {
   onPlaced: (() => void) | null = null
   /** Move mode: the player picked a piece, or cleared the pick. */
   onMovePick: ((id: string | null, def: ItemId | null) => void) | null = null
+  /** A click on a room the player already drew. */
+  onInteriorSelect: ((id: string) => void) | null = null
   /** PNG data URL from the frame that was just drawn. */
   onCaptured: ((url: string) => void) | null = null
   private captureWanted = false
@@ -342,6 +359,9 @@ export class HallWorld {
     this.scene.add(after)
 
     this.scene.add(this.roomGroup)
+    this.interiorEdit.name = 'interior-edit'
+    this.scene.add(this.interiorEdit)
+    this.scene.add(this.interiorGhost)
     this.interiorGroup.name = 'hall-rooms'
     this.scene.add(this.interiorGroup)
     this.zoneTint.visible = false
@@ -396,6 +416,14 @@ export class HallWorld {
     this.goalTo = null
     this.followId = null
     // Middle/right = orbit; left-drag = pan (WASD also pans).
+    if (this.interiorKind() && e.button === 0 && !e.shiftKey) {
+      this.dragging = 'draw'
+      const t = this.interiorTile(e)
+      this.drawA = t
+      this.drawB = t
+      this.refreshInteriorGhost()
+      return
+    }
     if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
     else this.dragging = e.shiftKey ? 'orbit' : 'pan'
     this.lastX = e.clientX
@@ -406,6 +434,12 @@ export class HallWorld {
 
   private onMove = (e: PointerEvent) => {
     if (this.build) this.trackHover(e)
+    if (this.dragging === 'draw') {
+      const t = this.interiorTile(e)
+      if (t) this.drawB = t
+      this.refreshInteriorGhost()
+      return
+    }
     if (!this.dragging) return
     const dx = e.clientX - this.lastX
     const dy = e.clientY - this.lastY
@@ -535,7 +569,12 @@ export class HallWorld {
   private onUp = (e: PointerEvent) => {
     const dx = e.clientX - this.downX
     const dy = e.clientY - this.downY
+    const drag = this.dragging
     this.dragging = null
+    if (drag === 'draw') {
+      this.commitInteriorDraw()
+      return
+    }
     if (e.button !== 0 || Math.hypot(dx, dy) > 6 || !this.game) return
     if (this.build) {
       this.buildClick(e)
@@ -754,6 +793,15 @@ export class HallWorld {
     this.trackHover(e)
     const hover = this.hover
     if (!hover) return
+    if (
+      this.build.kind === 'wall' ||
+      this.build.kind === 'door' ||
+      this.build.kind === 'floor' ||
+      this.build.kind === 'wallpaper' ||
+      this.build.kind === 'room'
+    ) {
+      return
+    }
     if (this.build.kind === 'place') {
       const foot = footprintSpec(this.build.def) && this.roomPlan && this.interiorFit
       const placed = foot
@@ -1872,6 +1920,7 @@ export class HallWorld {
     this.resize()
     this.syncInterior(game)
     this.rebuildRooms(game)
+    syncInteriorEdit(this.interiorEdit, game.activeHall()?.interior, interiorEditSig(game.activeHall()?.interior), this.interiorSig)
     this.syncZoneTint(game)
     if (this.followId) this.easeFollow()
     else this.easeToGoal(game)
@@ -2102,6 +2151,57 @@ export class HallWorld {
     this.renderer.toneMappingExposure = grade ? HALL_LIGHT.exposure : 1
   }
 
+  private interiorKind(): 'wall' | 'door' | 'floor' | 'wallpaper' | 'room' | null {
+    const kind = this.build?.kind
+    if (kind === 'wall' || kind === 'door' || kind === 'floor' || kind === 'wallpaper' || kind === 'room') return kind
+    return null
+  }
+
+  /** Build tile under the cursor, inside the hall box the walk uses. */
+  private interiorTile(e: PointerEvent): { x: number; y: number } | null {
+    this.aim(e)
+    const hit = new THREE.Vector3()
+    if (!this.ray.ray.intersectPlane(this.floorPlane, hit)) return null
+    this.drawHit.copy(hit)
+    const fit = this.game?.activeHall()
+    const layout = fit ? hallBaseLayout(fit) : null
+    return tileAtPoint(hit.x, hit.z, BUILD_TUNING.tileMetres, HALL_W, HALL_D, layout?.w ?? 12, layout?.h ?? 8)
+  }
+
+  private refreshInteriorGhost() {
+    const kind = this.interiorKind()
+    syncInteriorGhost(this.interiorGhost, kind, this.drawA, this.drawB)
+  }
+
+  private commitInteriorDraw() {
+    const game = this.game
+    const mode = this.build
+    const a = this.drawA
+    const b = this.drawB ?? a
+    this.drawA = null
+    this.drawB = null
+    this.refreshInteriorGhost()
+    if (!game || !mode || !a || !b) return
+    const tileM = BUILD_TUNING.tileMetres
+    if (mode.kind === 'wall') game.dragInteriorWall(a, b, mode.erase)
+    else if (mode.kind === 'door') game.placeInteriorDoor(nearestEdge(this.drawHit.x, this.drawHit.z, a, tileM, HALL_W, HALL_D))
+    else if (mode.kind === 'floor') game.paintInteriorFloor(tilesInRect(dragRect(a, b)), mode.paint)
+    else if (mode.kind === 'wallpaper') game.paintInteriorWalls(wallRun(a, b), mode.paint)
+    else if (mode.kind === 'room') {
+      const rooms = game.activeHall()?.interior?.rooms ?? []
+      const hit = rooms.find((room) => roomContains(room, a))
+      if (a.x === b.x && a.y === b.y && hit) {
+        this.onInteriorSelect?.(hit.id)
+        return
+      }
+      if (mode.selected && rooms.some((room) => room.id === mode.selected && roomContains(room, a))) {
+        game.resizeInteriorRoom(mode.selected, dragRect(a, b))
+        return
+      }
+      game.assignInteriorRoom(mode.room, dragRect(a, b))
+    }
+  }
+
   dispose() {
     const canvas = this.renderer.domElement
     canvas.removeEventListener('pointerdown', this.onDown)
@@ -2110,6 +2210,8 @@ export class HallWorld {
     canvas.removeEventListener('pointerleave', this.onUp)
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
+    syncInteriorEdit(this.interiorEdit, undefined, 'dispose', this.interiorSig)
+    syncInteriorGhost(this.interiorGhost, null, null, null)
     if (this.jetBridge) for (const c of this.jetBridge.children) (c as THREE.InstancedMesh).dispose?.()
     this.clearInterior()
     if (this.terminalShared) disposeTerminalShared(this.terminalShared)

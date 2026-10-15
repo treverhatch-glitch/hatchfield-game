@@ -212,8 +212,28 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
-import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
+import { HallNav, hallBaseLayout, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
+import {
+  applyInterior,
+  assignRoom,
+  buildUpkeepPerDay,
+  deleteRoom,
+  emptyInterior,
+  freshRoomId,
+  furnishRoom,
+  interiorCost,
+  paintEdges,
+  paintTiles,
+  paintWallRun,
+  resizeRoom,
+  roomReport,
+  tilesInRect,
+  toggleDoor,
+  wallRun,
+  type EditResult,
+  type InteriorEdit,
+  type RoomKind,
+} from '../terminalbuild/index.ts'
 import {
   hintKind,
   mergeHints,
@@ -14814,6 +14834,107 @@ export class Game {
     this.refreshAdvice()
     this.emit()
     return true
+  }
+
+  /** Pay for an interior edit and store it on the active hall. The walk merges it on the next tick. */
+  private commitInterior(fit: TerminalFit, next: InteriorEdit): boolean {
+    const base = hallBaseLayout(fit)
+    if (!base) return false
+    const before = applyInterior(base, fit.interior ?? emptyInterior())
+    const after = applyInterior(base, next)
+    const cost = interiorCost(before, after)
+    if (cost > 0 && !this.spend(cost, 'Interior')) return false
+    if (cost < 0 && !this.sandbox) this.credit(-cost, 'refunds', 'Interior')
+    fit.interior = next
+    this.hallRev++
+    this.refreshAdvice()
+    this.emit()
+    return true
+  }
+
+  dragInteriorWall(a: { x: number; y: number }, b: { x: number; y: number }, erase: boolean): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    return this.commitInterior(fit, paintWallRun(fit.interior ?? emptyInterior(), wallRun(a, b), erase))
+  }
+
+  placeInteriorDoor(edge: { x: number; y: number; dir: 'E' | 'S' }): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    return this.commitInterior(fit, toggleDoor(fit.interior ?? emptyInterior(), edge))
+  }
+
+  paintInteriorFloor(tiles: { x: number; y: number }[], paint: string | null): boolean {
+    const fit = this.activeHall()
+    if (!fit || !tiles.length) return false
+    return this.commitInterior(fit, paintTiles(fit.interior ?? emptyInterior(), tiles, paint))
+  }
+
+  paintInteriorWalls(edges: { x: number; y: number; dir: 'E' | 'S' }[], paint: string | null): boolean {
+    const fit = this.activeHall()
+    if (!fit || !edges.length) return false
+    return this.commitInterior(fit, paintEdges(fit.interior ?? emptyInterior(), edges, paint))
+  }
+
+  assignInteriorRoom(kind: RoomKind, rect: { x: number; y: number; w: number; h: number }): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    const base = hallBaseLayout(fit)
+    if (!base) return false
+    const edit = fit.interior ?? emptyInterior()
+    const result = assignRoom(edit, { id: freshRoomId(edit, kind), kind, ...rect }, base.rooms)
+    if (result.error) {
+      this.pushNews(result.error, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitInterior(fit, result.edit)
+  }
+
+  resizeInteriorRoom(id: string, rect: { x: number; y: number; w: number; h: number }): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    const base = hallBaseLayout(fit)
+    if (!base) return false
+    const result = resizeRoom(fit.interior ?? emptyInterior(), id, rect, base.rooms)
+    if (result.error) {
+      this.pushNews(result.error, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitInterior(fit, result.edit)
+  }
+
+  deleteInteriorRoom(id: string): boolean {
+    const fit = this.activeHall()
+    if (!fit?.interior) return false
+    return this.commitInterior(fit, deleteRoom(fit.interior, id))
+  }
+
+  furnishInteriorRoom(id: string): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    const base = hallBaseLayout(fit)
+    if (!base) return false
+    const edit = fit.interior ?? emptyInterior()
+    const merged = applyInterior(base, edit)
+    const result = furnishRoom(edit, merged, id)
+    if (result.error) {
+      this.pushNews(result.error, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitInterior(fit, result.edit)
+  }
+
+  interiorFindings(roomId: string) {
+    const fit = this.activeHall()
+    const layout = fit ? hallNavLayout(fit) : null
+    return layout ? roomReport(layout, roomId) : []
+  }
+
+  interiorTiles(rect: { x: number; y: number; w: number; h: number }) {
+    return tilesInRect(rect)
   }
 
   paintHallCell(c: number, r: number, zone: ZoneId): boolean {

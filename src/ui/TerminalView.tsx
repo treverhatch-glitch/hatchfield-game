@@ -28,6 +28,7 @@ import {
 import { refundFor } from '../game/terminalKit'
 import type { KitCategory } from '../game/terminalKitData'
 import { KIT_TABS } from './uiCatalog'
+import { InteriorBar } from './InteriorBar'
 import { subscribeKit, takeKitRequest } from './nav/kitFocus'
 
 /** Slim build bar for the terminal kit. Cards close once the item is placed. */
@@ -132,6 +133,9 @@ function KitBar({
 
 function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover | null }) {
   if (!build || !hover) return null
+  if (build.kind === 'wall' || build.kind === 'door' || build.kind === 'floor' || build.kind === 'wallpaper' || build.kind === 'room') {
+    return null
+  }
   const style = { left: hover.sx + 16, top: hover.sy + 16 }
   if (build.kind === 'move') {
     const def = build.def ? itemDef(build.def) : hover.target ? itemDef(hover.target.def) : null
@@ -220,6 +224,13 @@ export function TerminalView({ game }: { game: Game }) {
       ;(window as unknown as { __hall?: HallWorld }).__hall = world
     }
     world.onPlaced = () => setBuild(null)
+    world.onInteriorSelect = (id) => {
+      setBuild((cur) => {
+        const hit = game.activeHall()?.interior?.rooms.find((room) => room.id === id)
+        const room = hit?.kind ?? (cur?.kind === 'room' ? cur.room : 'retail')
+        return { kind: 'room', room, selected: id }
+      })
+    }
     world.onMovePick = (id, def) =>
       setBuild({ kind: 'move', itemId: id, def, rot: buildRef.current?.kind === 'move' ? buildRef.current.rot : 0 })
     world.onHover = setHover
@@ -307,6 +318,7 @@ export function TerminalView({ game }: { game: Game }) {
           </button>
         </p>
       </div>
+      <InteriorBar game={game} build={build} setBuild={setBuild} />
       <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
       {game.view === 'hall' && sheet

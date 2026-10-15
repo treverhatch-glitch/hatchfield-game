@@ -33,6 +33,7 @@ function clone(l: BuildLayout): BuildLayout {
     rooms: l.rooms.slice(),
     equipment: l.equipment.slice(),
     verticals: l.verticals?.slice(),
+    floorPaint: l.floorPaint?.map((row) => row.slice()),
   }
 }
 
