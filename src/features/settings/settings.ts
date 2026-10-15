@@ -14,13 +14,13 @@ export type AudioBus = (typeof AUDIO_BUSES)[number]
 export type BusVolume = Record<AudioBus, number>
 
 export const DEFAULT_BUS_VOLUME: BusVolume = {
-  aircraft: 0.8,
-  vehicles: 0.7,
-  buildings: 0.8,
-  ambient: 0.5,
-  ambience: 0.5,
-  ui: 0.6,
-  sfx: 0.8,
+  aircraft: 0.62,
+  vehicles: 0.52,
+  buildings: 0.55,
+  ambient: 0.4,
+  ambience: 0.36,
+  ui: 0.5,
+  sfx: 0.58,
 }
 
 export interface GraphicsSettings {
@@ -76,7 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   graphics: { preset: 'high', ...GRAPHICS_PRESETS.high },
   // Pathfinding/congestion are off by default (owner rule: layered view opened from settings).
   overlays: { pathfinding: false, congestion: false, zones: false, noise: false, utilities: false, designAdvisor: true },
-  masterVolume: 0.8,
+  masterVolume: 0.75,
   audioMuted: false,
   busVolume: { ...DEFAULT_BUS_VOLUME },
   dayNightCycle: true,

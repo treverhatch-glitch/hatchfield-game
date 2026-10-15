@@ -18,6 +18,11 @@ export interface PlayOptions {
   /** Initial loop intensity 0..1. */
   intensity?: number;
   rolloff?: Rolloff;
+  /**
+   * One live voice for this id. A second play with the same slot updates the
+   * existing voice instead of stacking another loop.
+   */
+  slot?: string;
 }
 
 export interface AircraftPlayOptions extends PlayOptions {
@@ -87,8 +92,9 @@ interface Live {
 }
 
 /**
- * Hatchfield procedural audio engine. Safe to construct before a user gesture;
- * the AudioContext is created lazily on `unlock()` or first `play()`.
+ * Hatchfield procedural audio engine. Safe to construct before a user gesture.
+ * The graph is created on the first play or `unlock()`. `resume()` runs only
+ * from `unlock()`, which the app calls on a pointer or key gesture.
  */
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -99,8 +105,11 @@ export class AudioEngine {
   private weatherBed: SoundHandle | null = null;
   private weatherKind: WeatherKind | null = null;
   private master = 1;
-  private cat: Record<Category, number> = { aircraft: 0.8, vehicles: 0.7, buildings: 0.8, ambient: 0.5, ambience: 0.5, ui: 0.6, sfx: 0.8 };
+  private cat: Record<Category, number> = { aircraft: 0.62, vehicles: 0.52, buildings: 0.55, ambient: 0.4, ambience: 0.36, ui: 0.5, sfx: 0.58 };
   private muted = false;
+  /** Set by unlock(). Play before that must not call resume() — it would be rejected. */
+  private gesture = false;
+  private slots = new Map<string, SoundHandle>();
   private hiddenPaused = false;
   private live = new Set<Live>();
   private lastFired = new Map<string, number>();
@@ -123,13 +132,32 @@ export class AudioEngine {
     this.opts.visibility?.addEventListener('visibilitychange', this.onVis);
   }
 
-  /** Call from a user gesture (click/keydown) to satisfy autoplay policy. */
+  /** Call from a user gesture (pointerdown/keydown, including the canvas) to satisfy autoplay policy. */
   unlock(): AudioContext {
+    this.gesture = true;
+    const ctx = this.ensureGraph();
+    this.resumeNow();
+    return ctx;
+  }
+
+  /** Create the bus graph if needed. Does not resume unless unlock() has run. */
+  private ensureGraph(): AudioContext {
     if (!this.ctx) {
       const ctx = this.opts.createContext();
       this.ctx = ctx;
       this.masterGain = ctx.createGain();
-      this.masterGain.connect(ctx.destination);
+      const limit = typeof ctx.createDynamicsCompressor === 'function' ? ctx.createDynamicsCompressor() : null;
+      if (limit) {
+        limit.threshold.value = -16;
+        limit.knee.value = 18;
+        limit.ratio.value = 4;
+        limit.attack.value = 0.008;
+        limit.release.value = 0.22;
+        this.masterGain.connect(limit);
+        limit.connect(ctx.destination);
+      } else {
+        this.masterGain.connect(ctx.destination);
+      }
       this.weatherFilter = ctx.createBiquadFilter();
       this.weatherFilter.type = 'lowpass';
       this.weatherFilter.frequency.value = this.weatherFilterHz;
@@ -142,8 +170,15 @@ export class AudioEngine {
       this.applyGains();
       if (this.opts.visibility?.hidden) this.handleVisibility();
     }
-    if (this.ctx.state === 'suspended' && !this.hiddenPaused) void this.ctx.resume();
+    if (this.gesture) this.resumeNow();
     return this.ctx;
+  }
+
+  private resumeNow(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.gesture || this.hiddenPaused) return;
+    const state = ctx.state as string;
+    if (state === 'suspended' || state === 'interrupted') void ctx.resume().catch(() => {});
   }
 
   get context(): AudioContext | null { return this.ctx; }
@@ -239,9 +274,20 @@ export class AudioEngine {
       if (options.position) existing.setPosition(options.position);
       return existing;
     }
-    const h = this.playSfx(action.sound, options);
+    const h = this.playSfx(action.sound, { ...options, slot: options.slot ?? `event:${action.sound}|${key}` });
     if (h) this.eventLoops.set(k, h);
     return h;
+  }
+
+  /** Stop event-driven loops for these sound ids. Does nothing if none are running. */
+  stopEventSounds(sounds: readonly string[]): void {
+    const owned = new Set(sounds);
+    for (const [k, h] of [...this.eventLoops]) {
+      const sound = k.split('|')[0] ?? '';
+      if (!owned.has(sound)) continue;
+      h.stop(0);
+      this.eventLoops.delete(k);
+    }
   }
 
   /** Number of event-driven loops currently running. */
@@ -253,7 +299,7 @@ export class AudioEngine {
   // ---- weather ----
   /** Switch weather bed (crossfades) and apply its world lowpass. */
   setWeather(kind: WeatherKind, opts: { variant?: number; intensity?: number; seed?: number } = {}): number {
-    const ctx = this.unlock();
+    const ctx = this.ensureGraph();
     const variant = opts.variant ?? Math.floor(Math.random() * WEATHER_VARIANTS);
     const p = weatherParams(kind, variant, opts.seed ?? 0);
     this.weatherBed?.stop(2);
@@ -273,7 +319,17 @@ export class AudioEngine {
   }
 
   private spawn(id: string, category: Category, looping: boolean, build: (ctx: AudioContext, out: AudioNode) => Voice, options: PlayOptions, variant?: number): SoundHandle | null {
-    const ctx = this.unlock();
+    const ctx = this.ensureGraph();
+    if (options.slot) {
+      const prev = this.slots.get(options.slot);
+      if (prev && !prev.stopped) {
+        if (options.position) prev.setPosition(options.position);
+        if (options.intensity !== undefined) prev.setIntensity(options.intensity);
+        if (options.volume !== undefined) prev.setVolume(options.volume);
+        return prev;
+      }
+      if (prev) this.slots.delete(options.slot);
+    }
     const now = ctx.currentTime;
     this.reap(now);
     if (!looping) {
@@ -310,11 +366,13 @@ export class AudioEngine {
         setVolume(v) { live.volume = Math.max(0, v); engine.updateOne(live); },
         stop(fade) {
           if (stopped) return; stopped = true;
+          if (options.slot) engine.slots.delete(options.slot);
           voice.stop(fade);
           engine.live.delete(live);
         },
       },
     };
+    if (options.slot) this.slots.set(options.slot, live.handle);
     this.live.add(live);
     this.updateOne(live);
     return live.handle;
@@ -329,6 +387,7 @@ export class AudioEngine {
     this.opts.visibility?.removeEventListener('visibilitychange', this.onVis);
     void this.ctx?.close();
     this.eventLoops.clear();
+    this.slots.clear();
     this.ctx = null; this.masterGain = null; this.weatherFilter = null; this.catGains.clear(); this.weatherBed = null;
   }
 
@@ -368,5 +427,7 @@ export class AudioEngine {
 }
 
 let singleton: AudioEngine | null = null;
-/** Shared app-wide engine. */
+/** Shared app-wide engine. The context stays uncreated until the first play or unlock. */
 export function getAudio(): AudioEngine { return (singleton ??= new AudioEngine()); }
+/** The live engine, if something has already constructed it. Does not create one. */
+export function peekAudio(): AudioEngine | null { return singleton; }

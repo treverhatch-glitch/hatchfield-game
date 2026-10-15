@@ -33,6 +33,11 @@ export class MockAudioContext {
   async suspend() { this.state = 'suspended'; }
   async resume() { this.state = 'running'; }
   async close() { this.state = 'closed'; }
+  async decodeAudioData(raw: ArrayBuffer) {
+    const bytes = new Uint8Array(raw);
+    if (bytes.length < 4 || bytes[0] === 0x3c) throw new Error('decode');
+    return { duration: 0.25, numberOfChannels: 1, sampleRate: 8000, length: 8, getChannelData: () => new Float32Array(8) };
+  }
 }
 export class MockVisibility {
   hidden = false; private cbs = new Set<() => void>();

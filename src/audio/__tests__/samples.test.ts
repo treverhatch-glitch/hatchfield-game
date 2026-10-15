@@ -34,6 +34,12 @@ describe('CC0 clips', () => {
       expect(credits).toContain(file)
     }
     expect(total).toBeLessThan(400_000)
+    for (const file of CLIP_FILES) {
+      const mp3 = file.replace(/\.ogg$/, '.mp3')
+      const size = statSync(new URL(mp3, root)).size
+      expect(size, mp3).toBeGreaterThan(200)
+      expect(size, mp3).toBeLessThan(80_000)
+    }
     for (const author of ['Kenney', 'kyles', 'craigsmith', 'papedo', 'wshintani', 'ibirdfilm', 'Disasteradio', 'Kinoton', 'gezortenplotz']) {
       expect(credits).toContain(author)
     }

@@ -192,7 +192,7 @@ export function buildAircraftSound(ctx: BaseAudioContext, p: AircraftSoundParams
   const t = ctx.currentTime;
   const m = ctx.createGain();
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lowpass;
-  const body = ctx.createGain(); body.gain.value = p.gain;
+  const body = ctx.createGain(); body.gain.value = Math.min(0.42, p.gain);
   body.connect(lp).connect(m);
   const srcs: AudioScheduledSourceNode[] = [];
   // Roar (broadband jet/prop wash)
@@ -246,7 +246,7 @@ export function buildAircraftSound(ctx: BaseAudioContext, p: AircraftSoundParams
     roar.gain.setValueAtTime(0.0001, t); roar.gain.exponentialRampToValueAtTime(p.roarLevel * 0.3, t + p.spoolSec);
     m.gain.setValueAtTime(1, t + d - 1); m.gain.exponentialRampToValueAtTime(0.0001, t + d);
   } else if (p.phase === 'takeoff') {
-    roar.gain.setValueAtTime(p.roarLevel * 0.3, t); roar.gain.linearRampToValueAtTime(p.roarLevel * 1.3, t + 3);
+    roar.gain.setValueAtTime(p.roarLevel * 0.25, t); roar.gain.linearRampToValueAtTime(p.roarLevel, t + 3);
     roarF.frequency.setValueAtTime(p.roarLp * 0.5, t); roarF.frequency.exponentialRampToValueAtTime(p.roarLp * 1.4, t + 3);
     roarF.frequency.exponentialRampToValueAtTime(p.roarLp * 0.3, t + d);
     wosc.forEach((o) => o.frequency.linearRampToValueAtTime(p.whineHz * 1.25, t + 3));
