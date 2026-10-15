@@ -46,17 +46,18 @@ describe('contract check-in capacity', () => {
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
     })
     expect(desksOnly.ok).toBe(false)
+    expect(desksOnly.capacity).toBe(30)
     expect(desksOnly.slots).toBe(2)
 
     const withLane = checkinSignGate({
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
       openLanes: 1,
       bundleLanes: 0,
@@ -68,7 +69,7 @@ describe('contract check-in capacity', () => {
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
       hallTier: 2,
       premade: true,

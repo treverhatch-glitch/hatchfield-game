@@ -96,8 +96,6 @@ describe('check-in contract demand', () => {
     const game = starter()
     game.offer = { airline: 'northline', age: 0, deadline: 36 }
     game.acceptOffer()
-    game.placeHallItem('checkin_belt')
-    game.tickHallNav(0)
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
     expect(game.checkinSignReport('harbor').ok).toBe(true)
     game.acceptOffer()
@@ -132,8 +130,6 @@ describe('check-in contract demand', () => {
     const lane = starter()
     lane.offer = { airline: 'northline', age: 0, deadline: 36 }
     lane.acceptOffer()
-    lane.placeHallItem('checkin_belt')
-    lane.tickHallNav(0)
     lane.offer = { airline: 'harbor', age: 0, deadline: 36 }
     lane.acceptOffer()
     lane.offer = { airline: 'brisa', age: 0, deadline: 36 }
@@ -149,8 +145,6 @@ describe('check-in contract demand', () => {
     const hall = starter()
     hall.offer = { airline: 'northline', age: 0, deadline: 36 }
     hall.acceptOffer()
-    hall.placeHallItem('checkin_belt')
-    hall.tickHallNav(0)
     hall.offer = { airline: 'harbor', age: 0, deadline: 36 }
     hall.acceptOffer()
     hall.offer = { airline: 'brisa', age: 0, deadline: 36 }
@@ -159,7 +153,7 @@ describe('check-in contract demand', () => {
     const fit = hall.fits[0]
     fit.interior = emptyInterior()
     fit.interior.foundation = [{ x: 2, y: 1, floor: 0 }]
-    fit.interior.equipment = [{ id: 'e1', kind: 'checkin_desk', x: 3, y: 1, wear: 0, floor: 0 }]
+    fit.interior.equipment = [{ id: 'e1', kind: 'toilet', x: 3, y: 1, wear: 0, floor: 0 }]
     hall.fieldXp = 220
     expect(hall.hallExpandOffer()?.id).toBe('prefab_ii')
     expect(hall.hallBuyLine('prefab_ii')).toContain('now 2')
