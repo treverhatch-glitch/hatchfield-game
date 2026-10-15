@@ -73,7 +73,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
     {
       id: 'stands',
       label: 'Stands',
-      tools: ['stand_s', 'stand', 'stand_w', 'stand_l'],
+      tools: ['stand_light', 'stand_narrow', 'stand_heavy'],
       progression: ['jet_bridge', 'code_e', 'code_f', 'jet_bridge_3'],
     },
     {

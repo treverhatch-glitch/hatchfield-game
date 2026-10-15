@@ -273,7 +273,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         card={building}
         onClose={() => game.closeBuilding()}
         onHire={building?.hire ? () => game.hireDeskStaff() : undefined}
-        onAction={(id) => game.checkinAction(id)}
+        onAction={(id) => (id.startsWith('rung:') || id.startsWith('fit:') ? game.standCardAction(id) : game.checkinAction(id))}
+        onPreview={(id) => game.previewStandRow(id)}
       />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />

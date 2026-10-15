@@ -4,7 +4,7 @@
  * A cell counts when the box covers at least a quarter of it, so a code-C
  * stand is 3×3 and a code-F stand is 5×5 rather than a one-cell sliver.
  */
-import { envelopeLetter, envelopeWorld } from '../render/aircraft/stands'
+import { envelopeLetter, envelopeWorld, type IcaoCode } from '../render/aircraft/stands'
 import { CELL } from '../render/aircraft/specs'
 import type { StandClass, Tile, Vec } from './types'
 import { inBounds } from './path'
@@ -51,14 +51,9 @@ function axisOverlap(offset: number, half: number): number {
 }
 
 /** Cells the aircraft box covers, including the anchor. */
-export function footprintCells(
-  tiles: Tile[][],
-  anchor: Vec,
-  cls: StandClass,
-  scale?: StandScale | null,
-): Vec[] {
+export function footprintCellsForLetter(tiles: Tile[][], anchor: Vec, letter: IcaoCode): Vec[] {
   const entry = standEntry(tiles, anchor.c, anchor.r)
-  const env = envelopeWorld(envelopeLetter(cls, scale))
+  const env = envelopeWorld(letter)
   const depthAlongX = entry === 'e' || entry === 'w'
   const halfX = (depthAlongX ? env.depth : env.width) / 2 / CELL
   const halfZ = (depthAlongX ? env.width : env.depth) / 2 / CELL
@@ -75,6 +70,16 @@ export function footprintCells(
   return cells
 }
 
+/** Cells the aircraft box covers, including the anchor. */
+export function footprintCells(
+  tiles: Tile[][],
+  anchor: Vec,
+  cls: StandClass,
+  scale?: StandScale | null,
+): Vec[] {
+  return footprintCellsForLetter(tiles, anchor, envelopeLetter(cls, scale))
+}
+
 export interface StandPad {
   anchor: Vec
   cells: Vec[]
@@ -84,6 +89,7 @@ export function standPads(
   tiles: Tile[][],
   standClass: Record<string, StandClass>,
   standScale: Record<string, StandScale | undefined>,
+  letters?: Record<string, IcaoCode>,
 ): StandPad[] {
   const out: StandPad[] = []
   for (let r = 0; r < tiles.length; r++) {
@@ -92,9 +98,12 @@ export function standPads(
     for (let c = 0; c < row.length; c++) {
       if (row[c] !== 'stand') continue
       const key = `${c},${r}`
+      const letter = letters?.[key]
       out.push({
         anchor: { c, r },
-        cells: footprintCells(tiles, { c, r }, standClass[key] ?? 'M', standScale[key]),
+        cells: letter
+          ? footprintCellsForLetter(tiles, { c, r }, letter)
+          : footprintCells(tiles, { c, r }, standClass[key] ?? 'M', standScale[key]),
       })
     }
   }
@@ -115,8 +124,9 @@ export function standFootprintHits(
   cells: Vec[],
   standClass: Record<string, StandClass>,
   standScale: Record<string, StandScale | undefined>,
+  letters?: Record<string, IcaoCode>,
 ): boolean {
-  const keys = occupiedKeys(standPads(tiles, standClass, standScale))
+  const keys = occupiedKeys(standPads(tiles, standClass, standScale, letters))
   return cells.some((p) => keys.has(`${p.c},${p.r}`))
 }
 
@@ -127,9 +137,10 @@ export function placementHitsStand(
   tile: Tile,
   standClass: Record<string, StandClass>,
   standScale: Record<string, StandScale | undefined>,
+  letters?: Record<string, IcaoCode>,
 ): boolean {
   if (CROSSES_STAND.has(tile)) return false
-  return standFootprintHits(tiles, cells, standClass, standScale)
+  return standFootprintHits(tiles, cells, standClass, standScale, letters)
 }
 
 /**
@@ -143,17 +154,49 @@ export function standPlaceBlock(
   scale: StandScale | null | undefined,
   standClass: Record<string, StandClass>,
   standScale: Record<string, StandScale | undefined>,
+  letter?: IcaoCode,
+  letters?: Record<string, IcaoCode>,
 ): string | null {
-  const cells = footprintCells(tiles, anchor, cls, scale)
+  const cells = letter
+    ? footprintCellsForLetter(tiles, anchor, letter)
+    : footprintCells(tiles, anchor, cls, scale)
   if (cells.some((p) => !inBounds(p.c, p.r))) return 'That stand hangs off the map.'
   if (cells.some((p) => cellInRunwayClearance(tiles, p.c, p.r))) {
     return 'That stand sits inside runway clearance. Taxiways can still cross.'
   }
-  const taken = occupiedKeys(standPads(tiles, standClass, standScale))
+  const taken = occupiedKeys(standPads(tiles, standClass, standScale, letters))
   for (const p of cells) {
     const tile = tiles[p.r]?.[p.c]
     if (tile === 'stand' || taken.has(`${p.c},${p.r}`)) return 'That stand overlaps another stand.'
     if (!tile || !WING_OK.has(tile)) return 'That stand overlaps a building.'
+  }
+  return null
+}
+
+/** The next heavy slab, ignoring the pad that is growing. */
+export function standGrowBlock(
+  tiles: Tile[][],
+  anchor: Vec,
+  current: IcaoCode,
+  next: IcaoCode,
+  standClass: Record<string, StandClass>,
+  standScale: Record<string, StandScale | undefined>,
+  letters?: Record<string, IcaoCode>,
+): string | null {
+  const own = new Set(footprintCellsForLetter(tiles, anchor, current).map((p) => `${p.c},${p.r}`))
+  own.add(`${anchor.c},${anchor.r}`)
+  const cells = footprintCellsForLetter(tiles, anchor, next)
+  if (cells.some((p) => !inBounds(p.c, p.r))) return 'The next slab hangs off the map.'
+  if (cells.some((p) => cellInRunwayClearance(tiles, p.c, p.r))) {
+    return 'The next slab sits inside runway clearance.'
+  }
+  const taken = occupiedKeys(standPads(tiles, standClass, standScale, letters))
+  for (const p of cells) {
+    const key = `${p.c},${p.r}`
+    if (own.has(key)) continue
+    const tile = tiles[p.r]?.[p.c]
+    if (tile === 'stand' || taken.has(key)) return 'The next slab overlaps another stand.'
+    if (!tile || !WING_OK.has(tile)) return 'The next slab overlaps a building.'
   }
   return null
 }

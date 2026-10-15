@@ -29,6 +29,14 @@ try {
   })
   await page.waitForTimeout(700)
   await page.screenshot({ path: `${OUT}/${phase}-apron.png` })
+  const airfield = page.getByTestId('build-airfield')
+  if (await airfield.count()) {
+    await airfield.click()
+    const stands = page.getByTestId('build-group-stands')
+    if (await stands.count()) await stands.click()
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: `${OUT}/${phase}-tray.png` })
+  }
   await page.evaluate(() => {
     const g = (
       window as unknown as {

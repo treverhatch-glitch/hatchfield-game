@@ -901,16 +901,17 @@ export function loadsFromLitres(litres: number): number {
 }
 
 export function standClassForTool(tool: string): StandClass | null {
-  if (tool === 'stand_s') return 'S'
-  if (tool === 'stand') return 'M'
-  if (tool === 'stand_w' || tool === 'stand_l') return 'L'
+  if (tool === 'stand_s' || tool === 'stand_light') return 'S'
+  if (tool === 'stand' || tool === 'stand_narrow') return 'M'
+  if (tool === 'stand_w' || tool === 'stand_l' || tool === 'stand_heavy') return 'L'
   return null
 }
 
 export function standScaleForTool(tool: string, jumboUnlocked: boolean): SizeTier | null {
-  if (tool === 'stand_s' || tool === 'stand') return 'small'
+  if (tool === 'stand_s' || tool === 'stand' || tool === 'stand_light' || tool === 'stand_narrow') return 'small'
   if (tool === 'stand_w') return 'wide'
   if (tool === 'stand_l') return jumboUnlocked ? 'jumbo' : 'wide'
+  if (tool === 'stand_heavy') return null
   return null
 }
 

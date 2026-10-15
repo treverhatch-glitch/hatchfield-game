@@ -539,6 +539,26 @@ button {
   font: 700 12px sans-serif;
 }
 
+.building-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.building-rows-title {
+  margin: 0;
+  font: 700 11px sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.building-action:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
 .building-actions {
   display: flex;
   flex-direction: column;

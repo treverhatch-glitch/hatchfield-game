@@ -170,7 +170,7 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
-import { footprintCells } from './standFoot'
+import { footprintCells, footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
@@ -367,7 +367,7 @@ import {
   tankDef,
   tickFuel,
 } from '../scale/logic.ts'
-import { aliasSize, hostKey, legacyFitting, migrateStand, readFittings, readStandRungs, readStandSizes } from '../stands/index.ts'
+import { aliasSize, footprintLetter, hostKey, legacyFitting, migrateStand, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, upgradeLabel, standAllows } from '../stands/index.ts'
 import type { Fitting, StandRung, StandSize } from '../stands/types.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
@@ -390,7 +390,7 @@ import {
   type CheckinFlight,
   type CheckinSignGate,
 } from '../checkin/index.ts'
-import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Reading } from '../buildinginfo/index.ts'
+import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type CardSection, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
@@ -14408,12 +14408,20 @@ export class Game {
     }
     let wideStands = 0
     let jumboStands = 0
+    let rungBill = 0
     for (const s of tilesOf(this.tiles, 'stand')) {
-      const scale = this.standScale[`${s.c},${s.r}`]
+      const key = `${s.c},${s.r}`
+      const size = this.standSize[key]
+      const rung = this.standRung[key]
+      if (size && rung != null) {
+        rungBill += rungUpkeep(size, rung)
+        continue
+      }
+      const scale = this.standScale[key]
       if (scale === 'wide') wideStands += 1
-      else if (scale === 'jumbo' || (!scale && this.standClass[`${s.c},${s.r}`] === 'L')) jumboStands += 1
+      else if (scale === 'jumbo' || (!scale && this.standClass[key] === 'L')) jumboStands += 1
     }
-    return pillarUpkeep(this.pillarState(), {
+    return rungBill + pillarUpkeep(this.pillarState(), {
       fuelFarms: tilesOf(this.tiles, 'fuel').length,
       hangars,
       fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
@@ -18150,10 +18158,25 @@ export class Game {
     if (tile === 'stand') {
       const scale = this.standScale[key]
       const cls = this.standClass[key]
+      const size = this.standSize[key]
+      const rung = this.standRung[key]
       const tier: SizeTier = scale === 'wide' || scale === 'jumbo' ? scale : cls === 'L' ? 'jumbo' : 'small'
       const name =
-        tier === 'jumbo' ? 'Jumbo stand' : tier === 'wide' ? 'Widebody stand' : cls === 'S' ? 'Small stand' : 'Medium stand'
-      return { name, upkeep: 0, tier, plan: 'stand' }
+        size === 'light' && rung === 0
+          ? 'Light stand'
+          : size === 'narrow' && rung === 0
+            ? 'Narrow stand'
+            : size === 'heavy' && rung === 0
+              ? 'Heavy stand'
+              : tier === 'jumbo'
+                ? 'Jumbo stand'
+                : tier === 'wide'
+                  ? 'Widebody stand'
+                  : cls === 'S'
+                    ? 'Small stand'
+                    : 'Medium stand'
+      const upkeep = size && rung != null ? rungUpkeep(size, rung) : 0
+      return { name, upkeep, tier, plan: 'stand' }
     }
     if (tile === 'hangar') {
       const scale = this.hangarScale[key] ?? 'small'
@@ -18236,11 +18259,13 @@ export class Game {
     if (tile === 'mro') return this.attachVehicleQueue(this.mroReading(base))
     if (tile === 'nighthub') return this.attachVehicleQueue(this.nightHubReading(base))
     if (tile === 'stand') {
+      const upgrade = this.standUpgradeSection(v)
       return this.withQueue(
         {
           ...base,
           demand: this.standOccupied(v) ? 1 : 0,
           note: this.standFuelNote(v),
+          sections: upgrade ? [upgrade] : undefined,
           staffAssigned: this.crewOn(fleet, [
             'pushback_tug',
             'heavy_tug',
@@ -19713,8 +19738,10 @@ export class Game {
       this.emit()
       return
     }
+    const freshStand =
+      this.tool === 'stand_light' || this.tool === 'stand_narrow' || this.tool === 'stand_heavy'
     const jetwayStand =
-      building.tile === 'stand' && this.standAccessMode === 'jetway'
+      building.tile === 'stand' && this.standAccessMode === 'jetway' && !freshStand
     const stampCost = jetwayStand
       ? Math.round(building.cost * STAND_JETWAY_MULT)
       : building.cost
@@ -19731,10 +19758,9 @@ export class Game {
       return
     }
     const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
-    const standScale = standScaleForTool(
-      this.tool,
-      this.hasResearch('heavy_pack') && this.fieldLevel() >= 5,
-    )
+    const jumboOpen = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
+    const standScale = standScaleForTool(this.tool, jumboOpen)
+    const standAlias = building.tile === 'stand' ? aliasSize(this.tool, jumboOpen) : null
     const hangarScale = hangarScaleForTool(this.tool)
     const hotelCls: HotelClass =
       this.tool === 'hotel_inn' ? 'inn' : this.tool === 'hotel_resort' ? 'resort' : 'business'
@@ -19798,8 +19824,11 @@ export class Game {
       news,
       tool: this.tool,
       standClass: building.tile === 'stand' ? standCls : undefined,
-      standAccess: building.tile === 'stand' ? this.standAccessMode : undefined,
+      standAccess: building.tile === 'stand' ? (freshStand ? 'remote' : this.standAccessMode) : undefined,
       standScale: building.tile === 'stand' ? (standScale ?? undefined) : undefined,
+      standSize: standAlias?.size,
+      standRung: standAlias?.rung,
+      standLetter: standAlias ? footprintLetter(standAlias.size, standAlias.rung) : undefined,
       hangarScale: building.tile === 'hangar' ? (hangarScale ?? undefined) : undefined,
       hotelClass: building.tile === 'hotel' ? hotelCls : undefined,
       parkTerm:
@@ -19899,14 +19928,117 @@ export class Game {
     }
   }
 
-  /** Wide stands are code E. Legacy L stands with no scale stay code F. */
+  /** Painted box. A stored size uses the rung footprint. Only the heavy pad grows. */
   standIcao(stand: Vec): ReturnType<typeof standLetter> {
-    const scale = this.standScale[`${stand.c},${stand.r}`]
+    const key = `${stand.c},${stand.r}`
+    const size = this.standSize[key]
+    const rung = this.standRung[key]
+    if (size && rung != null) return footprintLetter(size, rung)
+    const scale = this.standScale[key]
     if (scale === 'wide') return 'E'
     if (scale === 'jumbo') return 'F'
     const cls = this.standClassAt(stand)
     if (cls === 'L') return 'F'
     return standLetter(cls)
+  }
+
+  /** Letters the collision rules should paint. Missing keys stay on class and scale. */
+  private standLetters(): Record<string, ReturnType<typeof footprintLetter>> {
+    const out: Record<string, ReturnType<typeof footprintLetter>> = {}
+    for (const [key, size] of Object.entries(this.standSize)) {
+      const rung = this.standRung[key]
+      if (rung == null) continue
+      out[key] = footprintLetter(size, rung)
+    }
+    return out
+  }
+
+  /** Buy the next surface on a stand. The first failure is the news line. */
+  buyStandRung(key: string): boolean {
+    const size = this.standSize[key]
+    const rung = this.standRung[key]
+    if (!size || rung == null) return false
+    const refusal = rungRefusal(size, rung, this.fieldLevel(), new Set(this.researchUnlocked))
+    if (refusal) {
+      this.pushNews(refusal, 'bad')
+      this.emit()
+      return false
+    }
+    const next = (rung + 1) as StandRung
+    if (size === 'heavy') {
+      const [c, r] = key.split(',').map(Number)
+      const why = standGrowBlock(
+        this.tiles,
+        { c, r },
+        footprintLetter(size, rung),
+        footprintLetter(size, next),
+        this.standClass,
+        this.standScale,
+        this.standLetters(),
+      )
+      if (why) {
+        this.pushNews(why, 'bad')
+        this.emit()
+        return false
+      }
+    }
+    const cost = rungStepCost(size, next)
+    if (!this.spend(cost, `${size} ${next === 1 ? 'pave' : 'slab'}`)) return false
+    this.standRung[key] = next
+    if (size === 'heavy' && next === 1) this.standScale[key] = 'wide'
+    if (size === 'heavy' && next === 2) this.standScale[key] = 'jumbo'
+    this.apronFocus = []
+    this.bumpMap()
+    this.pushNews(`${RUNG_LABEL[size][next]} poured.`, 'good')
+    this.emit()
+    return true
+  }
+
+  /** Hover on the upgrade row paints the next heavy box. */
+  previewStandRow(id: string | null) {
+    if (!id?.startsWith('rung:')) {
+      this.apronFocus = []
+      this.emit()
+      return
+    }
+    const key = id.slice('rung:'.length)
+    const size = this.standSize[key]
+    const rung = this.standRung[key]
+    if (size !== 'heavy' || rung == null || rung >= 2) {
+      this.apronFocus = []
+      this.emit()
+      return
+    }
+    const [c, r] = key.split(',').map(Number)
+    const next = (rung + 1) as StandRung
+    this.apronFocus = footprintCellsForLetter(this.tiles, { c, r }, footprintLetter(size, next))
+    this.emit()
+  }
+
+  standCardAction(id: string) {
+    if (id.startsWith('rung:')) this.buyStandRung(id.slice('rung:'.length))
+  }
+
+  private standUpgradeSection(v: Vec): CardSection | null {
+    const key = `${v.c},${v.r}`
+    const size = this.standSize[key]
+    const rung = this.standRung[key]
+    if (!size || rung == null) return null
+    let refusal = rungRefusal(size, rung, this.fieldLevel(), new Set(this.researchUnlocked))
+    if (!refusal && size === 'heavy' && rung < 2) {
+      const next = (rung + 1) as StandRung
+      refusal = standGrowBlock(
+        this.tiles,
+        v,
+        footprintLetter(size, rung),
+        footprintLetter(size, next),
+        this.standClass,
+        this.standScale,
+        this.standLetters(),
+      )
+    }
+    const row = upgradeLabel(size, rung, this.cash, refusal)
+    return { id: 'upgrade', title: 'Surface', rows: [{ id: `rung:${key}`, label: row.label, disabled: row.disabled }] }
   }
 
   standClassAt(stand: Vec | null): StandClass {
@@ -19925,7 +20057,14 @@ export class Game {
   standFitsAirframe(stand: Vec, airframeId: string): boolean {
     const spec = getAircraftSpec(airframeId)
     if (spec.icao === 'H') return false
-    if (!standAccepts(this.standIcao(stand), spec.icao)) return false
+    const key = `${stand.c},${stand.r}`
+    const size = this.standSize[key]
+    const rung = this.standRung[key]
+    const allowed =
+      size && rung != null
+        ? standAllows(size, rung, airframeId, spec.icao)
+        : standAccepts(this.standIcao(stand), spec.icao)
+    if (!allowed) return false
     const others = this.flights
       .filter(
         (f) =>
@@ -19977,11 +20116,13 @@ export class Game {
       tiles: this.tiles,
       standClass: this.standClass,
       standScale: this.standScale,
+      standLetter: this.standLetters(),
       pending: this.sites.map((s) => ({
         cells: s.cells,
         tile: s.tile,
         standClass: s.standClass,
         standScale: s.standScale,
+        standLetter: s.standLetter,
       })),
     }
   }
@@ -19991,16 +20132,16 @@ export class Game {
    * Cash, research, and "needs grass" stay with the caller.
    */
   placementBlockReason(tile: Tile, cells: Vec[], origin: Vec, name: string): string | null {
+    const jumbo = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
+    const alias = tile === 'stand' ? aliasSize(this.tool, jumbo) : null
     return placementReason(this.worldInput(), {
       tile,
       cells,
       origin,
       name,
       standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
-      standScale:
-        tile === 'stand'
-          ? standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5)
-          : undefined,
+      standScale: tile === 'stand' ? standScaleForTool(this.tool, jumbo) : undefined,
+      standLetter: alias ? footprintLetter(alias.size, alias.rung) : undefined,
     })
   }
 

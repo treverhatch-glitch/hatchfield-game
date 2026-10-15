@@ -6,9 +6,11 @@
  */
 import { footprintBlock, footprintCells as buildingCells } from './buildingFootprint'
 import { clearanceBlocks, clearanceRect, runwayBoxes, type RunwayBox } from './runwayClearance'
+import { type IcaoCode } from '../render/aircraft/stands'
 import {
   WING_CLEAR_TILES,
   footprintCells as standFootprint,
+  footprintCellsForLetter,
   placementHitsStand,
   standPlaceBlock,
 } from './standFoot'
@@ -35,6 +37,7 @@ export interface PendingStamp {
   tile: Tile
   standClass?: StandClass
   standScale?: StandScale
+  standLetter?: IcaoCode
 }
 
 export interface Stamp {
@@ -45,12 +48,14 @@ export interface Stamp {
   name?: string
   standClass?: StandClass
   standScale?: StandScale | null
+  standLetter?: IcaoCode
 }
 
 export interface AuditInput {
   tiles: Tile[][]
   standClass?: Record<string, StandClass>
   standScale?: Record<string, StandScale | undefined>
+  standLetter?: Record<string, IcaoCode>
   /** In-progress sites count as the tile they will become. */
   pending?: PendingStamp[]
   /** Stamp under the cursor. Its claims stack on top of whatever is already there. */
@@ -94,12 +99,14 @@ interface Surface {
   tiles: Tile[][]
   standClass: Record<string, StandClass>
   standScale: Record<string, StandScale | undefined>
+  standLetter: Record<string, IcaoCode>
 }
 
 function workingSurface(input: AuditInput): Surface {
   const tiles = input.tiles.map((row) => row.slice())
   const standClass: Record<string, StandClass> = { ...(input.standClass ?? {}) }
   const standScale: Record<string, StandScale | undefined> = { ...(input.standScale ?? {}) }
+  const standLetter: Record<string, IcaoCode> = { ...(input.standLetter ?? {}) }
   for (const site of input.pending ?? []) {
     for (const cell of site.cells) {
       if (!inBounds(cell.c, cell.r)) continue
@@ -108,10 +115,11 @@ function workingSurface(input: AuditInput): Surface {
         const key = keyOf(cell.c, cell.r)
         if (site.standClass) standClass[key] = site.standClass
         if (site.standScale) standScale[key] = site.standScale
+        if (site.standLetter) standLetter[key] = site.standLetter
       }
     }
   }
-  return { tiles, standClass, standScale }
+  return { tiles, standClass, standScale, standLetter }
 }
 
 function paintProposal(surface: Surface, proposal: Stamp | undefined): Surface {
@@ -119,6 +127,7 @@ function paintProposal(surface: Surface, proposal: Stamp | undefined): Surface {
   const tiles = surface.tiles.map((row) => row.slice())
   const standClass = { ...surface.standClass }
   const standScale = { ...surface.standScale }
+  const standLetter = { ...surface.standLetter }
   for (const cell of proposal.cells) {
     if (!inBounds(cell.c, cell.r)) continue
     tiles[cell.r][cell.c] = proposal.tile
@@ -127,8 +136,9 @@ function paintProposal(surface: Surface, proposal: Stamp | undefined): Surface {
     const key = keyOf(proposal.origin.c, proposal.origin.r)
     standClass[key] = proposal.standClass ?? 'M'
     if (proposal.standScale) standScale[key] = proposal.standScale
+    if (proposal.standLetter) standLetter[key] = proposal.standLetter
   }
-  return { tiles, standClass, standScale }
+  return { tiles, standClass, standScale, standLetter }
 }
 
 function addTileOwners(
@@ -136,6 +146,7 @@ function addTileOwners(
   tiles: Tile[][],
   standClass: Record<string, StandClass>,
   standScale: Record<string, StandScale | undefined>,
+  standLetter: Record<string, IcaoCode>,
   idPrefix: string,
 ) {
   for (let r = 0; r < tiles.length; r++) {
@@ -170,7 +181,10 @@ function addTileOwners(
       }
       if (tile === 'stand') {
         pushOwner(map, at, { id, kind: 'stand', tile, at })
-        const wing = standFootprint(tiles, at, standClass[keyOf(c, r)] ?? 'M', standScale[keyOf(c, r)])
+        const letter = standLetter[keyOf(c, r)]
+        const wing = letter
+          ? footprintCellsForLetter(tiles, at, letter)
+          : standFootprint(tiles, at, standClass[keyOf(c, r)] ?? 'M', standScale[keyOf(c, r)])
         for (const cell of wing) {
           if (cell.c === c && cell.r === r) continue
           pushOwner(map, cell, { id, kind: 'wing', tile: 'stand', at })
@@ -192,12 +206,9 @@ function addProposalOwners(map: Map<string, Owner[]>, surface: Surface, proposal
   if (tile === 'stand') {
     const at = proposal.origin
     pushOwner(map, at, { id, kind: 'stand', tile, at })
-    const wing = standFootprint(
-      surface.tiles,
-      at,
-      proposal.standClass ?? 'M',
-      proposal.standScale,
-    )
+    const wing = proposal.standLetter
+      ? footprintCellsForLetter(surface.tiles, at, proposal.standLetter)
+      : standFootprint(surface.tiles, at, proposal.standClass ?? 'M', proposal.standScale)
     for (const cell of wing) {
       if (cell.c === at.c && cell.r === at.r) continue
       pushOwner(map, cell, { id, kind: 'wing', tile: 'stand', at })
@@ -296,6 +307,8 @@ function legacyReason(surface: Surface, stamp: Stamp): string | null {
       stamp.standScale,
       surface.standClass,
       surface.standScale,
+      stamp.standLetter,
+      surface.standLetter,
     )
     if (why) return why
   }
@@ -307,7 +320,14 @@ function legacyReason(surface: Surface, stamp: Stamp): string | null {
   }
   if (
     stamp.tile !== 'stand' &&
-    placementHitsStand(surface.tiles, stamp.cells, stamp.tile, surface.standClass, surface.standScale)
+    placementHitsStand(
+      surface.tiles,
+      stamp.cells,
+      stamp.tile,
+      surface.standClass,
+      surface.standScale,
+      surface.standLetter,
+    )
   ) {
     return `${name} sits inside a stand footprint.`
   }
@@ -431,7 +451,7 @@ function scan(input: AuditInput): WorldViolation[] {
   const base = workingSurface(input)
   const view = paintProposal(base, input.proposal)
   const owners = new Map<string, Owner[]>()
-  addTileOwners(owners, base.tiles, base.standClass, base.standScale, '')
+  addTileOwners(owners, base.tiles, base.standClass, base.standScale, base.standLetter, '')
   if (input.proposal) addProposalOwners(owners, base, input.proposal)
   const out: WorldViolation[] = []
   const seen = new Set<string>()
@@ -556,7 +576,10 @@ function scan(input: AuditInput): WorldViolation[] {
     for (let c = 0; c < row.length; c++) {
       if (row[c] !== 'stand') continue
       const at = { c, r }
-      const wing = standFootprint(view.tiles, at, view.standClass[keyOf(c, r)] ?? 'M', view.standScale[keyOf(c, r)])
+      const marked = view.standLetter[keyOf(c, r)]
+      const wing = marked
+        ? footprintCellsForLetter(view.tiles, at, marked)
+        : standFootprint(view.tiles, at, view.standClass[keyOf(c, r)] ?? 'M', view.standScale[keyOf(c, r)])
       for (const cell of wing) {
         const zone = zoneKind(boxes, cell.c, cell.r)
         if (!zone) continue

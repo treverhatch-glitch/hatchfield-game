@@ -13,14 +13,18 @@ function groupMenu(menuId: string, groupId: string) {
 }
 
 describe('BuildTray lock badges', () => {
-  it('prints the research node name on a widebody stand and keeps a padlock on a field-level lock', () => {
+  it('pads a field-level lock on the heavy stand and names the research on a progression row', () => {
     const game = new Game()
     const stands = renderToStaticMarkup(
       <BuildTray game={game} menu={groupMenu('airfield', 'stands')} onOpen={() => {}} />,
     )
-    expect(stands).toContain('data-testid="research-badge-airfield-3"')
-    expect(stands).toContain('Large stands')
-    expect(stands).not.toContain('research-badge-widebody_ops')
+    expect(stands).toContain('data-testid="tray-stand_light"')
+    expect(stands).toContain('data-testid="tray-stand_narrow"')
+    expect(stands).toContain('data-testid="lock-badge-stand_heavy"')
+    expect(stands).toContain('Field level 3')
+    expect(stands).not.toContain('tray-stand_w')
+    expect(stands).toContain('data-testid="research-badge-airfield-6"')
+    expect(stands).toContain('Code E pier')
 
     const fuel = renderToStaticMarkup(
       <BuildTray game={game} menu={groupMenu('airside', 'fuel')} onOpen={() => {}} />,

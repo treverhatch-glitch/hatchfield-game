@@ -64,6 +64,7 @@ export interface BuildingCard {
   hire?: boolean
   /** Lock or release a check-in desk. Empty when this building has none. */
   actions?: { id: string; label: string }[]
+  sections?: CardSection[]
 }
 
 export interface Reading {
@@ -99,6 +100,20 @@ export interface Reading {
   alert?: string
   /** Player actions. Check-in uses these to lock and release a desk. */
   actions?: readonly { id: string; label: string }[]
+  /** Upgrade and attachment rows. Always visible. Not a modal. */
+  sections?: readonly CardSection[]
+}
+
+export interface CardRow {
+  id: string
+  label: string
+  disabled?: boolean
+}
+
+export interface CardSection {
+  id: string
+  title: string
+  rows: readonly CardRow[]
 }
 
 const STATUS_LABEL: Record<BuildingStatus, string> = {
@@ -280,6 +295,11 @@ export function buildingCard(reading: Reading): BuildingCard {
     note: reading.note,
     hire: bays.some((bay) => bay.limit === CLOSED_NO_STAFF_LINE),
     actions: reading.actions?.map((action) => ({ id: action.id, label: action.label })),
+    sections: reading.sections?.map((section) => ({
+      id: section.id,
+      title: section.title,
+      rows: section.rows.map((row) => ({ id: row.id, label: row.label, disabled: row.disabled })),
+    })),
   }
 }
 

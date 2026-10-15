@@ -18,6 +18,7 @@ import {
 } from '../game/catalog.ts'
 import { Game } from '../game/sim.ts'
 import { BAG_SYSTEMS, PAX_UNITS, TANK_TIERS } from '../scale/data.ts'
+import { rungUpkeep } from '../stands/index.ts'
 import { ITEMS, PREFAB_TIERS } from '../game/terminal.ts'
 import {
   EXTRA_PATH_CAPSTONE_PREMIUM,
@@ -270,7 +271,8 @@ describe('daily upkeep', () => {
       TANK_TIERS[0]!.upkeepPerDay +
       BAG_SYSTEMS.carts.upkeepPerDay +
       2 * PAX_UNITS.desk.upkeepPerDay +
-      PAX_UNITS.scanner.upkeepPerDay
+      PAX_UNITS.scanner.upkeepPerDay +
+      2 * rungUpkeep('narrow', 1)
     const holding = game.dailyHoldingQuote()
     game.tickPayroll(0)
     const afterOps = 400_000 - daily - pillar - holding - bill

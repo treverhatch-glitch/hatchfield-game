@@ -10,9 +10,9 @@ const EVERY_STAMP = {
   runway_heavy: true,
   helipad: true,
   taxi: true,
-  stand_s: true,
-  stand: true,
-  stand_l: true,
+  stand_light: true,
+  stand_narrow: true,
+  stand_heavy: true,
   terminal: true,
   premade: true,
   snack: true,
@@ -46,7 +46,6 @@ const EVERY_STAMP = {
   depot: true,
   mro: true,
   nighthub: true,
-  stand_w: true,
   hangar_w: true,
   hangar_j: true,
   fuel_rail: true,
@@ -58,7 +57,7 @@ const EVERY_STAMP = {
   rail_link: true,
   saf_blending: true,
   clear: true,
-} as const satisfies Record<Exclude<Tool, 'pan'>, true>
+} as const satisfies Record<Exclude<Tool, 'pan' | 'stand_s' | 'stand' | 'stand_w' | 'stand_l'>, true>
 
 const BANNED = /\b(todo|tbd|lorem|placeholder|click me|untitled|coming soon)\b/i
 const SHORT = /^(ops|specs|ads|late)$/i

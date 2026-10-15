@@ -1,5 +1,5 @@
 export { BUILDING_PLANS, DEFAULT_PLAN, SERVICE_KITS, planFor } from './config.ts'
 export type { BuildingPlan, KitId, ServiceKit, SizeTier } from './config.ts'
 export { buildingCard } from './card.ts'
-export type { BayInput, BayView, BottleneckIcon, BuildingCard, BuildingStatus, Reading } from './card.ts'
+export type { BayInput, BayView, BottleneckIcon, BuildingCard, BuildingStatus, CardSection, Reading } from './card.ts'
 export { isBuildingTile } from './tiles.ts'

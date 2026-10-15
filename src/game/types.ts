@@ -107,6 +107,9 @@ export type Tool =
   | 'stand_s'
   | 'stand'
   | 'stand_l'
+  | 'stand_light'
+  | 'stand_narrow'
+  | 'stand_heavy'
   | 'terminal'
   | 'premade'
   | 'snack'
@@ -1159,6 +1162,7 @@ export interface BuildSite {
   standScale?: 'small' | 'wide' | 'jumbo'
   standSize?: 'light' | 'narrow' | 'heavy'
   standRung?: 0 | 1 | 2
+  standLetter?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
   hangarScale?: 'small' | 'wide' | 'jumbo'
   hotelClass?: HotelClass
   parkTerm?: ParkTerm
