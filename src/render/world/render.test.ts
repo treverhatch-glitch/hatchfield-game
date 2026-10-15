@@ -481,3 +481,21 @@ describe('geometry builders', () => {
     expect(g.boundingSphere!.radius).toBeGreaterThan(2)
   })
 })
+
+describe('pack signs', () => {
+  it('frees each sign texture on a rebuild and leaves the shared carpet map alone', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
+    const host = wr as unknown as { packSigns: THREE.Group; clearPackSigns(): void }
+    const signMap = new THREE.Texture()
+    const carpetMap = new THREE.Texture()
+    host.packSigns.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: signMap })))
+    host.packSigns.add(new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ map: carpetMap })))
+    const freed: string[] = []
+    signMap.addEventListener('dispose', () => freed.push('sign'))
+    carpetMap.addEventListener('dispose', () => freed.push('carpet'))
+    host.clearPackSigns()
+    expect(freed).toEqual(['sign'])
+    expect(host.packSigns.children).toHaveLength(0)
+  })
+})
