@@ -95,6 +95,7 @@ import { fidsIsOpen, setFidsOpen, subscribeFids } from '../fids/open'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
+import { CouncilPanel } from '../council/CouncilPanel.tsx'
 import { StaffHousingPanel } from './StaffHousingPanel'
 import { ACHIEVEMENTS, AchievementToast, type AchievementDef } from '../achievements'
 import { liveBubbles } from '../feedback/stage'
@@ -177,6 +178,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   }
   useEffect(() => {
     game.pokeTycoon()
+    game.pokeCouncil()
   }, [game, panel])
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
@@ -2011,6 +2013,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     }}
                   />
                 </>
+              ) : null}
+              {panel === 'council' ? (
+                <CouncilPanel
+                  view={game.councilView()}
+                  onVote={(requestId, choiceId) => game.answerCouncilRequest(requestId, choiceId)}
+                />
               ) : null}
 
               {panel === 'services' ? (

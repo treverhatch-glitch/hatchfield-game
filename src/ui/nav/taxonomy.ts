@@ -189,6 +189,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
         'art_concourse',
         'grand_arrivals_hall',
         'quiet_hall',
+        'spotters_deck',
       ],
       progression: [],
     },
@@ -253,6 +254,7 @@ export type ManageSheet =
   | 'specialize'
   | 'wallet'
   | 'tycoon'
+  | 'council'
   | 'achievements'
 
 export type ManageTabId =
@@ -269,6 +271,7 @@ export type ManageTabId =
   | 'relations'
   | 'hubs'
   | 'rival'
+  | 'council'
   | 'negotiation'
   | 'planner'
   | 'stands'
@@ -324,6 +327,7 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
       { id: 'relations', label: 'Airlines hub', tip: 'Relationship, hub tier, checklist, rivals, and dedicated assets', sheet: 'airlines' },
       { id: 'hubs', label: 'Hubs', tip: 'Carriers based at this field', sheet: 'airlines' },
       { id: 'rival', label: 'Rival', tip: 'Bellwater Intl fees, roster, and catchment', sheet: 'rival' },
+      { id: 'council', label: 'Council', tip: 'Regional requests, votes, standing, and prestige', sheet: 'council' },
       { id: 'negotiation', label: 'Negotiation', tip: 'Counter the open offer', sheet: 'airlines' },
     ],
   },

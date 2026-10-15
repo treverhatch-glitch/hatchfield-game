@@ -188,6 +188,10 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
     label: 'City levy',
     why: 'Half a percent of cash above the protected floor, once per game day, after payroll.',
   },
+  civic_programs: {
+    label: 'Civic programs',
+    why: 'Cash the Airport Council spends on a funded vote. Standing and prestige do not move this line.',
+  },
   share_purchases: {
     label: 'Shares bought',
     why: 'Shares bought back at the ticker.',

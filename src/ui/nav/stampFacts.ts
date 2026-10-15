@@ -83,6 +83,7 @@ function capacityOf(id: string): string {
   const late = buildingById(id)
   if (late?.kind === 'hotel') return `${late.rooms} rooms`
   if (late?.kind === 'landmark') return `${late.visitorsPerDay} visitors/day`
+  if (late?.kind === 'spotters') return `${late.crowdSize} spotters`
   return '—'
 }
 

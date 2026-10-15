@@ -581,6 +581,14 @@ import {
   type TycoonPulse,
   type TycoonView,
 } from '../tycoon/index.ts'
+import {
+  CouncilEngine,
+  type CouncilBooks,
+  type CouncilChoiceId,
+  type CouncilContext,
+  type CouncilNote,
+  type CouncilView,
+} from '../council/index.ts'
 import { PLAYTEST_YEAR_DAYS } from '../reports/config.ts'
 import { MAX_CATCHUP_DAYS } from '../tycoon/config.ts'
 import { YearPlaytestBook } from '../reports/book.ts'
@@ -863,6 +871,7 @@ import {
   landmarkDemandModifier,
   landmarkRatingPoints,
   placeBuilding,
+  prestigeItems as latePrestigeItems,
 } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
@@ -1419,6 +1428,8 @@ export class Game {
   feeStandingApplied = 0
   /** Tenant leases, ad campaigns, year report, and awards. */
   tycoon = new TycoonEngine()
+  /** Late-game regional governance; kept independent from renderer state. */
+  council = new CouncilEngine()
   simClock = new SimClock()
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
@@ -1995,6 +2006,7 @@ export class Game {
     this.commercialLead = {}
     this.feeStandingApplied = 0
     this.tycoon.reset(1)
+    this.council.reset()
     this.simClock = new SimClock()
     this.economy = null
     this.economyState = null
@@ -3774,7 +3786,7 @@ export class Game {
     let food = 0
     let lounge = 0
     let family = 0
-    let prestige = 0
+    let prestige = latePrestigeItems(this.lateSites)
     for (const fit of this.fits) {
       food += fit.rooms.food ?? 0
       lounge += fit.rooms.lounge ?? 0
@@ -6534,6 +6546,13 @@ export class Game {
     return this.lateSites.find((row) => row.c === c && row.r === r)?.id ?? null
   }
 
+  spotterCrowdAt(c: number, r: number): number {
+    const site = this.lateSites.find((row) => row.c === c && row.r === r && row.id === 'spotters_deck')
+    if (!site || !isOpen(site)) return 0
+    const spec = buildingById(site.id)
+    return spec?.kind === 'spotters' ? spec.crowdSize : 0
+  }
+
   lateMeshSig(): string {
     return this.lateSites.map((site) => `${site.c},${site.r},${site.elapsedDays}`).join('|')
   }
@@ -7540,6 +7559,7 @@ export class Game {
       feeStandingApplied: this.feeStandingApplied,
       premium: this.premium,
       tycoon: this.tycoon.snapshot(),
+      council: this.council.snapshot(),
       rival: this.rival?.serialize(),
       disruptions: this.disruptions.save(),
       playtestYear: this.playtestYear.save(),
@@ -7609,6 +7629,7 @@ export class Game {
       this.feeStandingApplied = s.feeStandingApplied ?? 0
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
       this.tycoon.restore(s.tycoon, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
+      this.council.restore(s.council, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
       this.economy = null
       this.economyState = restoreEconomyState(s.economy)
       this.economyView = null
@@ -21469,6 +21490,11 @@ export class Game {
       this.emit()
       return
     }
+    if (spec.unique && this.lateSites.some((site) => site.id === id)) {
+      this.pushNews(`${spec.name} is unique — only one can be built.`, 'bad')
+      this.emit()
+      return
+    }
     if (id === 'saf_blending') {
       if (!farmBesidePavement(this.tiles, v)) {
         this.pushNews('SAF blending needs taxi, stand, runway, or road beside it.', 'bad')
@@ -26312,6 +26338,7 @@ export class Game {
     this.tickScaleFuel(step)
     this.noteFuelChain(0)
     this.pokeTycoon()
+    this.pokeCouncil()
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
@@ -27174,6 +27201,61 @@ export class Game {
   dismissYearReport() {
     this.tycoon.dismissReport()
     this.emit()
+  }
+
+  private councilContext(): CouncilContext {
+    return {
+      day: this.gameDayIndex(),
+      fieldLevel: this.fieldLevel(),
+      prestige: this.tycoon.view(this.gameDayIndex()).prestige,
+      cash: this.cash,
+    }
+  }
+
+  private councilBooks(): CouncilBooks {
+    return {
+      balance: () => this.cash,
+      spend: (amount, label) => {
+        const cost = Math.max(0, Math.round(amount))
+        if (!cost || this.cash < cost) return cost === 0
+        this.cash -= cost
+        this.noteExpense(cost)
+        this.bank.post('civic_programs', -cost, {
+          simMinutes: this.simMinutes(),
+          source: 'council',
+          sourceId: label,
+          label,
+        })
+        return true
+      },
+    }
+  }
+
+  private applyCouncil(notes: CouncilNote[], forceEmit: boolean) {
+    for (const note of notes) {
+      this.pushNews(note.text, note.tone)
+      if (note.reputation) {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + note.reputation))
+      }
+      if (note.prestige) this.tycoon.addPrestige(note.prestige)
+    }
+    if (notes.length || forceEmit) this.emit()
+  }
+
+  /** Open a due request. Safe to call from a paused side panel. */
+  pokeCouncil() {
+    this.applyCouncil(this.council.advance(this.councilContext()), false)
+  }
+
+  councilView(): CouncilView {
+    return this.council.view(this.councilContext())
+  }
+
+  answerCouncilRequest(requestId: string, choiceId: CouncilChoiceId) {
+    this.applyCouncil(
+      this.council.vote(requestId, choiceId, this.councilContext(), this.councilBooks()),
+      true,
+    )
   }
 }
 

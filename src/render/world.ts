@@ -92,6 +92,7 @@ import {
   addTiltTray,
   apronPrefabTier,
 } from './world/progressionBuildings'
+import { addSpottersDeck } from './spottersDeck.ts'
 
 interface ClimbOut {
   airframeId: string
@@ -817,6 +818,7 @@ export class World {
             lateOpen: game.lateOpenAt(c, r),
             lateId: game.lateIdAt(c, r),
             terminalTier: pierTier,
+            spotterCrowd: game.spotterCrowdAt(c, r),
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -987,6 +989,7 @@ export class World {
       lateOpen?: boolean
       lateId?: string | null
       terminalTier?: 1 | 2 | 3
+      spotterCrowd?: number
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
@@ -1211,6 +1214,8 @@ export class World {
       else addLandmark(g, opts.lateId ?? null)
     } else if (tile === 'saf') {
       this.addSafPlant(g)
+    } else if (tile === 'spotters_deck') {
+      addSpottersDeck(g, opts.spotterCrowd ?? 0)
     }
     return g
   }

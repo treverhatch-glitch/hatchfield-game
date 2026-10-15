@@ -1,5 +1,6 @@
 import type { InboundState } from '../inbound/types.ts'
 import type { EconomyState } from '../economy/types.ts'
+import type { CouncilState } from '../council/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 import type { Tier3PlusId } from '../tier3plus/types.ts'
 import type { PremiumState } from '../premium/types.ts'
@@ -84,6 +85,8 @@ export type Tile =
   | 'late_landmark'
   /** Cargo hub II or the cold store. Which one is read from the late site on the cell. */
   | 'late_cargo'
+  /** Raised public viewing deck with visible plane-spotter crowds. */
+  | 'spotters_deck'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -177,6 +180,7 @@ export type Tool =
   | 'quiet_hall'
   | 'cargo_hub_ii'
   | 'cold_store'
+  | 'spotters_deck'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1161,13 +1165,15 @@ export interface GameSnapshot {
   deskLeases?: { pointId: string; kind: string; airlineId: string; mode: string }[]
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
+  /** Late-game regional requests, standing, and recorded council votes. */
+  council?: CouncilState
   /** Bellwater Intl rival sim. */
   rival?: string
   /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
   disruptions?: string
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
-  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  /** Placed late buildings (hotel, rail link, SAF, landmarks, cargo, spotters). Missing on older saves. */
   economy?: EconomyState
   tier3Sites?: { id: Tier3PlusId; c: number; r: number; elapsedDays: number }[]
   /** Missed-connection guests waiting on the airport hotel. */
