@@ -621,7 +621,7 @@ import {
   SIM_MINUTES_PER_REAL_SECOND,
   SimClock,
 } from '../core/clock.ts'
-import { formatFaceDate } from '../core/faceClock.ts'
+import { clockForFaceHour, formatFaceDate } from '../core/faceClock.ts'
 import {
   TycoonEngine,
   type CampaignKind,
@@ -892,7 +892,10 @@ import { PIPELINE, pipelineIntervalMinutes, qualityHoldMinutes, supplyCut } from
 import { BARGE, bargeLeadMinutes, bargeParcelLitres, cellOnWater, cellPlotId, siteHasWater } from '../fuel/barge.ts'
 import {
   astar,
+  bowserPass,
+  bowserPath,
   farmBesidePavement,
+  farmDocks,
   hasBeltNetwork,
   inBounds,
   neighbors,
@@ -1922,7 +1925,8 @@ export class Game {
     this.site = null
     this.tiles = emptyTiles()
     this.fits = []
-    this.clock = 0
+    // Face hour 0 is midnight and the sky follows that clock. Open on the morning the economy already calls day.
+    this.clock = clockForFaceHour(0, 8)
     this.speed = 0
     this.tool = 'pan'
     this.facing = 'h'
@@ -2819,24 +2823,33 @@ export class Game {
       building.tile === 'kitchen' ||
       building.tile === 'depot' ||
       building.tile === 'deice'
-    for (let r = 1; r < this.tiles.length - 1; r++) {
-      for (let c = 1; c < this.tiles[r].length - 1; c++) {
-        const v = { c, r }
-        if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
-        if (landside) {
-          const nearRoad = [
-            { c: c + 1, r },
-            { c: c - 1, r },
-            { c, r: r + 1 },
-            { c, r: r - 1 },
-          ].some((p) => this.tile(p) === 'road')
-          if (!nearRoad) continue
+    const prevTool = this.tool
+    const prevHover = this.hover
+    this.tool = tool
+    try {
+      for (let r = 1; r < this.tiles.length - 1; r++) {
+        for (let c = 1; c < this.tiles[r].length - 1; c++) {
+          const v = { c, r }
+          if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
+          if (landside) {
+            const nearRoad = [
+              { c: c + 1, r },
+              { c: c - 1, r },
+              { c, r: r + 1 },
+              { c, r: r - 1 },
+            ].some((p) => this.tile(p) === 'road')
+            if (!nearRoad) continue
+          }
+          if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
+          this.hover = v
+          if (this.ghostReady(this.ghostCells(v))) return v
         }
-        if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
-        return v
       }
+      return null
+    } finally {
+      this.tool = prevTool
+      this.hover = prevHover
     }
-    return null
   }
 
   /** Hide one letter. Later leaves a field ask running; Decline is what retires it. */
@@ -3303,7 +3316,14 @@ export class Game {
 
   private checkinCapacityFor(airlineId: AirlineId): { desks: number; kiosks: number } {
     const desks = this.checkinDesks()
-    if (!desks.length) return { desks: Math.max(0, this.paxDesks), kiosks: Math.max(0, this.paxKiosks) }
+    if (!desks.length) {
+      // The walk is not built yet. The prefab kiosk is already on the floor,
+      // so the day-0 letter counts it with the scale desks.
+      return {
+        desks: Math.max(0, this.paxDesks),
+        kiosks: Math.max(0, this.paxKiosks) + this.placedCheckinKiosks(),
+      }
+    }
     const nav = this.hallNav.nav
     const fit = this.activeHall()
     const included = new Set<string>()
@@ -3345,6 +3365,18 @@ export class Game {
       desks: bundleForAirline + playerForAirline + phantom + scaleExtra,
       kiosks: kiosks + Math.max(0, Math.floor(this.paxKiosks)),
     }
+  }
+
+  /** Self-serve check-in pieces already on the hall floor. */
+  private placedCheckinKiosks(): number {
+    const fit = this.activeHall()
+    let n = 0
+    for (const it of fit?.items ?? []) {
+      const def = itemDef(it.def)
+      if (!def || def.room !== 'checkin' || def.servers <= 0 || def.staff > 0) continue
+      n += def.servers
+    }
+    return n
   }
 
   /** Lock and release buttons for the check-in building card. */
@@ -6146,7 +6178,6 @@ export class Game {
     // One desk body so the first bank doesn't miss gates on an empty counter.
     this.deskStaff = 1
     this.assignHallStaff()
-    this.seedDayOneCrowd()
     // Airport is live — first airline call comes quick; later ones stay slow.
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = FIRST_LETTER_COOL
@@ -8263,7 +8294,7 @@ export class Game {
       {
         checkinOccupancy: Math.min(1, this.hallGuests.filter((g) => !g.preview).length / 40),
         walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
-        securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
+        securityLanesOpen: this.fits[0]?.rooms.security ?? 0,
         securityThroughputPerMin: this.securityQueueCount(),
         apusRunning: parked,
         gpusConnected: this.flights.filter((f) => f.phase === 'parked').length,
@@ -10645,97 +10676,7 @@ export class Game {
     return f?.airline ?? null
   }
 
-  /**
-   * Walkers so the hall reads as open on day 1, before a flight releases.
-   * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
-   * Shirts stay in a natural clothing range: neon orange and amber read as
-   * flying dots from the airport camera on a phone.
-   */
-  private seedDayOneCrowd() {
-    const fit = this.fits[0]
-    if (!fit) return
-    const hallId = this.hallKey(fit)
-    const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
-    const shirts = [
-      '#2c3e50',
-      '#5c4636',
-      '#3d5c4a',
-      '#7a3e3e',
-      '#cfc6b8',
-      '#4e5b38',
-      '#6b5a48',
-      '#3e5160',
-      '#8a6a52',
-      '#243044',
-      '#5e5648',
-      '#6d7d72',
-    ]
-    const tags: PaxTag[] = [
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-    ]
-    // Already cleared, so they walk the whole route without joining the lane.
-    // Spread them from the doors through security to the shops.
-    const spots = [
-      { seg: 0, t: 0.4, lane: -1.2 },
-      { seg: 0, t: 0.72, lane: 0.4 },
-      { seg: 1, t: 0.22, lane: -1.4 },
-      { seg: 1, t: 0.48, lane: 0.2 },
-      { seg: 1, t: 0.7, lane: 1.3 },
-      { seg: 2, t: 0.28, lane: -0.8 },
-      { seg: 2, t: 0.58, lane: 0.55 },
-      { seg: 3, t: 0.2, lane: -1.1 },
-      { seg: 3, t: 0.48, lane: 0.25 },
-      { seg: 3, t: 0.74, lane: 1.15 },
-      { seg: 2, t: 0.82, lane: -0.15 },
-      { seg: 1, t: 0.34, lane: 0.9 },
-    ]
-    const names = ['Ada', 'Ben', 'Cara', 'Dev', 'Eve', 'Finn', 'Gia', 'Hank', 'Ivy', 'Jon', 'Kim', 'Leo']
-    for (let i = 0; i < spots.length; i++) {
-      // Built by hand so the crowd does not consume the sim's random stream.
-      const g: HallGuest = {
-        id: `day1-preview-${i}`,
-        flightId: `day1-preview-${i}`,
-        name: names[i],
-        tag: tags[i],
-        job: 'depart',
-        node: path[spots[i].seg],
-        path: [...path],
-        seg: spots[i].seg,
-        t: spots[i].t,
-        lane: spots[i].lane,
-        preview: true,
-        previewDir: 1,
-        needs: { hunger: 4, bladder: 4, energy: 4, boarding: 80, bags: 0, shop: 4, play: 4 },
-        wallet: 0,
-        prefs: { food: 0, shop: 0, play: 0, lounge: 0, nap: 0, landside: 0 },
-        happiness: 70,
-        patience: 70,
-        spent: 0,
-        thought: 'Walking to the gate',
-        color: shirts[i],
-        dead: false,
-        clearedSec: true,
-        carryOn: i % 2 === 0,
-        hasChecked: i % 5 === 0,
-        hallId,
-        lost: false,
-      }
-      this.hallGuests.push(g)
-    }
-  }
-
-  /** Real released passengers replace the day-one pacing crowd. */
+  /** Real released passengers replace any day-one pacing crowd still in an old save. */
   private retireDayOneCrowd() {
     if (!this.hallGuests.some((g) => g.preview)) return
     const real = this.hallGuests.filter(
@@ -12338,7 +12279,8 @@ export class Game {
     const s = Math.sin(h)
     const dx = (dock.localX * c - dock.localY * s) / METERS_PER_CELL
     const dy = (dock.localX * s + dock.localY * c) / METERS_PER_CELL
-    const shown = shownPhase(dock.phase, dock.u)
+    // Hose, lift and belt deploy only at an aircraft. A farm or kitchen load keeps its own phase.
+    const shown = dock.owner === 'stand' ? shownPhase(dock.phase, dock.u) : null
     // x/y stay on the service road. drawX/drawY are the bay the mesh and the camera use.
     return {
       ...pose,
@@ -12595,10 +12537,14 @@ export class Game {
    */
   private turnaroundClocks(existing: CrewClock[]): CrewClock[] {
     const clocks: CrewClock[] = []
-    const has = (service: CrewClock['service'], x: number, y: number) =>
-      existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
     for (const flight of this.flights) {
       if (!flight.stand || flight.cargo || flight.kind === 'military') continue
+      // GPU and tug the module owns on this stand are its own vehicles, wherever they are right now.
+      // Cleaning stays: the module has no van to draw.
+      const owned = flight.groundTurn ? this.ground?.sim.turnaroundAt(flight.groundTurn)?.services : undefined
+      const has = (service: CrewClock['service'], x: number, y: number) =>
+        ((service === 'gpu' || service === 'pushback') && owned?.[service] !== undefined) ||
+        existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
       const pace = this.rampPace(flight.airframeId, false, flight.airline)
       const door = this.paxDoor(flight)
       const origin = { x: flight.x, y: flight.y, heading: flight.heading }
@@ -12898,14 +12844,15 @@ export class Game {
   }
 
   /**
-   * Hold passenger and slot fees while fuel is not on the wing.
-   * A farm that can still fuel this departure hands them straight back, so a
-   * working fuel contract does not sit without the fee. A short farm keeps them.
+   * A working farm has not cancelled the turn. Posting a cancel-refund and
+   * reversing it on the next fuel tick filled the ledger once per flight.
+   * The penalty line is written only when the farm is actually empty, and
+   * a real cancel still refunds through `refundUnflownFees`.
    */
   private settleUnflownFees(f: Flight) {
     if (!this.unflownFeesOpen(f)) return
+    if (!this.fuelOutage(f)) return
     this.refundUnflownFees(f)
-    if (!this.fuelOutage(f)) this.releaseUnflownFees(f)
   }
 
   /** Fuel is not on the wing yet, so passenger and slot fees are not the airline's to keep. */
@@ -12944,10 +12891,10 @@ export class Game {
     if (this.trucks.some((t) => t.flightId === f.id && t.kind === 'fuel')) return
     const farms = tilesOf(this.tiles, 'fuel').filter((p) => farmBesidePavement(this.tiles, p))
     if (!farms.length) return
-    const path = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
-    if (!path) return
+    const route = bowserPath(this.tiles, farms[0], [f.stand])
+    if (!route) return
     f.waitingOn.fuel = true
-    this.spawnTruck('fuel', f, path, 'fuel', farms[0])
+    this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
   }
 
   /** Carrier shape the hub share formula reads. Cargo stays at zero. */
@@ -23708,7 +23655,181 @@ export class Game {
     return best ?? nearestPath(this.tiles, stand, strips.flat(), 'jet')
   }
 
+  /** Runway cells at either end. Departures line up here, not on a rapid exit. */
+  private thresholdCells(line: readonly Vec[]): Vec[] {
+    if (line.length < 2) return [...line]
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const ends = new Set<number>(
+      horizontal ? [line[0].c, line[line.length - 1].c] : [line[0].r, line[line.length - 1].r],
+    )
+    const out: Vec[] = []
+    const seen = new Set<string>()
+    for (const p of line) {
+      if (!ends.has(horizontal ? p.c : p.r)) continue
+      const mates = horizontal
+        ? [p, { c: p.c, r: p.r - 1 }, { c: p.c, r: p.r + 1 }]
+        : [p, { c: p.c - 1, r: p.r }, { c: p.c + 1, r: p.r }]
+      for (const m of mates) {
+        if (!inBounds(m.c, m.r) || this.tiles[m.r][m.c] !== 'runway') continue
+        const id = `${m.c},${m.r}`
+        if (seen.has(id)) continue
+        seen.add(id)
+        out.push(m)
+      }
+    }
+    return out.length ? out : [...line]
+  }
+
+  /** Taxi cells beside the strip, off the threshold. */
+  private rapidExitCells(line: readonly Vec[]): Vec[] {
+    if (line.length < 2) return []
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const ends = new Set<number>(
+      horizontal ? [line[0].c, line[line.length - 1].c] : [line[0].r, line[line.length - 1].r],
+    )
+    const out: Vec[] = []
+    const seen = new Set<string>()
+    for (const p of line) {
+      if (ends.has(horizontal ? p.c : p.r)) continue
+      const mates = horizontal
+        ? [p, { c: p.c, r: p.r - 1 }, { c: p.c, r: p.r + 1 }]
+        : [p, { c: p.c - 1, r: p.r }, { c: p.c + 1, r: p.r }]
+      for (const cell of mates) {
+        if (!inBounds(cell.c, cell.r) || this.tiles[cell.r][cell.c] !== 'runway') continue
+        for (const n of neighbors(cell.c, cell.r)) {
+          if (this.tiles[n.r]?.[n.c] !== 'taxi') continue
+          const id = `${n.c},${n.r}`
+          if (seen.has(id)) continue
+          seen.add(id)
+          out.push(n)
+        }
+      }
+    }
+    return out
+  }
+
+  private approachTo(line: readonly Vec[], touch: Vec): Vec[] {
+    let idx = 0
+    let best = Infinity
+    for (let i = 0; i < line.length; i++) {
+      const d = Math.abs(line[i].c - touch.c) + Math.abs(line[i].r - touch.r)
+      if (d < best) {
+        best = d
+        idx = i
+      }
+    }
+    const fromStart = line.slice(0, idx + 1)
+    const fromEnd = [...line].reverse().slice(0, line.length - idx)
+    const approach = (fromStart.length >= fromEnd.length ? fromStart : fromEnd).map((p) => ({ ...p }))
+    const last = approach[approach.length - 1]
+    if (!last || last.c !== touch.c || last.r !== touch.r) approach.push({ c: touch.c, r: touch.r })
+    return approach
+  }
+
+  private runwayBeside(exit: Vec, line: readonly Vec[]): Vec | null {
+    for (const n of neighbors(exit.c, exit.r)) {
+      if (this.tiles[n.r]?.[n.c] !== 'runway') continue
+      if (line.some((p) => Math.abs(p.c - n.c) + Math.abs(p.r - n.r) <= 1)) return n
+    }
+    return null
+  }
+
+  /** Arrival rolls the strip and leaves on a rapid exit, not the lineup threshold. */
+  private landingViaExit(stand: Vec, runwayPref?: number | null): Vec[] | null {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (!strips.length) return null
+    const order: number[] = []
+    if (runwayPref != null && strips[runwayPref]) order.push(runwayPref)
+    for (let i = 0; i < strips.length; i++) if (!order.includes(i)) order.push(i)
+    let best: Vec[] | null = null
+    for (const i of order) {
+      const line = strips[i]
+      if (!line) continue
+      const exits = this.rapidExitCells(line)
+      if (!exits.length) continue
+      let exit = exits[0]!
+      let dist = Infinity
+      for (const cell of exits) {
+        const d = Math.abs(cell.c - stand.c) + Math.abs(cell.r - stand.r)
+        if (d < dist) {
+          dist = d
+          exit = cell
+        }
+      }
+      const off = nearestPath(this.tiles, exit, [stand], 'jet')
+      if (!off || off.length < 2) continue
+      const touch = this.runwayBeside(exit, line)
+      if (!touch) continue
+      const merged = this.approachTo(line, touch)
+      for (const p of off) {
+        const last = merged[merged.length - 1]
+        if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
+      }
+      if (!jetRouteOnGraph(this.tiles, merged)) continue
+      if (runwayPref != null && i === runwayPref) return merged
+      if (!best || merged.length < best.length) best = merged
+    }
+    return best
+  }
+
+  /**
+   * Taxi cells off the runway's end, keyed to the threshold cell they face.
+   * A departure holding here waits in line with the strip, not on the side row an arrival vacates by.
+   */
+  private behindThreshold(line: readonly Vec[], thresholds: readonly Vec[]): Map<string, { hold: Vec; onto: Vec }> {
+    const out = new Map<string, { hold: Vec; onto: Vec }>()
+    if (line.length < 2) return out
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const lo = horizontal ? Math.min(line[0].c, line[line.length - 1].c) : Math.min(line[0].r, line[line.length - 1].r)
+    for (const t of thresholds) {
+      const along = horizontal ? t.c : t.r
+      const step = along === lo ? -1 : 1
+      const o = horizontal ? { c: t.c + step, r: t.r } : { c: t.c, r: t.r + step }
+      if (!inBounds(o.c, o.r) || this.tiles[o.r][o.c] !== 'taxi') continue
+      out.set(`${o.c},${o.r}`, { hold: o, onto: t })
+    }
+    return out
+  }
+
+  /** Departure taxis to a threshold and rolls the strip. It does not enter on the arrival's exit. */
+  private departureViaThreshold(f: Flight): Vec[] | null {
+    if (!f.stand) return null
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const index = this.flightStrip(f)
+    const line = (index != null && strips[index]) || strips[0]
+    if (!line) return null
+    const thresholds = this.thresholdCells(line)
+    const behind = this.behindThreshold(line, thresholds)
+    let taxi: Vec[] | null = null
+    let touch: Vec | null = null
+    if (behind.size) {
+      const hold = nearestPath(this.tiles, f.stand, [...behind.values()].map((pair) => pair.hold), 'jet')
+      const end = hold?.[hold.length - 1]
+      const onto = end ? behind.get(`${end.c},${end.r}`)?.onto : undefined
+      if (hold && hold.length >= 2 && onto) {
+        taxi = [...hold, onto]
+        touch = onto
+      }
+    }
+    if (!taxi || !touch) {
+      taxi = nearestPath(this.tiles, f.stand, thresholds, 'jet')
+      if (!taxi || taxi.length < 2) return null
+      touch = taxi[taxi.length - 1]!
+    }
+    const merged = taxi.map((p) => ({ ...p }))
+    for (const p of [...this.approachTo(line, touch)].reverse()) {
+      const last = merged[merged.length - 1]
+      if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
+    }
+    return jetRouteOnGraph(this.tiles, merged) ? merged : null
+  }
+
   landingRoute(stand: Vec, runwayPref?: number | null): Vec[] | null {
+    const viaExit = this.landingViaExit(stand, runwayPref)
+    if (viaExit) return viaExit
     const toRunway = this.pathStandToRunway(stand, runwayPref)
     if (!toRunway || toRunway.length < 2) return null
     const entry = toRunway[toRunway.length - 1]
@@ -24282,6 +24403,7 @@ export class Game {
       }
       return
     }
+    if (this.exitRouteOccupied(route, f.id)) return
     const inbound = this.armApproach(route)
     f.stand = stand
     f.path = inbound.path
@@ -24298,6 +24420,33 @@ export class Game {
         'ok',
       )
     }
+  }
+
+  /**
+   * Another jet sits on the ground the arrival rolls after the runway. Ground control
+   * would refuse the landing at the threshold, so the arrival keeps circling instead of
+   * flying an approach it has to abandon.
+   */
+  private exitRouteOccupied(route: readonly Vec[], self: string): boolean {
+    const first = route.findIndex((p) => this.tiles[Math.round(p.r)]?.[Math.round(p.c)] === 'runway')
+    if (first < 0) return false
+    let i = first
+    while (i < route.length && this.tiles[Math.round(route[i].r)]?.[Math.round(route[i].c)] === 'runway') i++
+    const exit = new Set<string>()
+    for (; i < route.length; i++) {
+      const p = route[i]
+      if (this.tiles[Math.round(p.r)]?.[Math.round(p.c)] === 'runway') break
+      exit.add(`${Math.round(p.c)},${Math.round(p.r)}`)
+    }
+    if (!exit.size) return false
+    const ground = STUCK_PHASES as readonly string[]
+    return this.flights.some(
+      (o) =>
+        o.id !== self &&
+        (o.craft ?? 'jet') === 'jet' &&
+        ground.includes(o.phase) &&
+        exit.has(`${Math.round(o.x)},${Math.round(o.y)}`),
+    )
   }
 
   /** Abort ancient holds so reserved gates and inbound slots free up. */
@@ -24414,6 +24563,17 @@ export class Game {
         const walkers = this.people.some((person) => person.flightId === flight.id && person.job === job)
         const bus = this.trucks.some((truck) => truck.flightId === flight.id && truck.kind === 'termbus')
         if (!walkers && !bus) return true
+      }
+      // Past the boarding cap with nobody left to board: the strip wait is a stall, not a queue.
+      // A board still loading its outbound cart, or pulling its bridge back, is working, not stalled.
+      if (
+        outbound &&
+        waiting <= 0 &&
+        flight.phaseTime > this.boardCap(flight) &&
+        flight.bridgeShutAt == null &&
+        this.outboundCartClear(flight.id)
+      ) {
+        return true
       }
     }
     const rolling =
@@ -25167,13 +25327,12 @@ export class Game {
         !f.groundTurn &&
         this.fuelBrand &&
         this.fuelLoads > 0 &&
-        farmsQuick.length &&
-        nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
+        farmsQuick.length
       ) {
-        const p = nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
-        if (p) {
+        const route = bowserPath(this.tiles, farmsQuick[0], [f.stand])
+        if (route) {
           f.waitingOn.fuel = true
-          this.spawnTruck('fuel', f, p, 'fuel', farmsQuick[0])
+          this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
         }
       }
       return
@@ -25242,13 +25401,12 @@ export class Game {
       !f.groundTurn &&
       this.fuelBrand &&
       this.fuelLoads > 0 &&
-      farms.length &&
-      nearestPath(this.tiles, farms[0], [f.stand], 'truck')
+      farms.length
     ) {
-      const p = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
-      if (p) {
+      const route = bowserPath(this.tiles, farms[0], [f.stand])
+      if (route) {
         f.waitingOn.fuel = true
-        this.spawnTruck('fuel', f, p, 'fuel', farms[0])
+        this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
       }
     }
 
@@ -25776,13 +25934,20 @@ export class Game {
         !f.posted.fuel,
     )
     if (!next?.stand) return false
+    if (this.tiles[t.home.r]?.[t.home.c] === 'fuel') {
+      // Saves from before the farm dock parked the bowser on the tank yard.
+      const docked = bowserPath(this.tiles, t.home, [next.stand])
+      if (!docked) return false
+      t.home = docked.dock
+    }
     const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const pass = bowserPass(this.tiles, from)
     const atFarm =
       Math.abs(from.c - t.home.c) + Math.abs(from.r - t.home.r) <= 1
 
     // After a delivery, prefer farm reload then roll (real bowser cycle).
     if (!atFarm && t.mission === 'fuel_reload') {
-      const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+      const homePath = nearestPath(this.tiles, from, [t.home], 'truck', pass)
       if (!homePath || homePath.length < 2) return false
       t.flightId = next.id
       t.mission = 'fuel_reload'
@@ -25795,7 +25960,7 @@ export class Game {
       return true
     }
     if (atFarm || t.mission === 'fuel_reload') {
-      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck')
+      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck', pass)
       if (!path || path.length < 2) return false
       t.flightId = next.id
       t.mission = 'fuel'
@@ -25808,7 +25973,7 @@ export class Game {
       return true
     }
     // Still have product — continue apron-to-apron (hydrant-style multi-stop).
-    const path = nearestPath(this.tiles, from, [next.stand], 'truck')
+    const path = nearestPath(this.tiles, from, [next.stand], 'truck', pass)
     if (!path || path.length < 2) return false
     t.flightId = next.id
     t.mission = 'fuel'
@@ -25937,6 +26102,8 @@ export class Game {
 
   departurePath(f: Flight): Vec[] | null {
     if (!f.stand) return null
+    const viaThreshold = this.departureViaThreshold(f)
+    if (viaThreshold) return viaThreshold
     const inbound = this.landingRoute(f.stand, this.flightStrip(f))
     if (!inbound) return null
     const path = [...inbound].reverse()
@@ -27663,7 +27830,9 @@ export class Game {
             t.mission = 'fuel_reload'
             t.returning = true
             if (t.home) {
-              const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+              const goals = this.tiles[t.home.r]?.[t.home.c] === 'fuel' ? farmDocks(this.tiles, t.home) : [t.home]
+              const homePath = nearestPath(this.tiles, from, goals, 'truck', bowserPass(this.tiles, from))
+              if (homePath && homePath.length > 1) t.home = homePath[homePath.length - 1]
               t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
             } else {
               t.path = [...t.path].reverse()

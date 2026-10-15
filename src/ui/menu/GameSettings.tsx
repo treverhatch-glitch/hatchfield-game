@@ -141,6 +141,28 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
           ? 'On. The sun, moon, and field lights follow the clock.'
           : 'Off. Always day. The clock still runs, and a photo hour still wins while the camera is frozen.'}
       </p>
+      <ul className="budgets">
+        <li>
+          <label>
+            <span>
+              Camera speed <span className="muted">{audioMix.cameraSpeed.toFixed(1)}×</span>
+            </span>
+            <input
+              type="range"
+              min={0.5}
+              max={4}
+              step={0.1}
+              data-testid="settings-camera-speed"
+              value={audioMix.cameraSpeed}
+              onChange={(e) => {
+                const cameraSpeed = Number(e.target.value)
+                const next = audioSettings().update((s) => ({ ...s, cameraSpeed }))
+                setAudioMix(next)
+              }}
+            />
+          </label>
+        </li>
+      </ul>
       <h3>Hints</h3>
       <label className="sandbox-toggle">
         <input

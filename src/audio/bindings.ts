@@ -89,7 +89,7 @@ export const CARGO_BINDINGS = {
       case 'inbound': return 'delivery_start';
       case 'unloading': case 'loading': return 'uld_loader_start';
       case 'departed': return 'uld_loader_stop';
-      default: return 'vehicle_reverse_start'; // 'queued' (backing into dock)
+      default: return null; // 'queued' is not a reverse. The apron mixer beeps only while a vehicle is reversing.
     }
   },
   contract_status: (e) => (e.status === 'failed' ? 'rating_down' : e.status === 'fulfilled' ? 'cash_in' : 'contract_offer'),

@@ -81,7 +81,9 @@ export function ambienceTargets(s: AmbienceState): Record<AmbienceLayer, number>
   const out = clamp01(s.outdoorMix ?? 0.5);
   const inT = 1 - out * 0.85, inA = 0.15 + out * 0.85; // never fully gone: glass + open doors
   const lanes = s.securityLanesOpen ?? 0;
-  const sec = lanes > 0 ? Math.min(1, 0.2 + 0.8 * Math.min(1, (s.securityThroughputPerMin ?? 0) / (lanes * 6))) : 0;
+  const throughput = s.securityThroughputPerMin ?? 0;
+  // An open lane with nobody in it does not beep. The old 0.2 floor ran from the menu.
+  const sec = lanes > 0 && throughput > 0 ? Math.min(1, throughput / (lanes * 6)) : 0;
   const apronOwnsServices = s.serviceOwner === 'apron';
   return {
     checkinChatter: crowdIntensity(s.checkinOccupancy ?? 0) * inT,

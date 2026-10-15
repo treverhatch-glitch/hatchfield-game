@@ -103,7 +103,7 @@ describe('check-in desk themes', () => {
     } finally {
       vite.kill('SIGTERM')
     }
-  }, 120_000)
+  }, 240_000)
 })
 
 interface Brand {

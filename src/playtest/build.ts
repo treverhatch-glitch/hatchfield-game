@@ -15,7 +15,7 @@ export function tryStamp(
   api.setView('apron')
   api.setTool(tool)
   const pool = api.candidates().slice()
-  const tries = Math.min(pool.length, 36)
+  const tries = pool.length
   let last = 'no grass'
   for (let n = 0; n < tries; n++) {
     const index = Math.floor(rng() * pool.length)

@@ -46,6 +46,10 @@ describe('starter kits', () => {
     expect(runwayStrips(first.tiles, 6)).toHaveLength(1)
     expect(runwayStrips(first.tiles, 6)[0]).toHaveLength(14)
     expect(clearanceIntrusions(first.tiles)).toEqual([])
+    const southExit = first.tiles[28]?.some((tile, c) => c >= 8 && c <= 21 && tile === 'taxi')
+    const northExit = first.tiles[25]?.some((tile, c) => c >= 8 && c <= 15 && tile === 'taxi')
+    expect(northExit).toBe(true)
+    expect(southExit).toBe(true)
 
     for (const stand of stands) {
       for (const box of boxes) {

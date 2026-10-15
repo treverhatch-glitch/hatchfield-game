@@ -136,6 +136,30 @@ describe('ground logistics wiring', () => {
     expect(game.trucks.some((t) => t.kind === 'fuel')).toBe(true)
   })
 
+  it('loads the starter bowser beside the farm and never drives it through the tank yard', () => {
+    const game = field()
+    const f = parked(game, { c: 11, r: 6 })
+    game.beginServicing(f)
+    const bowser = game.trucks.find((t) => t.kind === 'fuel')!
+    expect(game.tile(bowser.home!)).not.toBe('fuel')
+    expect(Math.abs(bowser.home!.c - 7) + Math.abs(bowser.home!.r - 5)).toBe(1)
+    expect(bowser.path.some((p) => game.tile(p) === 'fuel')).toBe(false)
+    for (let i = 0; i < 400 && game.trucks.includes(bowser); i++) {
+      game.tick(0.1)
+      expect(game.tile({ c: Math.round(bowser.x), r: Math.round(bowser.y) })).not.toBe('fuel')
+    }
+  })
+
+  it('docks module tankers at a bay beside the farm, not on the farm cell', () => {
+    const game = field()
+    game.tiles[5][6] = 'depot'
+    game.bumpMap()
+    const config = buildLogisticsConfig(game.tiles, game.standAccess, false)!
+    const [c, r] = config.fuelFarm.node.split(',').map(Number)
+    expect(game.tile({ c, r })).not.toBe('fuel')
+    expect(Math.abs(c - 7) + Math.abs(r - 5)).toBe(1)
+  })
+
   it('builds a service-road graph and runs the turnaround through the module', () => {
     const game = field()
     // Depot and kitchen sit on grass beside the fuel farm so the service graph reaches the stand.

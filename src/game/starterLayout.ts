@@ -39,7 +39,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     summary: 'Hall curb on the public road, two concrete stands facing the gates, one runway linked by taxiway.',
     includes: [
       'One 14×2 runway with a clearance shoulder',
-      'Taxiway linking the strip to the stands, plus a mid-strip exit',
+      'Taxiway linking the strip to the stands, plus two exits',
       'Terminal rotated so the curb faces the road and the gates face the stands',
       'Staffed check-in desk, self-service kiosk, and spare desk cells',
       'Two security lanes, with empty lane cells beside them',
@@ -53,7 +53,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     summary: 'Freighter stand, guard, and shed on the city road. One runway. No passenger hall.',
     includes: [
       'One 14×2 runway with a clearance shoulder',
-      'Taxiway to one remote freighter stand, plus a mid-strip exit',
+      'Taxiway to one remote freighter stand, plus two exits',
       'Guard post and cargo shed',
       'No passenger terminal',
     ],
@@ -66,7 +66,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
       'Passenger hall, curb, and two concrete stands',
       'Same hall as the passenger kit: desks, kiosk, lanes, shop, claim, wayfinding',
       'Guard, cargo shed, and a police post',
-      'One runway with a taxiway to the stands and a mid-strip exit',
+      'One runway with a taxiway to the stands and two exits',
       'Landside road stays off the hall footprint',
     ],
   },
@@ -103,6 +103,10 @@ function paintRunways(putAt: (c: number, r: number, tile: Tile) => void) {
   // the clearance tests place a shoulder taxi there. This row touches the
   // pavement, so an arrival can leave without rolling to the far threshold.
   for (let c = 8; c <= 15; c++) putAt(c, 25, 'taxi')
+  // Second exit on the south shoulder, tied to the west spine. Lineup stays
+  // on the threshold. An arrival can clear on this taxi when the north exit is busy.
+  putAt(7, 28, 'taxi')
+  for (let c = 8; c <= 21; c++) putAt(c, 28, 'taxi')
 }
 
 function paintPassenger(chart: Chart, police: boolean) {

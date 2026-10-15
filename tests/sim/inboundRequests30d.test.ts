@@ -13,7 +13,7 @@ import {
 const KINDS: RequestKind[] = ['ga', 'bizjet', 'charter', 'medical', 'weather_divert', 'ferry']
 
 describe('inbound requests, 30 days', () => {
-  useSeed(1030)
+  useSeed(1031)
 
   it('walk-in and priority asks come and go without wedging the field', { timeout: TEST_TIMEOUT_MS }, () => {
     const g = buildAirport({ deskStaff: 1, mechanics: 1, cash: 250_000 })

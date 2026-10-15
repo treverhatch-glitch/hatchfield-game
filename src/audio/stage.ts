@@ -52,6 +52,8 @@ export interface ApronTruck {
   dwell: number;
   preDwell: number;
   path: readonly unknown[];
+  /** True only while the mesh is in the reverse-dock animation. */
+  reversing?: boolean;
 }
 
 export interface ApronSnapshot {
@@ -123,7 +125,7 @@ export class ApronMixer {
           start: () => this.sink.playSfx('heavyFuelTruck', { position, intensity, rolloff: VEHICLE_ROLLOFF, slot: `apron:${key}` }),
         });
       }
-      if (rolling && t.returning) {
+      if (t.reversing) {
         const key = `rev:${t.id}`;
         wanted.set(key, {
           position,

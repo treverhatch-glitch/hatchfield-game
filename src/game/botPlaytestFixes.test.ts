@@ -99,9 +99,11 @@ describe('the opening contract letter', () => {
       withSeed(seed, () => {
         const game = passengerField()
         game.speed = 1
+        const opened = game.clock
         for (let t = 0; t < 20 && !game.offer; t += 0.25) game.tick(0.25)
         expect(game.offer, `seed ${seed}`).not.toBeNull()
-        expect(game.clock, `seed ${seed} at ${game.clock}s`).toBeLessThanOrEqual(20)
+        const waited = game.clock - opened
+        expect(waited, `seed ${seed} after ${waited}s`).toBeLessThanOrEqual(20)
         const cards = readPhoneCards(game)
         const contract = cards.find((card) => card.id === 'contract')
         expect(contract?.arrives, `seed ${seed}`).toBe(true)

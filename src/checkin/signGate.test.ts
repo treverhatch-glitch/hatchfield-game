@@ -12,9 +12,9 @@ describe('contract check-in capacity', () => {
       kiosks: 1,
     })
     expect(blocked.ok).toBe(false)
-    expect(blocked.capacity).toBe(14)
+    expect(blocked.capacity).toBe(18)
     expect(blocked.line).toContain('28 passengers a minute')
-    expect(blocked.line).toContain('Desks and kiosks clear 14')
+    expect(blocked.line).toContain('Desks and kiosks clear 18')
     expect(blocked.line).toContain('Add check-in desks')
     expect(blocked.line).toContain('expand the hall')
     expect(blocked.line).toContain('Room for 1 carrier')
@@ -46,17 +46,18 @@ describe('contract check-in capacity', () => {
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
     })
     expect(desksOnly.ok).toBe(false)
+    expect(desksOnly.capacity).toBe(30)
     expect(desksOnly.slots).toBe(2)
 
     const withLane = checkinSignGate({
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
       openLanes: 1,
       bundleLanes: 0,
@@ -68,7 +69,7 @@ describe('contract check-in capacity', () => {
       kind: 'pax',
       label: 'Brisa',
       peakPaxPerMin: 42,
-      openDesks: 3,
+      openDesks: 2,
       kiosks: 1,
       hallTier: 2,
       premade: true,

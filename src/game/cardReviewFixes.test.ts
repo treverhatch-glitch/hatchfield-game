@@ -41,15 +41,16 @@ describe('building card review fixes', () => {
     game.acceptOffer()
     expect(game.signed).toEqual(['northline'])
     ;(game as unknown as { missingReq(id: string): string[] }).missingReq = () => []
-    game.presentNegotiation('harbor')
-    expect(game.checkinSignReport('harbor').ok).toBe(false)
+    // A second small carrier fits the starter. A widebody still does not.
+    game.presentNegotiation('summit')
+    expect(game.checkinSignReport('summit').ok).toBe(false)
     const cash = game.cash
     game.acceptNegotiation()
     game.acceptNegotiation()
-    expect(game.signed).not.toContain('harbor')
-    expect(game.offer?.airline).toBe('harbor')
+    expect(game.signed).not.toContain('summit')
+    expect(game.offer?.airline).toBe('summit')
     const desk = (game as unknown as { negotiationBridge?: { desk: { dealFor(id: string): unknown } } }).negotiationBridge
-    expect(desk?.desk.dealFor('harbor')).toBeUndefined()
+    expect(desk?.desk.dealFor('summit')).toBeUndefined()
     expect(game.cash).toBe(cash)
   })
 

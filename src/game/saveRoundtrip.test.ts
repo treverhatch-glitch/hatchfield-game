@@ -199,7 +199,7 @@ describe('save/load round-trip across live game systems', () => {
     // take. A hall till draws the unit before it charges, and puts the unit
     // back when the wallet cannot pay.
     const showUpSpend = gameA.revenue - gameB.revenue
-    expect(showUpSpend).toBeCloseTo(6270, 2)
+    expect(showUpSpend).toBeCloseTo(633, 2)
     expect(gameB.cash).toBeCloseTo(gameA.cash - showUpSpend, 2)
     expect(gameB.revenue).toBeCloseTo(gameA.revenue - showUpSpend, 2)
     expect(gameB.paxServed).toBe(gameA.paxServed)

@@ -57,6 +57,11 @@ export interface Settings {
    * rebuilt elsewhere, bind this field. It persists with the rest of Settings.
    */
   dayNightCycle: boolean
+  /**
+   * WASD and arrow pan, as a multiple of the base speed.
+   * 1 is the old pace. The default is quicker.
+   */
+  cameraSpeed: number
 }
 
 export const GRAPHICS_PRESETS: Record<QualityPreset, Omit<GraphicsSettings, 'preset'>> = {
@@ -80,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   audioMuted: false,
   busVolume: { ...DEFAULT_BUS_VOLUME },
   dayNightCycle: true,
+  cameraSpeed: 2,
 }
 
 /** Overlay palettes: good -> warn -> bad -> path -> highlight, chosen to stay distinct per mode. */
@@ -136,6 +142,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     audioMuted: bool(r.audioMuted, d.audioMuted),
     busVolume,
     dayNightCycle: bool(r.dayNightCycle, d.dayNightCycle),
+    cameraSpeed: Math.round(num(r.cameraSpeed, d.cameraSpeed, 0.5, 4) * 10) / 10,
   }
 }
 

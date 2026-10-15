@@ -30,7 +30,7 @@ const KNOWN: Record<BindingSource, string[]> = {
 
 // Representative non-silent payload per event.
 const SAMPLE: Record<string, Record<string, unknown>> = {
-  facility_status: { status: 'failed' }, bottlenecks: { bottlenecks: [{}] }, weather_change: { weather: 'thunderstorm' }, slot_flagged: { flag: 'over_capacity' }, day_stats: { missed: 2 },
+  facility_status: { status: 'failed' }, truck_status: { status: 'inbound' }, bottlenecks: { bottlenecks: [{}] }, weather_change: { weather: 'thunderstorm' }, slot_flagged: { flag: 'over_capacity' }, day_stats: { missed: 2 },
 };
 
 const SERVICES = ['deplane', 'bag_unload', 'cargo_unload', 'loader', 'fuel', 'catering', 'cleaning', 'gpu', 'boarding',
@@ -59,7 +59,7 @@ describe('audio bindings', () => {
       ...['repair', 'tow', 'facility', 'inspect'].map((job): [BindingSource, BindableEvent] => ['logistics', { type: 'crew_dispatched', job }]),
       ...['truck', 'hydrant'].flatMap((method) => ['refuel_start', 'refuel_stop'].map((type): [BindingSource, BindableEvent] => ['logistics', { type, method }])),
       ...['worn', 'failed'].map((status): [BindingSource, BindableEvent] => ['logistics', { type: 'facility_status', status }]),
-      ...['inbound', 'queued', 'unloading', 'loading', 'departed'].map((status): [BindingSource, BindableEvent] => ['cargo', { type: 'truck_status', status }]),
+      ...['inbound', 'unloading', 'loading', 'departed'].map((status): [BindingSource, BindableEvent] => ['cargo', { type: 'truck_status', status }]),
       ...['active', 'fulfilled', 'failed'].map((status): [BindingSource, BindableEvent] => ['cargo', { type: 'contract_status', status }]),
       ...['processing', 'awaiting_truck', 'collected'].map((status): [BindingSource, BindableEvent] => ['cargo', { type: 'import_status', status }]),
       ...['in', 'out'].map((direction): [BindingSource, BindableEvent] => ['cargo', { type: 'flow', direction }]),
@@ -83,6 +83,7 @@ describe('audio bindings', () => {
 
   it('only documented sub-states are silent', () => {
     expect(soundForEvent({ type: 'facility_status', status: 'ok' })).toBeNull();
+    expect(soundForEvent({ type: 'truck_status', status: 'queued' }, 'cargo')).toBeNull();
     expect(soundForEvent({ type: 'bottlenecks', bottlenecks: [] }, 'cargo')).toBeNull();
     expect(soundForEvent({ type: 'weather_change', weather: 'clear' })).toBeNull();
     expect(soundForEvent({ type: 'definitely_not_an_event' })).toBeNull();

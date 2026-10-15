@@ -18,7 +18,8 @@
  *   the holder already heads every queue on the far side of the runway (up to
  *   its next runway or route end), so the runway holder can never be stopped by
  *   anyone and always clears the runway. Departures wait at the hold line while
- *   an arrival is inside the final window.
+ *   an arrival is inside the final window. A departure that is only lined up,
+ *   and not sitting on the arrival's exit, does not take the runway.
  * - Queue waits only ever point at earlier clearances, and a lock holder never
  *   waits, so the wait graph has no cycles by construction. `deadlocks()` still
  *   checks every tick as a safety net (legacy saves, a plane registered on an
@@ -323,27 +324,81 @@ export class GroundControl {
     for (const [fid, f] of this.finals) {
       if (fid === self) continue
       if (f.eta > this.tune.finalWindowSec || !f.runways.some((rw) => runways.includes(rw))) continue
-      // An arrival that could not clear the runway anyway does not hold departures.
+      // An arrival whose exit is physically occupied cannot clear, so it does not hold departures.
       if (!this.landingReady(fid)) continue
       return fid
     }
     return null
   }
 
-  /** Would a landing clearance be granted now (exit queues headed, ignoring the lock)? */
+  /** The aircraft's current cell, plus the next cell while it is rolling into it. */
+  private occupiedKeys(id: string): string[] {
+    const e = this.entries.get(id)
+    if (!e) return []
+    const keys: string[] = []
+    const here = e.route[e.pos]
+    if (here) keys.push(here.key)
+    if (e.moving) {
+      const next = e.route[e.pos + 1]
+      if (next) keys.push(next.key)
+    }
+    return keys
+  }
+
+  private onRunway(id: string, rw: string): boolean {
+    const e = this.entries.get(id)
+    if (!e) return false
+    const keys = new Set(this.occupiedKeys(id))
+    return e.route.some((c) => c.kind === 'runway' && c.runways.includes(rw) && keys.has(c.key))
+  }
+
+  /** Ground cells the arrival must roll after the runway, before the next runway or the stand. */
+  private exitSpan(id: string): RouteCell[] {
+    const e = this.entries.get(id)
+    if (!e) return []
+    const start = e.route.findIndex((c, i) => i >= e.pos && c.kind === 'runway')
+    if (start < 0) return []
+    const [a, b] = this.exitRange(e, start)
+    return e.route.slice(a, b).filter((c) => c.kind === 'ground')
+  }
+
+  /** Another aircraft is physically on this arrival's exit. Queued-but-not-there does not count. */
+  private exitBlocked(id: string): boolean {
+    for (const cell of this.exitSpan(id)) {
+      const q = this.queues.get(cell.key) ?? []
+      if (q.some((other) => other !== id && this.occupiedKeys(other).includes(cell.key))) return true
+    }
+    return false
+  }
+
+  /** Put the arrival first on exit cells nobody is sitting on, so it can clear the runway. */
+  private promoteThroughExit(id: string): void {
+    for (const cell of this.exitSpan(id)) {
+      const q = this.queues.get(cell.key)
+      if (!q) continue
+      if (q.some((other) => other !== id && this.occupiedKeys(other).includes(cell.key))) continue
+      const at = q.indexOf(id)
+      if (at > 0) {
+        q.splice(at, 1)
+        q.unshift(id)
+      }
+    }
+  }
+
+  /** Would a landing clearance be granted now (exit physically clear, ignoring a lineup lock)? */
   landingReady(id: string): boolean {
     const e = this.entries.get(id)
     if (!e) return false
-    const start = e.route.findIndex((c, i) => i >= e.pos && c.kind === 'runway')
-    if (start < 0) return true
-    const [a, b] = this.exitRange(e, start)
-    return this.headsRange(e, a, b)
+    return !this.exitBlocked(id)
   }
 
   /** Runway free (or ours) and the exit is clear: a landing clearance would be granted. */
   canLand(id: string, runways: readonly string[]): boolean {
-    if (runways.some((rw) => this.lockOwner.has(rw) && this.lockOwner.get(rw) !== id)) return false
-    return this.landingReady(id)
+    if (!this.landingReady(id)) return false
+    return !runways.some((rw) => {
+      const owner = this.lockOwner.get(rw)
+      return owner != null && owner !== id && this.onRunway(owner, rw)
+    })
   }
 
   /**
@@ -355,12 +410,16 @@ export class GroundControl {
     const e = this.entries.get(id)
     if (!e) return false
     if (runways.every((rw) => e.locks.has(rw))) return true
-    if (runways.some((rw) => this.lockOwner.has(rw) && this.lockOwner.get(rw) !== id)) return false
-    const start = e.route.findIndex((c, i) => i >= e.pos && c.kind === 'runway')
-    if (start >= 0) {
-      const [a, b] = this.exitRange(e, start)
-      if (!this.headsRange(e, a, b)) return false
+    for (const rw of runways) {
+      const owner = this.lockOwner.get(rw)
+      if (!owner || owner === id) continue
+      if (this.onRunway(owner, rw)) return false
+      // A lineup holds a lock it has not entered. The arrival on final takes it.
+      if (this.lockOwner.get(rw) === owner) this.lockOwner.delete(rw)
+      this.entries.get(owner)?.locks.delete(rw)
     }
+    if (this.exitBlocked(id)) return false
+    this.promoteThroughExit(id)
     for (const rw of runways) {
       this.lockOwner.set(rw, id)
       e.locks.add(rw)

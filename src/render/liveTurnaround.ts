@@ -6,15 +6,10 @@
 import * as THREE from 'three'
 import { aircraftWorldPerMeter, WORLD_PER_METER } from './aircraft/specs.ts'
 import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
-import {
-  aircraftSocketRig,
-  lockTo,
-  parkSocket,
-} from './attachments.ts'
+import { aircraftSocketRig, lockTo } from './attachments.ts'
 import { resample } from './handoff.ts'
 import { hoseSpan, vehicleSocketTable } from './socketLayout.ts'
 import { standCrew, vehicleCrew, type CrewVehicle, type StandFrame } from './turnaroundCrew.ts'
-import { disposeVehicleRig, vehicleRig } from './vehicles.ts'
 import { vehicleModel } from './vehicleModels.ts'
 
 const NEAR_M = 36
@@ -55,7 +50,6 @@ export interface TurnaroundDraw {
   crew: number
   hoses: number
   bags: number
-  spawned: number
 }
 
 const _pa = new THREE.Vector3()
@@ -102,27 +96,11 @@ function poseRig(rig: THREE.Object3D, x: number, y: number, z: number, yaw: numb
   rig.updateMatrixWorld(true)
 }
 
-/**
- * parkSocket ignores parent scale. After it runs, shift by the scaled remainder
- * so the named socket still meets the target.
- */
-function parkScaled(vehicle: THREE.Object3D, socketName: string, target: THREE.Object3D) {
-  const socket = vehicle.getObjectByName(socketName)
-  if (!socket) return
-  const scale = vehicle.scale.x || 1
-  parkSocket(vehicle, socketName, target)
-  if (Math.abs(scale - 1) < 1e-6) return
-  const offset = socket.position.clone().applyQuaternion(vehicle.quaternion).multiplyScalar(scale - 1)
-  vehicle.position.sub(offset)
-  vehicle.updateMatrixWorld(true)
-}
-
 export class LiveTurnaround {
   readonly group = new THREE.Group()
   private readonly people: PeopleRenderer
   private readonly hoses = new Map<string, THREE.Mesh>()
   private readonly bags = new Map<string, THREE.Mesh>()
-  private readonly spawned = new Map<string, THREE.Object3D>()
   private readonly aircraft = new Map<string, THREE.Group>()
   private readonly hoseMat = new THREE.MeshLambertMaterial({ color: '#1e2226' })
   private readonly bagMat = new THREE.MeshLambertMaterial({ color: '#8c2f2f' })
@@ -132,7 +110,7 @@ export class LiveTurnaround {
   constructor(parent: THREE.Object3D) {
     this.group.name = 'live-turnaround'
     parent.add(this.group)
-    this.people = new PeopleRenderer(this.group, { capacity: 128, unitsPerMeter: 1 })
+    this.people = new PeopleRenderer(this.group, { capacity: 128, unitsPerMeter: WORLD_PER_METER })
   }
 
   sync(
@@ -146,12 +124,10 @@ export class LiveTurnaround {
     const agents: PeopleAgent[] = []
     const usedHoses = new Set<string>()
     const usedBags = new Set<string>()
-    const usedSpawn = new Set<string>()
     const usedAircraft = new Set<string>()
     const taken = new Set<string>()
     let hoses = 0
     let bags = 0
-    let spawned = 0
 
     for (const stand of stands) {
       const frame: StandFrame = {
@@ -198,44 +174,20 @@ export class LiveTurnaround {
       if (fuel && this.spanHose(fuel, craft)) {
         usedHoses.add(fuel.id)
         hoses += 1
-      } else if (!here.some((truck) => isFuel(truck.kind))) {
-        const rig = this.ensureFuel(stand, craft)
-        if (rig) {
-          usedSpawn.add(rig.truck.id)
-          spawned += 1
-          this.crewFor(stand, rig.truck, clock, agents)
-          if (this.spanHose(rig.truck, craft, rig.rig)) {
-            usedHoses.add(rig.truck.id)
-            hoses += 1
-          }
-        }
       }
-
-      if (belt) {
-        bags += this.rideBags(belt, craft, clock, usedBags)
-      } else if (!here.some((truck) => isBelt(truck.kind))) {
-        const rig = this.ensureBelt(stand, craft)
-        if (rig) {
-          usedSpawn.add(rig.truck.id)
-          spawned += 1
-          this.crewFor(stand, rig.truck, clock, agents)
-          bags += this.rideBags(rig.truck, craft, clock, usedBags, rig.rig)
-        }
-      }
+      if (belt) bags += this.rideBags(belt, craft, clock, usedBags)
     }
 
     this.drop(this.hoses, usedHoses, (mesh) => mesh.geometry.dispose())
     this.drop(this.bags, usedBags, () => undefined)
-    this.drop(this.spawned, usedSpawn, (obj) => disposeVehicleRig(obj))
     this.drop(this.aircraft, usedAircraft, () => undefined)
     this.people.update(agents, camera, dt, lite)
-    return { crew: agents.length, hoses, bags, spawned }
+    return { crew: agents.length, hoses, bags }
   }
 
   dispose() {
     this.drop(this.hoses, new Set(), (mesh) => mesh.geometry.dispose())
     this.drop(this.bags, new Set(), () => undefined)
-    this.drop(this.spawned, new Set(), (obj) => disposeVehicleRig(obj))
     this.drop(this.aircraft, new Set(), () => undefined)
     this.people.dispose()
     this.bagGeo.dispose()
@@ -243,24 +195,6 @@ export class LiveTurnaround {
     this.bagMat.dispose()
     this.nozzleMat.dispose()
     this.group.removeFromParent()
-  }
-
-  private crewFor(stand: TurnaroundStand, truck: TurnaroundTruck, clock: number, agents: PeopleAgent[]) {
-    vehicleCrew(
-      {
-        id: `${stand.id}:${truck.id}`,
-        kind: truck.kind,
-        x: truck.x,
-        y: truck.y,
-        z: truck.z,
-        yaw: truck.yaw,
-        ext: truck.ext,
-        moving: truck.moving,
-      },
-      clock,
-      agents,
-      WORLD_PER_METER,
-    )
   }
 
   private craftRig(stand: TurnaroundStand): THREE.Group {
@@ -276,66 +210,12 @@ export class LiveTurnaround {
     return rig
   }
 
-  private ensureFuel(
-    stand: TurnaroundStand,
-    craft: THREE.Group,
-  ): { rig: THREE.Group; truck: TurnaroundTruck } | null {
+  private spanHose(truck: TurnaroundTruck, craft: THREE.Group): boolean {
     const port = craft.getObjectByName('plane_fuel_port')
-    if (!port) return null
-    const key = `fuel:${stand.id}`
-    let rig = this.spawned.get(key) as THREE.Group | undefined
-    if (!rig) {
-      rig = vehicleRig('fuel', '#c9a227', WORLD_PER_METER)
-      const hose = rig.getObjectByName('hose')
-      if (hose) hose.visible = false
-      this.spawned.set(key, rig)
-      this.group.add(rig)
-    }
-    poseRig(rig, stand.x, stand.y, stand.z, Math.PI, WORLD_PER_METER)
-    parkScaled(rig, 'hose_reel_out', port)
-    rig.updateMatrixWorld(true)
-    const reel = rig.getObjectByName('hose_reel_out')
-    reel?.getWorldPosition(_pa)
-    return {
-      rig,
-      truck: { id: key, kind: 'fuel', x: rig.position.x, y: rig.position.y, z: rig.position.z, yaw: rig.rotation.y, ext: 1, moving: false },
-    }
-  }
-
-  private ensureBelt(
-    stand: TurnaroundStand,
-    craft: THREE.Group,
-  ): { rig: THREE.Group; truck: TurnaroundTruck } | null {
-    const door = craft.getObjectByName('plane_cargo_door_fwd')
-    if (!door) return null
-    const key = `belt:${stand.id}`
-    let rig = this.spawned.get(key) as THREE.Group | undefined
-    if (!rig) {
-      rig = vehicleRig('belt_loader', '#d5d8dc', WORLD_PER_METER)
-      this.spawned.set(key, rig)
-      this.group.add(rig)
-    }
-    door.getWorldPosition(_pb)
-    const side = Math.sign(_pb.z - stand.z) || 1
-    poseRig(rig, stand.x, stand.y, stand.z, side > 0 ? Math.PI / 2 : -Math.PI / 2, WORLD_PER_METER)
-    parkScaled(rig, 'belt_tip', door)
-    rig.updateMatrixWorld(true)
-    return {
-      rig,
-      truck: { id: key, kind: 'belt_loader', x: rig.position.x, y: rig.position.y, z: rig.position.z, yaw: rig.rotation.y, ext: 1, moving: false },
-    }
-  }
-
-  private spanHose(truck: TurnaroundTruck, craft: THREE.Group, rig?: THREE.Object3D): boolean {
-    const port = craft.getObjectByName('plane_fuel_port')
-    const reel = rig?.getObjectByName('hose_reel_out')
     if (!port) return false
-    if (reel) reel.getWorldPosition(_pa)
-    else {
-      const modelReel = socketLocal(truck.kind, 'hose_reel_out')
-      if (!modelReel) return false
-      _pa.copy(socketWorld(truck.x, truck.y, truck.z, truck.yaw, WORLD_PER_METER, modelReel))
-    }
+    const modelReel = socketLocal(truck.kind, 'hose_reel_out')
+    if (!modelReel) return false
+    _pa.copy(socketWorld(truck.x, truck.y, truck.z, truck.yaw, WORLD_PER_METER, modelReel))
     let nozzle = port.getObjectByName('hose_nozzle')
     if (!nozzle) {
       nozzle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.12), this.nozzleMat)
@@ -368,15 +248,12 @@ export class LiveTurnaround {
     craft: THREE.Group,
     clock: number,
     keep: Set<string>,
-    rig?: THREE.Object3D,
   ): number {
-    const low = rig?.getObjectByName('belt_low')
     const tipSocket = socketLocal(truck.kind, 'belt_low')
     const highSocket = socketLocal(truck.kind, 'belt_tip')
     let a: THREE.Vector3
     let b: THREE.Vector3
-    if (low) a = low.getWorldPosition(new THREE.Vector3())
-    else if (tipSocket) a = socketWorld(truck.x, truck.y, truck.z, truck.yaw, WORLD_PER_METER, tipSocket)
+    if (tipSocket) a = socketWorld(truck.x, truck.y, truck.z, truck.yaw, WORLD_PER_METER, tipSocket)
     else return 0
     const door = craft.getObjectByName('plane_cargo_door_fwd')
     if (door) b = door.getWorldPosition(new THREE.Vector3())

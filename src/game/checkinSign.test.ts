@@ -19,50 +19,67 @@ function starter(): Game {
 }
 
 describe('check-in contract demand', () => {
-  it('blocks a second passenger contract until the player adds desks', () => {
+  it('signs a second small carrier and blocks the third on the starter desks', () => {
     const game = starter()
     game.offer = { airline: 'northline', age: 0, deadline: 36 }
     game.acceptOffer()
     expect(game.signed).toEqual(['northline'])
 
+    // Day-0 Zoomjet letter: two small peaks are 28. Two desks at 12 plus the kiosk at 6 clear 30.
+    const zoom = game.checkinSignReport('zoomjet')
+    expect(zoom.peak).toBe(28)
+    expect(zoom.capacity).toBe(30)
+    expect(zoom.ok).toBe(true)
+    expect(zoom.line).toContain('Zoomjet')
+
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
-    const blocked = game.checkinSignReport('harbor')
-    expect(blocked.ok).toBe(false)
-    expect(blocked.line).toContain('Add check-in desks')
-    expect(blocked.line).toContain('passengers a minute')
+    const harbor = game.checkinSignReport('harbor')
+    expect(harbor.ok).toBe(true)
+    expect(harbor.capacity).toBe(30)
     game.acceptOffer()
-    expect(game.signed).not.toContain('harbor')
-    expect(game.offer?.airline).toBe('harbor')
-    expect(game.news.some((note) => note.text.includes('Add check-in desks'))).toBe(true)
+    expect(game.signed).toContain('harbor')
 
     game.offer = { airline: 'umazon', age: 0, deadline: 36 }
     game.acceptOffer()
     expect(game.signed).toContain('umazon')
 
-    game.paxDesks = 8
-    game.offer = { airline: 'harbor', age: 0, deadline: 36 }
-    expect(game.checkinSignReport('harbor').ok).toBe(true)
+    game.offer = { airline: 'bushline', age: 0, deadline: 36 }
+    const blocked = game.checkinSignReport('bushline')
+    expect(blocked.ok).toBe(false)
+    expect(blocked.line).toContain('Add check-in desks')
+    expect(blocked.line).toContain('passengers a minute')
     game.acceptOffer()
-    expect(game.signed).toContain('harbor')
+    expect(game.signed).not.toContain('bushline')
+    expect(game.news.some((note) => note.text.includes('Add check-in desks'))).toBe(true)
+
+    game.paxDesks = 8
+    game.offer = { airline: 'bushline', age: 0, deadline: 36 }
+    expect(game.checkinSignReport('bushline').ok).toBe(true)
+    game.acceptOffer()
+    expect(game.signed).toContain('bushline')
   })
 
-  it('signs the second carrier after one desk is placed inside the starter hall', () => {
+  it('signs the third small carrier after one desk is placed inside the starter hall', () => {
     expect(STARTER_CAPACITY.desks).toBe(2)
     const game = starter()
     expect(game.paxDesks).toBe(2)
     game.offer = { airline: 'northline', age: 0, deadline: 36 }
     game.acceptOffer()
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
-    const before = game.checkinSignReport('harbor')
+    expect(game.checkinSignReport('harbor').ok).toBe(true)
+    game.acceptOffer()
+
+    game.offer = { airline: 'bushline', age: 0, deadline: 36 }
+    const before = game.checkinSignReport('bushline')
     expect(before.ok).toBe(false)
 
     game.placeHallItem('checkin_belt')
     game.tickHallNav(0)
-    const after = game.checkinSignReport('harbor')
+    const after = game.checkinSignReport('bushline')
     expect(after.ok).toBe(true)
     expect(after.capacity).toBeGreaterThan(before.capacity)
     game.acceptOffer()
-    expect(game.signed).toContain('harbor')
+    expect(game.signed).toContain('bushline')
     expect(game.paxDesks).toBe(2)
   })
 
@@ -79,8 +96,6 @@ describe('check-in contract demand', () => {
     const game = starter()
     game.offer = { airline: 'northline', age: 0, deadline: 36 }
     game.acceptOffer()
-    game.placeHallItem('checkin_belt')
-    game.tickHallNav(0)
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
     expect(game.checkinSignReport('harbor').ok).toBe(true)
     game.acceptOffer()
@@ -115,8 +130,6 @@ describe('check-in contract demand', () => {
     const lane = starter()
     lane.offer = { airline: 'northline', age: 0, deadline: 36 }
     lane.acceptOffer()
-    lane.placeHallItem('checkin_belt')
-    lane.tickHallNav(0)
     lane.offer = { airline: 'harbor', age: 0, deadline: 36 }
     lane.acceptOffer()
     lane.offer = { airline: 'brisa', age: 0, deadline: 36 }
@@ -132,8 +145,6 @@ describe('check-in contract demand', () => {
     const hall = starter()
     hall.offer = { airline: 'northline', age: 0, deadline: 36 }
     hall.acceptOffer()
-    hall.placeHallItem('checkin_belt')
-    hall.tickHallNav(0)
     hall.offer = { airline: 'harbor', age: 0, deadline: 36 }
     hall.acceptOffer()
     hall.offer = { airline: 'brisa', age: 0, deadline: 36 }
@@ -142,7 +153,7 @@ describe('check-in contract demand', () => {
     const fit = hall.fits[0]
     fit.interior = emptyInterior()
     fit.interior.foundation = [{ x: 2, y: 1, floor: 0 }]
-    fit.interior.equipment = [{ id: 'e1', kind: 'checkin_desk', x: 3, y: 1, wear: 0, floor: 0 }]
+    fit.interior.equipment = [{ id: 'e1', kind: 'toilet', x: 3, y: 1, wear: 0, floor: 0 }]
     hall.fieldXp = 220
     expect(hall.hallExpandOffer()?.id).toBe('prefab_ii')
     expect(hall.hallBuyLine('prefab_ii')).toContain('now 2')
