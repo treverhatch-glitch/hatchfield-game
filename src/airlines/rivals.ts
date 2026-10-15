@@ -39,6 +39,23 @@ export function allianceOf(airlineId: string): readonly string[] {
   return group ? group.filter((id) => id !== airlineId) : []
 }
 
+/** Fierce pairs take a harder hub hit. Allies stay in ROSTER_ALLIANCES and are spared. */
+export const FIERCE_PAIRS: readonly (readonly [string, string])[] = [
+  ['gulf_pearl', 'aurora_nordic'],
+  ['atlas_cargo', 'polar_freight'],
+  ['brisa', 'zephyr_go'],
+]
+
+export type PairIntensity = 'ally' | 'fierce' | 'rival' | 'none'
+
+export function pairIntensity(a: string, b: string): PairIntensity {
+  if (allianceOf(a).includes(b) || allianceOf(b).includes(a)) return 'ally'
+  const fierce = FIERCE_PAIRS.some(([left, right]) => (left === a && right === b) || (left === b && right === a))
+  if (fierce) return 'fierce'
+  if (rivalsOfRoster(a).includes(b)) return 'rival'
+  return 'none'
+}
+
 export function rivalsOfRoster(airlineId: string): readonly string[] {
   const allies = new Set(allianceOf(airlineId))
   const out: string[] = []

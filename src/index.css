@@ -3716,6 +3716,36 @@ h1.game-title::after {
   opacity: 0.55;
 }
 
+.hub-anger {
+  flex-basis: 100%;
+  white-space: pre-line;
+  margin: 4px 0;
+}
+
+.hub-assign {
+  position: fixed;
+  left: 12px;
+  top: 72px;
+  width: min(380px, 92vw);
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  pointer-events: auto;
+  z-index: 42;
+  background: rgba(10, 20, 16, 0.96);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.hub-assign-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.hub-assign-modes button.on {
+  border-color: #e7c56a;
+}
+
 .dip-ladder {
   margin: 6px 0 0;
   padding-left: 18px;

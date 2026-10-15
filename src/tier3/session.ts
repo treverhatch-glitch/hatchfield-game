@@ -8,6 +8,7 @@ import {
   CURFEW_HEAT_RELAXED,
   CURFEW_HEAT_TIGHT,
   MRO_POWER_DEMAND,
+  MRO_TAXI_MINUTES,
   MRO_TECH_BONUS,
   MRO_TECHS_REQUIRED,
   MRO_UPKEEP_PER_DAY,
@@ -15,7 +16,7 @@ import {
   NIGHT_HUB_POWER_DEMAND,
   NIGHT_HUB_UPKEEP_PER_DAY,
 } from './config.ts'
-import { advanceMro, finiteNumber, inductMro, standsTied, taxiwaysTied } from './mro.ts'
+import { advanceMro, baySizeForAirframe, finiteNumber, inductMro, pickBay, standsTied, taxiwaysTied } from './mro.ts'
 import {
   defaultNightSlots,
   nightHandlingTonnes,
@@ -94,6 +95,31 @@ export class Tier3Session {
 
   isBusy(buildingId: string): boolean {
     return this.jobs.some((job) => job.buildingId === buildingId)
+  }
+
+  /**
+   * A hub carrier ferries an aircraft in for a check. The bay is one the hangar
+   * already has. Taxi and the fee use the same job the ramp inductions use.
+   */
+  enqueueFerry(input: { aircraftId: string; airframeId: string; buildingId: string }): boolean {
+    const building = this.buildings.find((row) => row.id === input.buildingId && row.kind === 'mro')
+    if (!building) return false
+    if (this.jobs.some((job) => job.aircraftId === input.aircraftId)) return false
+    const size = baySizeForAirframe(input.airframeId)
+    const bay = pickBay(this.jobs, input.buildingId, size)
+    if (!bay) return false
+    this.jobs.push({
+      id: `${input.aircraftId}@${input.buildingId}`,
+      aircraftId: input.aircraftId,
+      buildingId: input.buildingId,
+      bayId: bay.id,
+      airframeId: input.airframeId,
+      size,
+      standKey: `ferry:${input.aircraftId}`,
+      phase: 'taxi_in',
+      remaining: MRO_TAXI_MINUTES,
+    })
+    return true
   }
 
   /** Live checks. The apron taxi pose is derived from these, so the bay the player sees is the bay that is occupied. */

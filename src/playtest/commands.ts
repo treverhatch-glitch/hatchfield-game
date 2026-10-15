@@ -716,6 +716,31 @@ class GamePlayer implements PlayerCommands {
     }
   }
 
+  hubOffersSent(): number {
+    return Object.values(this.game.hubOffered).reduce((sum, tiers) => sum + tiers.length, 0)
+  }
+
+  hubLadderNote(): string {
+    return this.game.signed
+      .map((id) => {
+        const rel = this.game.wave3.relation(id)
+        const list = this.game.hubChecklistFor(id)
+        const line = (key: string) => list.lines.find((row) => row.id === key)
+        return [
+          id,
+          `score${Math.round(rel.score)}`,
+          `tier${rel.tier}`,
+          `kept${rel.counts.kept}`,
+          `rel${line('relation')?.status ?? '-'}`,
+          `ot${line('onTime')?.status ?? '-'}:${line('onTime')?.label ?? ''}`,
+          `ten${line('tenure')?.status ?? '-'}`,
+          `band${line('band')?.status ?? '-'}`,
+          `next${list.next ?? '-'}`,
+        ].join(':')
+      })
+      .join('|')
+  }
+
   /** A curb stamp sits on any grass cell that touches the public road. */
   private stampBeside(anchors: Vec[], tool: Tool): CommandResult | null {
     const ranked = [...anchors].sort((a, b) => this.sideRoads(a) - this.sideRoads(b) || a.r - b.r || a.c - b.c)

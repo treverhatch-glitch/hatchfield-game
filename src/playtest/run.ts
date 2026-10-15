@@ -148,6 +148,8 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
     if (!notes.some((line) => line.startsWith('strip 2'))) notes.push('strip 2 not built')
     const taxiOutCleared = recovered.filter((row) => row.detail.includes('taxi_out')).length
     notes.push(taxiOutRecoveryNote(taxiOutCleared, api.probe().jumps))
+    notes.push(`hub-offers:${api.hubOffersSent()}`)
+    notes.push(`hub-ladder:${api.hubLadderNote()}`)
     return {
       persona: spec.id,
       label: spec.label,

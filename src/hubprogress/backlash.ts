@@ -2,7 +2,7 @@
  * What accepting Base, Hub, or Primary does to the holder's rivals.
  * One roll for the whole accept. Allies are spared.
  */
-import { allianceOf, rivalsOfRoster } from '../airlines/rivals.ts'
+import { allianceOf, pairIntensity, rivalsOfRoster, type PairIntensity } from '../airlines/rivals.ts'
 import { RIVAL_BACKLASH, type HubOfferTier } from './config.ts'
 
 export type RivalEffect = 'score' | 'refuse' | 'trim' | 'relocate'
@@ -10,7 +10,10 @@ export type RivalEffect = 'score' | 'refuse' | 'trim' | 'relocate'
 export interface BacklashHit {
   airlineId: string
   name: string
+  /** Ladder hit after relationship scale and pair intensity. Negative. */
   score: number
+  standing: number
+  intensity: PairIntensity
   effect: RivalEffect
 }
 
@@ -40,11 +43,35 @@ export function sparedSentence(names: readonly string[]): string {
   return `${who} ${verb}`
 }
 
+/** A rival at +76 takes much less. One already negative takes more. */
+export function relationshipScale(standing: number): number {
+  const s = Math.max(-100, Math.min(100, Number.isFinite(standing) ? standing : 0))
+  return Math.max(0.2, Math.round((1 - (s / 100) * 0.8) * 1000) / 1000)
+}
+
+const INTENSITY_MULT: Record<PairIntensity, number> = { ally: 0, none: 0, fierce: 1.6, rival: 1 }
+
+export function scaledHit(base: number, standing: number, intensity: PairIntensity): number {
+  const mult = INTENSITY_MULT[intensity]
+  if (base === 0 || mult === 0) return 0
+  return Math.round(base * relationshipScale(standing) * mult * 10) / 10
+}
+
+export function effectLabel(effect: RivalEffect, intensity: PairIntensity): string {
+  const tone = intensity === 'fierce' ? 'fierce rival' : intensity === 'rival' ? 'rival' : 'ally'
+  if (effect === 'relocate') return `${tone} · may move to Bellwater`
+  if (effect === 'trim') return `${tone} · may cut flights`
+  if (effect === 'refuse') return `${tone} · may refuse the next ask`
+  return `${tone} · absorbs it`
+}
+
 function effectFor(tier: Exclude<HubOfferTier, 'focus'>, roll: number, standing: number, poachStandingMax: number): RivalEffect {
   const row = RIVAL_BACKLASH[tier]
-  if (roll < row.relocate) return standing <= poachStandingMax ? 'relocate' : 'trim'
-  if (roll < row.trim) return 'trim'
-  if (roll < row.refuse) return 'refuse'
+  const bias = standing < 0 ? Math.min(0.7, -standing / 40) : 0
+  const pressure = Math.max(0, roll - bias)
+  if (pressure < row.relocate) return standing <= poachStandingMax ? 'relocate' : 'trim'
+  if (pressure < row.trim) return 'trim'
+  if (pressure < row.refuse) return 'refuse'
   return 'score'
 }
 
@@ -68,14 +95,21 @@ export function planBacklash(input: {
     return carrier ? [carrier.name] : []
   })
   const roll = Number.isFinite(input.roll) ? Math.max(0, Math.min(0.999999, input.roll)) : 0.999999
-  return {
-    anger: angerSentence(rivals.map((carrier) => carrier.name), row.score),
-    spared: sparedSentence(spared),
-    hit: rivals.map((carrier) => ({
+  const hit = rivals.map((carrier) => {
+    const intensity = pairIntensity(input.holderId, carrier.id)
+    const score = scaledHit(row.score, carrier.standing, intensity === 'none' ? 'rival' : intensity)
+    return {
       airlineId: carrier.id,
       name: carrier.name,
-      score: row.score,
+      score,
+      standing: carrier.standing,
+      intensity: intensity === 'none' ? 'rival' : intensity,
       effect: effectFor(tier, roll, carrier.standing, input.poachStandingMax),
-    })),
+    }
+  })
+  return {
+    anger: hit.map((row) => `${row.name} ${row.score} · ${effectLabel(row.effect, row.intensity)}`).join('\n'),
+    spared: sparedSentence(spared),
+    hit,
   }
 }

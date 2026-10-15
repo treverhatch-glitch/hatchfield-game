@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
-import { ALLOCATOR_WAIT } from '../hubprogress/config.ts'
 import { readHubTiers } from './hubProgress.ts'
 
 describe('hub progress on the sim', () => {
@@ -17,7 +16,7 @@ describe('hub progress on the sim', () => {
     game.signed = ['brisa', 'atlas_cargo', 'harbor_heli', 'gulf_pearl']
     const brisa = game.hubChecklistFor('brisa')
     expect(brisa.next).toBe('focus')
-    expect(brisa.lines.find((line) => line.id === 'desk')?.detail).toBe(ALLOCATOR_WAIT)
+    expect(brisa.lines.find((line) => line.id === 'desk')?.detail).toBe('0 / 1')
     expect(brisa.lines.some((line) => line.id === 'lounge')).toBe(false)
 
     const atlas = game.hubChecklistFor('atlas_cargo')
@@ -32,7 +31,7 @@ describe('hub progress on the sim', () => {
     const gulf = game.hubChecklistFor('gulf_pearl')
     expect(gulf.next).toBe('primary')
     expect(gulf.eligible).toBe(false)
-    expect(gulf.lines.find((line) => line.id === 'desk')?.status).toBe('waiting')
+    expect(gulf.lines.find((line) => line.id === 'desk')?.status).toBe('missing')
 
     const fee = game.wave3.feeLine('brisa')
     expect(fee.match(/×/g)).toHaveLength(1)

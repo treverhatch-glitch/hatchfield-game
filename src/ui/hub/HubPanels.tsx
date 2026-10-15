@@ -1,8 +1,15 @@
 import { useSyncExternalStore } from 'react'
 import type { Game } from '../../game/sim.ts'
-import { ALLOCATOR_WAIT, HUB_TIER_LABEL } from '../../hubprogress/config.ts'
+import { HUB_TIER_LABEL } from '../../hubprogress/config.ts'
 import { hubProgressRows, hubShowcase } from '../../hubprogress/present.ts'
-import { hubProfileSnapshot, openHubProfile, subscribeHubProfile } from './session.ts'
+import {
+  closeHubAssign,
+  hubAssignSnapshot,
+  hubProfileSnapshot,
+  openHubAssign,
+  openHubProfile,
+  subscribeHubProfile,
+} from './session.ts'
 
 function mark(status: string): string {
   return status === 'ok' ? '✓' : '·'
@@ -12,6 +19,7 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
   const view = game.hubCarrierView(id)
   const list = view.checklist
   const showcase = hubShowcase(list)
+  const anger = game.hubAngerPreview(id)
   const nextLabel = list.next ? HUB_TIER_LABEL[list.next] : null
   const width = list.total > 0 ? Math.round((list.met / list.total) * 100) : 0
 
@@ -62,14 +70,19 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
         Next: {showcase.next}
       </p>
       <div className="hub-actions">
-        <button type="button" data-testid="hub-dedicate-desk" disabled title={ALLOCATOR_WAIT}>
+        <button type="button" data-testid="hub-dedicate-desk" onClick={() => game.dedicateDesk(id)}>
           Dedicate a desk
         </button>
+        <button type="button" data-testid="hub-open-assign" onClick={() => openHubAssign(id)}>
+          Assign
+        </button>
         {list.next === 'base' || list.next === 'hub' || list.next === 'primary' ? (
-          <p className="muted" data-testid="hub-anger">
-            {game.hubAngerPreview(id).anger || 'No signed rival is angry about this step.'}
-            {game.hubAngerPreview(id).spared ? ` ${game.hubAngerPreview(id).spared}` : ''}
-          </p>
+          <>
+            <p className="hub-anger" data-testid="hub-anger">
+              {anger.anger || 'No signed rival is angry about this step.'}
+            </p>
+            {anger.spared ? <p className="muted">{anger.spared}</p> : null}
+          </>
         ) : null}
         {game.hubVehicleChoices(id).map((choice) => (
           <span key={choice.role}>
@@ -140,6 +153,49 @@ export function HubSection({ game, id }: { game: Game; id: string }) {
       </button>
       {openId === id ? <HubProfile game={game} id={id} /> : null}
     </div>
+  )
+}
+
+/** Left side panel. Common, Preferred, and Dedicated stay on the one desk list. */
+export function HubAssign({ game }: { game: Game }) {
+  const airlineId = useSyncExternalStore(subscribeHubProfile, hubAssignSnapshot, hubAssignSnapshot)
+  if (!airlineId) return null
+  const name = game.airline(airlineId).name
+  const rows = game.hubDeskRows(airlineId)
+  return (
+    <aside className="hub-assign" data-testid="hub-assign">
+      <div className="panel-head">
+        <h2>Assign · {name}</h2>
+        <button type="button" className="ghost" data-testid="hub-assign-close" onClick={() => closeHubAssign()}>
+          Close
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="muted">No check-in desk is built. A kiosk cannot take a name.</p>
+      ) : (
+        <ul className="hub-lines">
+          {rows.map((row) => (
+            <li key={row.deskId} data-testid={`hub-desk-${row.deskId}`}>
+              <span>{row.staffed ? 'Staffed' : 'Dark'}</span>
+              <span>{row.label}</span>
+              <span className="hub-assign-modes">
+                {(['common', 'preferred', 'dedicated'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={row.mode === mode ? 'on' : ''}
+                    data-testid={`hub-mode-${row.deskId}-${mode}`}
+                    onClick={() => game.leaseDesk(airlineId, row.deskId, mode)}
+                  >
+                    {mode === 'common' ? 'Common' : mode === 'preferred' ? 'Preferred' : 'Dedicated'}
+                  </button>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
   )
 }
 

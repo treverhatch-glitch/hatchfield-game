@@ -1,6 +1,6 @@
 /**
  * Turns a sim snapshot into the pure hub checklist. Rendering reads the result.
- * Desk and lane counts stay at zero until the allocator exports leases.
+ * Desk locks are the check-in allocator's dedicatedDesks rows.
  */
 import type { AirlineBizModel } from './types.ts'
 import {
@@ -38,8 +38,10 @@ export interface HubFieldFacts {
   stands: number
   /** Helipad tiles, used when no dedicated pad count is stored. */
   pads: number
-  /** Dedicated counts. Desk and lane counts are not here. */
+  /** Dedicated counts. Desk locks come from the check-in allocator. */
   overnight: number
+  preferredDesks?: number
+  dedicatedDesks?: number
   lounges: number
   hangars: number
   fuel: number
@@ -199,6 +201,9 @@ export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; 
   facilities.primaryHolderName = facts.primaryHolderName
   facilities.daysAtTier = Math.max(0, Math.floor(facts.daysAtTier))
   facilities.vehicles = facts.vehicles
+  facilities.deskAllocator = true
+  facilities.preferredDesks = Math.max(0, Math.floor(facts.preferredDesks ?? 0))
+  facilities.dedicatedDesks = Math.max(0, Math.floor(facts.dedicatedDesks ?? 0))
   const checklist = hubChecklist(
     {
       id: facts.id,

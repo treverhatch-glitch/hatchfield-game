@@ -21,6 +21,9 @@ export type PhoneAction =
   | { type: 'decline-layover' }
   | { type: 'accept-hub' }
   | { type: 'decline-hub' }
+  | { type: 'open-airlines'; airlineId: string }
+  | { type: 'later-nudge'; airlineId: string }
+  | { type: 'decline-nudge'; airlineId: string }
   | { type: 'sign-mx' }
   | { type: 'decline-mx' }
   | { type: 'accept-parking' }
@@ -90,6 +93,9 @@ export interface PhoneCommandHost {
   declineLayover(): void
   acceptHub(): void
   declineHub(): void
+  openAirlines(airlineId: string): void
+  laterNudge(airlineId: string): void
+  declineNudge(airlineId: string): void
   acceptMxOffer(): void
   declineMxOffer(): void
   acceptParking(): void

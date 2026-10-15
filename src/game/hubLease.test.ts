@@ -27,7 +27,7 @@ describe('lounge, gate, and hangar leases', () => {
     expect(game.hubChecklistFor('gulf_pearl').lines.find((line) => line.id === 'lounge')).toBeUndefined()
     game.hubTiers.gulf_pearl = 'base'
     expect(game.hubChecklistFor('gulf_pearl').lines.find((line) => line.id === 'lounge')?.detail).toBe('1 / 1')
-    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe('Waiting on the desk allocator')
+    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe('0 / 1')
   })
 
   it('pays dedicated credit on the daily review without a second fee multiplier', () => {

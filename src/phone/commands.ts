@@ -15,6 +15,9 @@ export function phoneHost(game: Game): PhoneCommandHost {
     declineLayover: () => game.declineLayover(),
     acceptHub: () => game.acceptHub(),
     declineHub: () => game.declineHub(),
+    openAirlines: (airlineId) => game.openAirlinesFromPhone(airlineId),
+    laterNudge: (airlineId) => game.laterHubNudge(airlineId),
+    declineNudge: (airlineId) => game.declineHubNudge(airlineId),
     acceptMxOffer: () => game.acceptMxOffer(),
     declineMxOffer: () => game.declineMxOffer(),
     acceptParking: () => game.acceptParking(),
@@ -57,6 +60,15 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'decline-hub':
       host.declineHub()
+      return
+    case 'open-airlines':
+      host.openAirlines(action.airlineId)
+      return
+    case 'later-nudge':
+      host.laterNudge(action.airlineId)
+      return
+    case 'decline-nudge':
+      host.declineNudge(action.airlineId)
       return
     case 'sign-mx':
       host.acceptMxOffer()

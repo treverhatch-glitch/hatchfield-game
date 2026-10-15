@@ -1039,6 +1039,10 @@ export interface GameSnapshot {
   hubRivalQuiet?: Record<string, number>
   /** Phone notes for a move to Bellwater. */
   hubRivalPhone?: { id: string; name: string; text: string }[]
+  hubNudges?: { airlineId: string; step: string; text: string }[]
+  hubNudgeSilenced?: { airlineId: string; step: string }[]
+  hubNudgeLast?: Record<string, number>
+  hubFerryDay?: Record<string, number>
   /** Lounge, gate, and hangar leases by building id. Missing on older saves. */
   hubLeases?: { id: string; kind: string; airlineId: string }[]
   /** Day a stored tier falls if a gating lease stays released. */

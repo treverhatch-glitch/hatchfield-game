@@ -132,6 +132,7 @@ export interface PhoneWorld {
     causes: string
   }[]
   rivalNotes: { id: string; name: string; text: string }[]
+  nudges: { airlineId: string; airlineName: string; step: string; text: string }[]
 }
 
 function card(partial: PhoneCard): PhoneCard | null {
@@ -168,6 +169,7 @@ export function emptyPhoneWorld(): PhoneWorld {
     warn: null,
     advisor: [],
     rivalNotes: [],
+    nudges: [],
   }
 }
 
@@ -433,6 +435,28 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       actions: [
         btn('sign', 'Accept', { type: 'accept-hub' }, { primary: true, disabled: hub.acceptDisabled }),
         btn('decline', 'Decline', { type: 'decline-hub' }),
+      ],
+    })
+    if (built) cards.push(built)
+  }
+
+  for (const nudge of world.nudges) {
+    const built = card({
+      id: `hub-nudge-${nudge.airlineId}`,
+      key: `hub-nudge:${nudge.airlineId}:${nudge.step}`,
+      tab: 'messages',
+      kind: 'hub-nudge',
+      from: nudge.airlineName,
+      title: `${nudge.airlineName} · warmth`,
+      preview: phonePreview(nudge.text),
+      body: nudge.text,
+      tone: 'ok',
+      arrives: true,
+      secondsLeft: null,
+      actions: [
+        btn('airlines', 'Airlines', { type: 'open-airlines', airlineId: nudge.airlineId }, { primary: true }),
+        btn('later', 'Later', { type: 'later-nudge', airlineId: nudge.airlineId }),
+        btn('decline', 'Decline', { type: 'decline-nudge', airlineId: nudge.airlineId }),
       ],
     })
     if (built) cards.push(built)
