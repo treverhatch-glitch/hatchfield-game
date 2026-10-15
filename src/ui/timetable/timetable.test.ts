@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, icaoForAirframe, TOWER_HOLD, TOWER_PULL } from './gameAdapter'
 import { boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf } from './layout'
+import { SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
 describe('clock face', () => {
@@ -36,6 +38,23 @@ describe('clock face', () => {
   })
 })
 
+describe('schedule turn config', () => {
+  it('keeps a narrowbody turn inside 35–45 game minutes', () => {
+    expect(SCHEDULE.turnMin.narrow).toBeGreaterThanOrEqual(35)
+    expect(SCHEDULE.turnMin.narrow).toBeLessThanOrEqual(45)
+    expect(turnSimSec('narrow') * GAME_MINUTES_PER_SIM_SECOND).toBe(SCHEDULE.turnMin.narrow)
+    expect(durationLabel(turnSimSec('narrow'))).toBe('40m')
+  })
+
+  it('maps code C to the narrowbody turn and code F to the heavy turn', () => {
+    expect(turnBand('C')).toBe('narrow')
+    expect(turnBand('C', 'regional')).toBe('regional')
+    expect(turnBand('E', 'widebody')).toBe('wide')
+    expect(turnBand('F')).toBe('heavy')
+    expect(turnSimSec('narrow')).toBeLessThan(10)
+  })
+})
+
 describe('game schedule adapter', () => {
   const setup = () => {
     const f = makeFakeGame({ clock: 100 })
@@ -55,6 +74,7 @@ describe('game schedule adapter', () => {
     expect(s2.pinned).toBe(true)
     expect(s2.standLabel).toBe('G6')
     expect(s2.window).toEqual({ start: 150 - TOWER_PULL, end: 150 + TOWER_HOLD, source: 'tower' })
+    expect(s2.onStandTo - s2.onStandFrom).toBeCloseTo(turnSimSec('narrow'), 5)
   })
 
   it('groups stands by ICAO class, largest first, with unassigned last', () => {

@@ -23,8 +23,14 @@ export const MAX_SPAWNS_PER_SEC = 4
 /** Last release sits this far ahead of the counter closing, so the bag drop can start. */
 export const CHECKIN_WALK_SEC = 1.25
 /**
- * Approach ETA → scheduled departure. Leisure show-up (STD − 180 game-min)
- * opens a couple of seconds before the slot is due, which is before landing.
+ * Approach ETA → scheduled departure for the hall. Leisure show-up
+ * (STD − 180 game-min) opens a couple of seconds before the slot is due,
+ * which is before landing.
+ *
+ * The schedule chart does not use this gap. Bar length is `turnMin` in
+ * `src/ui/timetable/scheduleConfig.ts` (narrowbody 40 game minutes, inside
+ * the 35–45 minute band). Leave this hall clock alone until show-up is
+ * retargeted onto that config — the two must not both draw the bar.
  */
 export const PLANNED_TURN_SEC = 20
 

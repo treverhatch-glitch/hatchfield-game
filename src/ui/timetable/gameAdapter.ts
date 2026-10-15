@@ -2,6 +2,7 @@ import { AIRFRAMES } from '../../game/airframes'
 import { tilesOf } from '../../game/path'
 import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
+import { turnBand, turnSimSec } from './scheduleConfig'
 import { clampToWindow, hourSecs } from './time'
 import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtWindow } from './types'
 
@@ -34,7 +35,6 @@ export const TOWER_PULL = 30
 /** Tower lets you hold a slot this far after its banked ETA before it reads as a miss. */
 export const TOWER_HOLD = 45
 const TAXI = 6
-const TURN: Record<'S' | 'M' | 'L', number> = { S: 40, M: 55, L: 90 }
 
 const STAND_ICAO: Record<string, IcaoCode> = { S: 'C', M: 'E', L: 'F' }
 const F_TYPES = new Set(['a380', 'b748', 'b747', 'an124', 'an225'])
@@ -59,8 +59,8 @@ export function icaoForAirframe(id: string | null | undefined, kind?: AircraftKi
   }
 }
 
-function turnFor(icao: IcaoCode): number {
-  return icao === 'F' ? TURN.L : icao === 'E' || icao === 'D' ? TURN.M : TURN.S
+function turnFor(icao: IcaoCode, kind?: AircraftKind): number {
+  return turnSimSec(turnBand(icao, kind))
 }
 
 /** Game runway strip index ↔ timetable runway id. */
@@ -97,7 +97,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
     const stand = flight?.stand ?? slot.standPref ?? null
     const onFrom = slot.eta + TAXI
-    const onTo = onFrom + turnFor(icao)
+    const onTo = onFrom + turnFor(icao, flight?.kind)
     const status: TtFlight['status'] =
       slot.status === 'cancelled' ? 'cancelled' : slot.status === 'done' ? 'done' : slot.status
     const shared = {
@@ -147,7 +147,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     const al = game.airline(f.airline)
     const icao = icaoForAirframe(f.airframeId, f.kind)
     const progress = Math.min(0.9, f.phase === 'board' ? 0.75 : f.phase === 'servicing' ? 0.45 : 0.15)
-    const turn = turnFor(icao)
+    const turn = turnFor(icao, f.kind)
     const from = game.clock - turn * progress
     const to = leaving ? game.clock : from + turn
     return [

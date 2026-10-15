@@ -4295,11 +4295,17 @@ export class Game {
   }
 
   isBanned(id: AirlineId): boolean {
-    return (this.airlineBanUntil[id] ?? 0) > this.clock
+    const until = this.airlineBanUntil[id]
+    // A missing ban is stored as nothing, or as 0. Time zero is not a ban,
+    // even while the clock is still a fraction below the start.
+    if (until == null || until <= 0) return false
+    return until > this.clock
   }
 
   banRemaining(id: AirlineId): number {
-    return Math.max(0, (this.airlineBanUntil[id] ?? 0) - this.clock)
+    const until = this.airlineBanUntil[id]
+    if (until == null || until <= 0) return 0
+    return Math.max(0, until - this.clock)
   }
 
   adjustHeat(id: AirlineId, delta: number, cause?: StandingCauseCategory) {
