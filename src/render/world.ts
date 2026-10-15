@@ -859,6 +859,7 @@ export class World {
             lateId: game.lateIdAt(c, r),
             terminalTier: pierTier,
             spotterCrowd: game.spotterCrowdAt(c, r),
+            alarmBell: tile === 'fire' && game.hostHasFitting('fire', { c, r }, 'alarm_bell'),
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -1010,7 +1011,8 @@ export class World {
         if (bestD > 8) continue
         const marked = game.standScale[`${c},${r}`]
         const tier: SizeTier = marked ?? (game.standClassAt(stand) === 'L' ? 'jumbo' : 'small')
-        const preview = createBridges(previewAirframe(tier))
+        const doors = Math.max(1, game.boughtBridges(stand))
+        const preview = createBridges(previewAirframe(tier), 1, doors)
         preview.position.copy(toWorld(c, r, 0.04))
         preview.rotation.y = bridgeYawToward(stand, best)
         preview.userData.standKey = `${c},${r}`
@@ -1030,6 +1032,7 @@ export class World {
       lateId?: string | null
       terminalTier?: 1 | 2 | 3
       spotterCrowd?: number
+      alarmBell?: boolean
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
@@ -1110,7 +1113,7 @@ export class World {
     } else if (tile === 'fuel') {
       addFuelFarm(g)
     } else if (tile === 'fire') {
-      addFireStation(g)
+      addFireStation(g, { bell: opts.alarmBell })
     } else if (tile === 'police') {
       addPoliceBuilding(g)
     } else if (tile === 'cargo') {
@@ -1794,9 +1797,10 @@ export class World {
       if (jetway) {
         const term = nearestTerminal(game, cell)
         const side = term ? bridgeMirror(f.heading, cell, term) : 1
-        if (!bridges || bridges.userData.side !== side) {
+        const doors = Math.max(1, game.boughtBridges(cell))
+        if (!bridges || bridges.userData.side !== side || bridges.userData.doors !== doors) {
           if (bridges) mesh.remove(bridges)
-          mesh.add(createBridges(f.airframeId || 'b738', side))
+          mesh.add(createBridges(f.airframeId || 'b738', side, doors))
         }
       } else if (bridges) {
         mesh.remove(bridges)

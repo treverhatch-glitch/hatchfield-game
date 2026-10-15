@@ -25,6 +25,7 @@ import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type Lands
 import {
   apronMasts,
   jetBridges,
+  standFlags,
   roadPaint,
   runwayLightSpots,
   runwayPaint,
@@ -436,6 +437,24 @@ export class WorldRenderer {
     }
     const spots = [...rws.flatMap((r) => runwayLightSpots(r)), ...taxiLightSpots(view)]
     this.lights.build(spots, apronMasts(st), rws, this.q.lightPools, this.q.lightBloom)
+    for (const flag of standFlags(st)) {
+      const poleGeo = new THREE.CylinderGeometry(0.06, 0.08, 4.2, 6)
+      const clothGeo = new THREE.PlaneGeometry(1.4, 0.8)
+      this.staticGeos.push(poleGeo, clothGeo)
+      const poleMat = new THREE.MeshLambertMaterial({ color: '#c5ced6' })
+      const clothMat = new THREE.MeshLambertMaterial({ color: flag.color, side: THREE.DoubleSide })
+      this.propMats.push(poleMat, clothMat)
+      const group = new THREE.Group()
+      group.name = 'stand-flag'
+      const pole = new THREE.Mesh(poleGeo, poleMat)
+      pole.position.y = 2.1
+      const cloth = new THREE.Mesh(clothGeo, clothMat)
+      cloth.name = 'stand-flag-cloth'
+      cloth.position.set(0.7, 3.6, 0)
+      group.add(pole, cloth)
+      group.position.set(flag.x, 0, flag.z)
+      this.staticGroup.add(group)
+    }
     this.contacts.sync(this.q.contactShadows ? contactSpots(view) : [])
 
     const bridges = jetBridges(view, st)

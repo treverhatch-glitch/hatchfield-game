@@ -6,6 +6,7 @@ import {
   airsideOf,
   apronMasts,
   clusters,
+  standFlags,
   exteriorEdges,
   jetBridges,
   runwayDesignators,
@@ -120,7 +121,14 @@ describe('world layout', () => {
       const sz = cellZ(b.stand.r)
       expect(Math.hypot(b.cab.x - sx, b.cab.z - sz)).toBeLessThan(Math.hypot(b.root.x - sx, b.root.z - sz))
     }
-    expect(apronMasts(st).length).toBeGreaterThanOrEqual(1)
+    expect(apronMasts(st)).toHaveLength(0)
+    expect(standFlags(st)).toHaveLength(0)
+    game.fittings['stand:11,6'] = [{ id: 'apron_light' }]
+    game.fittings['stand:11,12'] = [{ id: 'flag' }]
+    const dressed = stands(game)
+    expect(apronMasts(dressed)).toHaveLength(1)
+    expect(standFlags(dressed)).toHaveLength(1)
+    expect(standFlags(dressed)[0]?.color).toBe('#1f4b7a')
     const lights = taxiLightSpots(game)
     expect(lights.some((l) => l.kind === 'twCenter')).toBe(true)
     expect(lights.some((l) => l.kind === 'twEdge')).toBe(true)

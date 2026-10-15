@@ -37,6 +37,12 @@ export interface WorldView {
   /** Wide is code E, jumbo is code F. Missing on an L stand means jumbo. */
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   standAccessAt?: (v: Vec | null) => StandAccess
+  /** Bought apron light. Missing means the stand draws no mast. */
+  standLit?: (v: Vec) => boolean
+  /** Cloth colour when a flag is bought. Null means no pole. */
+  standFlagColor?: (v: Vec) => string | null
+  /** Jet bridges bought on this stand. */
+  boughtBridges?: (v: Vec) => number
   fits?: { origin: Vec; rooms?: Partial<Record<string, number>>; tier?: 1 | 2 | 3; premade?: boolean; redesigned?: boolean }[]
   deskStaff?: number
   /** Airport view keeps the terminal roof on. Hall view may cut it away. */

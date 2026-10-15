@@ -1,6 +1,8 @@
 # Stand sizes, surfaces, and attachments
 
-Status: design only. No gameplay code in this note. Trever, Oct 2026.
+Status: design, plus four attachments that now do what the card says. Trever, Oct 2026.
+
+The honesty pass is in the sim: extra jet-bridge doors, the apron light, the flag, and the fire bell. The paragraphs under those four names, and their rows in §5, are the behaviour the game ships. The rest of this note is still the design.
 
 Numbers in the audit are the ones in the tree on 15 Oct 2026. Numbers in the proposal are tunables for a later config file. They are not a retune of the live economy.
 
@@ -132,7 +134,7 @@ Ground power is a vehicle. `gpuMinutes` is 20 / 35 / 60 by size class, and the G
 
 De-ice is a pad stamp (`deice`, $11,500) plus the `deice` research (34 points, after night bank). It is a building, not a fitting on a stand.
 
-The fire station is a `fire` tile at $12,000. Airlines will not sign without one. The fire budget line multiplies by the station count, and a field with no station pays a skeleton rate (`budgetLineCost` in `src/game/economy.ts`). There is no scramble clock and no bell. ARFF categories exist as a data table (`src/arff/data.ts`) and are not an attachment.
+The fire station is a `fire` tile at $12,000. Airlines will not sign without one. The fire budget line multiplies by the station count, and a field with no station pays a skeleton rate (`budgetLineCost` in `src/game/economy.ts`). Scramble at the station is 45 sim seconds. A bought alarm bell makes that 36. The drive after the truck rolls is unchanged. ARFF categories exist as a data table (`src/arff/data.ts`) and are not an attachment.
 
 The building card (`src/buildinginfo/card.ts`, `src/ui/BuildingPanel.tsx`) opens on a placed building: name, status, one why line, then throughput, bays, queue, staff, upkeep, bottleneck. It has no upgrade row and no attachment row. In-place upgrades that do exist are the power plant (three tiers) and the prefab hall (`PREFAB_TIERS`). Hotels have three grades chosen at stamp time, which is the pattern we are moving stands away from.
 
@@ -240,13 +242,13 @@ Nothing here is a capacity upgrade you always want. Each one removes a vehicle, 
 
 | Id | Hosts | Cost | Upkeep / day | Gate | Effect |
 | --- | --- | ---: | ---: | --- | --- |
-| `jet_bridge` | Light and narrow, rung ≥ 1. Heavy, any rung. | $4,500 light, $5,000 narrow, $8,000 heavy | $30 / $45 / $70 | A hall within 8 cells. Heavy's second door needs reinforced or widebody slab. The third door needs the heavy slab. | Sets pax mode to `jetway`. Boarding clocks stay the ones already in `sim.ts`. Extra doors use `maxBridgeDoors` (1, or 2, or 3 on the A380). |
+| `jet_bridge` | Light and narrow, rung ≥ 1. Heavy, any rung. | $4,500 light, $5,000 narrow, $8,000 heavy | $30 / $45 / $70 | A hall within 8 cells. Heavy's second door needs reinforced or widebody slab. The third door needs the heavy slab. | The first door sets pax mode to `jetway` and keeps the boarding clocks already in `sim.ts`. A second or third door shortens the jetway board, deboard, and pax clocks by `1 / doors`, and only for doors the airframe can use (`maxBridgeDoors`: 1, or 2 on a large jet, or 3 on the A380). Logistics `stand.bridges` is the bought count, and a jetway with none listed uses 1, not the old size default. The mesh draws that many bridges. The card says "shorter boarding, up to the aircraft". |
 | `hydrant_pit` | Narrow rung 2. Heavy rung ≥ 1. Light rung 2 gets a cabinet, one hose. | $8,000, or $4,000 for the light cabinet | $40, or $20 on light | `hydrant_fuel`. A line from the farm, fuel ticket 6. A dispenser on the fleet. | This stand fuels at 2,500 L/min from the farm. No bowser. A heavy slab wants two pits; the second pit is a second buy. A stand with no pit still calls a bowser. |
 | `gpu_pca` | Any stand, rung ≥ 1, and not grass. | $4,500 | $25 | Substation built, or the power plant has spare capacity. | Drops the GPU truck request while the cable is live. `gpuMinutes` (20 / 35 / 60) is the time saved. PCA only bites when winter ops or a hot-day flag is on: it removes the weather dwell, and it does nothing on a mild day. |
-| `apron_light` | Any stand. | $2,200 | $12 | Field level 2. | A night turn on an unlit stand takes +20% on the board limit between dusk and dawn. The card says "Unlit". Lights remove that and nothing else. |
+| `apron_light` | Any stand. | $2,200 | $12 | Field level 2. | A night turn on an unlit stand takes +20% on the board limit between dusk and dawn. The card says "Unlit". Buying the light removes that. The mast and its light pool render only on a stand that bought the fitting. |
 | `deice_outlet` | Narrow and heavy, rung ≥ 1. | $6,500 | $20 | `deice` researched, and at least one de-ice pad on the field. | The truck sprays at this stand. The aircraft does not taxi to the pad. Glycol still comes off the pad's stock. A storm with no outlet and no free pad still holds. |
-| `flag` | Any stand. | $800 | $5 | — | Paint. If the hub lease on this stand is dedicated, the flag is that airline's mark and the existing dedication credit applies. A flag with no lease does not move standing. |
-| `alarm_bell` | Fire station. | $3,500 | $15 | Field level 2. | Scramble time × 0.8. |
+| `flag` | Any stand. | $800 | $5 | — | Paint. Cloth is `#1f4b7a` unless a dedicated gate lease names this stand, in which case the cloth is that airline's mark. The dedication credit is the lease. A flag does not move standing or reputation. The card says "paint, standing unchanged". |
+| `alarm_bell` | Fire station. | $3,500 | $15 | Field level 2. | Scramble time × 0.8 (45s to 36s). That share scales the drill line (65% crew funding, or 52% with the bell), the apron-fire fine, and the reputation hit. A drilled call with the bell returns 1 reputation. The drive is unchanged. The penalty line stays `Apron fire`. The bell mesh sits on the tower only when the fitting is bought. |
 
 ### Jet bridge
 
@@ -255,6 +257,8 @@ Today the bridge is decided when you stamp, at ×1.85. After this, the stamp is 
 Remote boarding stays the bus if a terminal-bus depot exists, and a walk if it does not. Both already exist. A bridge in the middle of the apron, with no hall, is the thing SimAirport players said would look wrong, so the range check stays.
 
 Removing a bridge refunds 40%, the same as a bulldoze, and the stand goes back to bus or walk on the next turn. An aircraft already on the bridge finishes the turn.
+
+The first door is the jetway clock the sim already uses. Door 2 and door 3, on a pad whose rung allows them, shorten that jetway clock by the number of doors the aircraft can actually use. A 737 on a three-bridge stand still boards through one door. The card says "shorter boarding, up to the aircraft". A second and third bridge mesh are drawn, on the aircraft and along the hall facade. A jetway with one bought bridge lists one logistics door, including on a heavy pad that used to assume two.
 
 ### Hydrant pit
 
@@ -272,7 +276,7 @@ PCA is the hose next to the cable, on the same buy, because the real turn hooks 
 
 ### Lighting
 
-There is no night-ramp penalty in the sim today. The lighting ticket adds one, and only between dusk and dawn, and only on stands without the lamp. Day operations do not change. Night bank remains the research that makes night freighters worth flying. The lamp is how a stand stops paying the dark tax.
+A night turn on a stand without the lamp takes 20% longer on the board limit, and the card says "Unlit". Day operations do not change. Buying the lamp removes that stretch and nothing else. The mast and the light pool are drawn only for a stand that bought the fitting. A stand that has not bought it stays dark, including the starter kit. Night bank remains the research that makes night freighters worth flying.
 
 ### De-ice outlet
 
@@ -280,11 +284,13 @@ The pad building stays the place fluid is stored and trucks are filled. The outl
 
 ### Flag
 
-Cosmetic on purpose. Hub progression already has the lease and the score. The flag is the mesh for a dedicated stand. It does not invent a second relationship bonus.
+Paint. The pole and cloth are drawn only after the buy. With no dedicated gate lease the cloth is the field colour `#1f4b7a`. When a hub lease on this stand is a dedicated gate, the cloth uses that airline's mark. The dedication credit still comes from the lease. The flag does not add a second relationship bonus, and it does not move standing or reputation. The card says "paint, standing unchanged".
 
 ### Fire bell
 
-Trever's example, and the first non-stand host. There is no response clock today, so the bell ticket adds one. Scramble is 45 sim seconds at the station, then the drive at the existing vehicle speed. The bell multiplies the 45 by 0.8 (36 seconds). It does not multiply the drive. Distance stays the bottleneck the layout chose. The bell is a socket on the roof, and the crew run to the bay socket that already exists for the ARFF truck. A second station does not need a bell to function. A station with no crew still does not roll, bell or not. Staffing stays the fire budget.
+Trever's example, and the first non-stand host. Scramble is 45 sim seconds at the station, then the drive at the existing vehicle speed. The bell multiplies the 45 by 0.8 (36 seconds). It does not multiply the drive. Distance stays the bottleneck the layout chose.
+
+The same share (`scramble / 45`) feeds the outcome. A station with crew funding at or above 65% of the budget drills the call and pays no fine. With the bell that line is 52%. Below the line the fine is `(5000 + (1 - firePct) * 12000) × share`, on the existing `penalties` line labelled `Apron fire`. The reputation hit is 8 below 30% funding and 4 otherwise, times the same share, and at least 1. A drilled call returns one reputation point for each nine seconds the bell saved, so the baseline scramble returns nothing and the bell returns 1. No new ledger line. The bell mesh is on the tower only when the fitting is bought. A second station does not need a bell to function. A station with no crew still does not roll, bell or not. Staffing stays the fire budget. How often a call happens stays the station count and the fire budget.
 
 ## 6. Generic attachment system
 
@@ -420,8 +426,8 @@ Bottlenecks stay choices:
 - A jetway with no hall in range is refused, with the distance.
 - A dry pit calls a bowser. The card says the pit is dry.
 - A dark cable calls a GPU truck. The card says the plant is short.
-- An unlit stand at night boards slower, and the card says unlit.
-- A fire crew still drives the distance. The bell only shortens the scramble.
+- An unlit stand at night boards slower, and the card says unlit. The mast is drawn only on a stand that bought the lamp.
+- A fire crew still drives the distance. The bell shortens the scramble, and that shorter clock scales the fine, the reputation hit, and how much crew funding counts as a drill.
 - No stand randomly fails, and no hidden quality roll slows a turn. Weather delays that do exist name the fitting that would cancel them.
 
 ## 11. Build tickets

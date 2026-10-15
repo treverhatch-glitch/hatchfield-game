@@ -153,8 +153,8 @@ export function addFuelFarm(g: THREE.Group) {
   mountSockets(g, FUEL_TILE_SOCKETS)
 }
 
-/** Two apparatus bays, a watch window, and a hose tower. */
-export function addFireStation(g: THREE.Group) {
+/** Two apparatus bays, a watch window, and a hose tower. A bought bell sits on the tower. */
+export function addFireStation(g: THREE.Group, opts?: { bell?: boolean }) {
   const span = CELL * 0.86
   const depth = CELL * 0.58
   const wallH = 2.45
@@ -189,6 +189,16 @@ export function addFireStation(g: THREE.Group) {
   const towerCap = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.12, 8), wall('fire_station', 'roof'))
   towerCap.position.set(span * 0.42, wallH + 1.4, -depth * 0.2)
   mountSign(g, 'FIRE', { w: span * 0.28, h: 0.28, x: 0, y: wallH - 0.15, z: frontZ + 0.08 }, '#3a1818', '#f6f1e4')
+  if (opts?.bell) {
+    const bell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 8, 6),
+      new THREE.MeshStandardMaterial({ color: '#d4a017', metalness: 0.55, roughness: 0.35 }),
+    )
+    bell.name = 'alarm-bell'
+    bell.position.set(span * 0.42, wallH + 1.72, -depth * 0.2)
+    bell.castShadow = true
+    g.add(bell)
+  }
   addParapet(g, span + 0.2, depth + 0.2, wallH + 0.16, -CELL * 0.04, trim)
   addVault(g, span * 0.92, depth * 0.88, wallH + 0.16, -CELL * 0.04, wall('fire_station', 'roof'), 0.38)
   g.add(body, roof, glass, tower, towerCap)

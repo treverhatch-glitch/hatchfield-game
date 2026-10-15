@@ -13,18 +13,22 @@ function mat(color: string): THREE.Material {
  * Jet bridges in aircraft space (nose +X, port +Z), scaled into the world.
  * Cab floor sits on the doorway sill from the pack door station.
  * The terminal agent should add this group only while the aircraft is parked at a jetway.
+ * `side` is +1 on the port doors and -1 when the terminal sits to starboard.
+ * `doors` limits how many stops are built. Omit it to draw every door the airframe has.
  */
-/** `side` is +1 on the port doors and -1 when the terminal sits to starboard. */
-export function createBridges(airframeId: string, side: 1 | -1 = 1): THREE.Group {
+export function createBridges(airframeId: string, side: 1 | -1 = 1, doors?: number): THREE.Group {
   const spec = getAircraftSpec(airframeId)
   const root = new THREE.Group()
   root.name = 'bridges'
   root.userData.side = side
+  const stops = bridgeStops(spec)
+  const shown = doors == null ? stops : stops.slice(0, Math.max(0, Math.floor(doors)))
+  root.userData.doors = doors ?? stops.length
   root.scale.setScalar(aircraftWorldPerMeter())
   const glass = mat('#7ec3e8')
   const shell = mat('#d5dde4')
   const steel = mat('#5c6b78')
-  for (const stop of bridgeStops(spec)) {
+  for (const stop of shown) {
     const skin = spec.rx + 0.2
     const cab = new THREE.Mesh(unitBox(), glass)
     cab.name = stop.upper ? 'bridge-upper' : 'bridge'

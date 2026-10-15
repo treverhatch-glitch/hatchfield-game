@@ -411,7 +411,7 @@ import {
   tankDef,
   tickFuel,
 } from '../scale/logic.ts'
-import { aliasSize, FITTINGS, fittingDef, fittingRefusal, footprintLetter, hostKey, jetBridgeCost, jetBridgeUpkeep, legacyFitting, migrateStand, parseHostKey, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, standAllows, upgradeLabel } from '../stands/index.ts'
+import { aliasSize, boardingDoorScale, FITTINGS, fittingDef, fittingRefusal, fireDrillLine, fireDrillStanding, fireFine, fireReputationHit, FLAG_CLOTH, footprintLetter, hostKey, jetBridgeCost, jetBridgeUpkeep, legacyFitting, migrateStand, parseHostKey, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, SCRAMBLE_BELL, scrambleNote, scrambleSeconds, standAllows, upgradeLabel, usableBridgeDoors } from '../stands/index.ts'
 import type { Fitting, FittingHost, FittingId, StandRung, StandSize } from '../stands/types.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
@@ -12439,9 +12439,10 @@ export class Game {
     const mode = this.paxMode(flight)
     const pace = this.rampPace(flight.airframeId, false, flight.airline)
     const end =
-      leg === 'deplane'
+      (leg === 'deplane'
         ? (mode === 'bridge' ? 3.2 : mode === 'bus' ? 4.5 : 6) * pace
-        : (mode === 'bridge' ? (flight.boardingSlow ? 5 : 3.2) : flight.boardingSlow ? 9 : 5) * pace
+        : (mode === 'bridge' ? (flight.boardingSlow ? 5 : 3.2) : flight.boardingSlow ? 9 : 5) * pace) *
+      this.boardDoorScale(flight)
     const gate = this.paxGate(flight)
     const bus = this.trucks.find((truck) => truck.kind === 'termbus' && truck.flightId === flight.id && !truck.returning)
     const riding = mode === 'bus' && !!bus && !(bus.dwell > 0) && !(bus.preDwell > 0)
@@ -13581,6 +13582,7 @@ export class Game {
         initialLitres: Math.min(cap, Math.max(0, this.tankLitres)),
         hydrantStands: liveHydrantStands(this.standPits, this.scaleFleet.hydrant_dispenser ?? 0),
         fixedPowerStands: powerKey ? powerKey.split('|') : [],
+        bridgeCounts: this.bridgeCounts(),
         strict: true,
       },
     )
@@ -20072,17 +20074,20 @@ export class Game {
     const stations = tilesOf(this.tiles, 'fire').length
     const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
     if (Math.random() > risk) return
-    if (firePct >= 0.65 && stations > 0) {
-      this.pushNews(`ARFF drilled a hot brake — scramble ${this.scrambleSec()}s, no damage.`, 'ok')
+    const scramble = this.scrambleSec()
+    if (stations > 0 && firePct >= fireDrillLine(scramble)) {
+      const standing = fireDrillStanding(scramble)
+      if (standing > 0) this.reputation = Math.min(100, this.reputation + standing)
+      const earned = standing > 0 ? ` Standing +${standing}.` : ''
+      this.pushNews(`ARFF drilled a hot brake — scramble ${scramble}s, no damage.${earned}`, 'ok')
       return
     }
-    const fine = Math.round(5000 + (1 - firePct) * 12000)
+    const fine = fireFine(firePct, scramble)
     this.charge(fine, 'penalties', this.simMinutes(), 'Apron fire')
-    this.reputation = Math.max(0, this.reputation - (firePct < 0.3 ? 8 : 4))
+    this.reputation = Math.max(0, this.reputation - fireReputationHit(firePct, scramble))
     if (this.public) {
       this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * (0.9 + firePct * 0.05)) * 100) / 100)
     }
-    const scramble = this.scrambleSec()
     this.pushNews(
       firePct < 0.25
         ? `APRON FIRE — skeleton ARFF. Scramble ${scramble}s. Fine ${moneyLeft(fine)}. Fund fire crews.`
@@ -20371,7 +20376,7 @@ export class Game {
       const section = this.hostFittingSection('fire', v)
       return this.attachVehicleQueue({
         ...base,
-        note: `Scramble ${this.scrambleSec()}s. Drive time unchanged.`,
+        note: scrambleNote(this.scrambleSec()),
         sections: section ? [section] : undefined,
       })
     }
@@ -20399,6 +20404,9 @@ export class Game {
         : HYDRANT_CARD.short
     const extra: string[] = []
     if (this.isNight() && !this.hasFitting(v, 'apron_light')) extra.push('Unlit')
+    const doors = this.boughtBridges(v)
+    if (doors >= 2) extra.push(`${doors} doors · shorter boarding, up to the aircraft`)
+    if (this.hasFitting(v, 'flag')) extra.push('Flag · paint, standing unchanged')
     if (this.weather !== 'clear' && !this.hasFitting(v, 'gpu_pca')) extra.push('Weather dwell')
     if (this.hasFitting(v, 'gpu_pca') && !this.cableLive(v)) extra.push('Plant is short. A GPU truck is coming.')
     return extra.length ? `${fuel} · ${extra.join(' · ')}` : fuel
@@ -22368,9 +22376,69 @@ export class Game {
   scrambleSec(): number {
     for (const [key, list] of Object.entries(this.fittings)) {
       const parsed = parseHostKey(key)
-      if (parsed?.host === 'fire' && list.some((item) => item.id === 'alarm_bell')) return Math.round(45 * 0.8)
+      if (parsed?.host === 'fire' && list.some((item) => item.id === 'alarm_bell')) return scrambleSeconds(true)
     }
-    return 45
+    return scrambleSeconds(false)
+  }
+
+  /** Jet bridges bought on this stand. The mesh and the boarding clock both read it. */
+  boughtBridges(stand: Vec | null): number {
+    if (!stand) return 0
+    return (this.fittings[hostKey('stand', stand.c, stand.r)] ?? []).filter((item) => item.id === 'jet_bridge').length
+  }
+
+  /** Doors this aircraft can use on this stand. One door keeps today's boarding clock. */
+  usableBridgeDoors(stand: Vec | null, airframeId: string): number {
+    const bought = this.boughtBridges(stand)
+    let max = 1
+    try {
+      max = needsFor(airframeId).maxBridgeDoors
+    } catch {
+      max = 1
+    }
+    return usableBridgeDoors(bought, max)
+  }
+
+  /** True when this stand bought the apron mast. Unbought stands stay dark. */
+  standLit(stand: Vec | null): boolean {
+    return this.hasFitting(stand, 'apron_light')
+  }
+
+  /**
+   * Cloth colour for a bought flag. A dedicated gate lease paints the airline.
+   * Anything else is the field cloth. Standing does not move.
+   */
+  standFlagColor(stand: Vec | null): string | null {
+    if (!this.hasFitting(stand, 'flag') || !stand) return null
+    for (const lease of this.liveHubLeases()) {
+      if (lease.kind !== 'gate') continue
+      const cell = leaseCell(lease.id)
+      if (!cell || cell.c !== stand.c || cell.r !== stand.r) continue
+      return this.airlineBrand(lease.airlineId).primary
+    }
+    return FLAG_CLOTH
+  }
+
+  hostHasFitting(host: FittingHost, v: Vec, id: FittingId): boolean {
+    return (this.fittings[hostKey(host, v.c, v.r)] ?? []).some((item) => item.id === id)
+  }
+
+  /** Jetway clocks shrink once a second door is bought and the aircraft can use it. */
+  private boardDoorScale(f: Flight): number {
+    if (!f.stand || this.standPaxMode(f.stand) !== 'jetway') return 1
+    return boardingDoorScale(this.usableBridgeDoors(f.stand, f.airframeId))
+  }
+
+  /** Bought bridges keyed by stand id, for the ground module's door count. */
+  private bridgeCounts(): Record<string, number> {
+    const out: Record<string, number> = {}
+    for (const [key, list] of Object.entries(this.fittings)) {
+      const parsed = parseHostKey(key)
+      if (parsed?.host !== 'stand') continue
+      const n = list.filter((item) => item.id === 'jet_bridge').length
+      if (n > 0) out[`${parsed.c},${parsed.r}`] = n
+    }
+    return out
   }
 
   /** Line MX for one bay. An office on that bay shortens the work. */
@@ -22417,7 +22485,7 @@ export class Game {
     let mult = 1
     if (f.stand && this.isNight() && !this.hasFitting(f.stand, 'apron_light')) mult *= 1.2
     if (f.stand && this.weather !== 'clear' && !this.hasFitting(f.stand, 'gpu_pca')) mult *= 1.15
-    return base * mult
+    return base * mult * this.boardDoorScale(f)
   }
 
   private asFittingId(id: string): FittingId | null {
@@ -22540,7 +22608,7 @@ export class Game {
       const priced = `$${price.toLocaleString('en-US')}`
       rows.push({
         id: `fitbuy:${key}:${id}`,
-        label: refusal ?? `${def.name} · ${def.socket} · ${priced}`,
+        label: refusal ?? this.fittingBuyLabel(id, ask.count, priced),
         disabled: refusal != null,
       })
       if (ask.count > 0) {
@@ -22552,6 +22620,18 @@ export class Game {
       }
     }
     return rows
+  }
+
+  /** Buy-row sentence. A refusal replaces this. The words are the effect. */
+  private fittingBuyLabel(id: FittingId, count: number, priced: string): string {
+    const def = fittingDef(id)
+    if (id === 'jet_bridge' && count >= 1) {
+      return `${def.name} · ${def.socket} · door ${count + 1}, shorter boarding, up to the aircraft · ${priced}`
+    }
+    if (id === 'flag') return `${def.name} · ${def.socket} · paint, standing unchanged · ${priced}`
+    if (id === 'apron_light') return `${def.name} · ${def.socket} · removes Unlit · ${priced}`
+    if (id === 'alarm_bell') return `${def.name} · ${def.socket} · scramble ×${SCRAMBLE_BELL} · ${priced}`
+    return `${def.name} · ${def.socket} · ${priced}`
   }
 
   private hostFittingSection(host: FittingHost, v: Vec): CardSection | null {
@@ -26765,7 +26845,7 @@ export class Game {
         const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         const deboardReady =
           f.cargo ||
-          (mode === 'jetway' && f.phaseTime > 3.2 * pace) ||
+          (mode === 'jetway' && f.phaseTime > 3.2 * pace * this.boardDoorScale(f)) ||
           (mode === 'bus' &&
             ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5 * pace) || f.phaseTime > 18 * pace)) ||
           (mode === 'walk' &&
@@ -26952,7 +27032,7 @@ export class Game {
         const boardLimit = this.boardCap(f)
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const minBoard =
-          (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace
+          (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace * this.boardDoorScale(f)
         const boardReady =
           f.waitingOn.paxIn <= 0 && bagsReady && f.phaseTime > minBoard
         if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {

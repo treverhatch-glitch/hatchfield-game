@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from '../game/sim.ts'
-import { fittingDef, hostKey } from './catalog.ts'
+import { fittingDef, hostKey, scrambleNote } from './catalog.ts'
 
 function field(): Game {
   const game = new Game()
@@ -23,7 +23,7 @@ describe('fire bell and hangar office', () => {
     expect(game.scrambleSec()).toBe(45)
     game.tool = 'pan'
     game.clickTile({ c: 19, r: 8 })
-    expect(game.buildingCard()?.note).toBe('Scramble 45s. Drive time unchanged.')
+    expect(game.buildingCard()?.note).toBe(scrambleNote(45))
     const row = game.buildingCard()?.sections?.find((section) => section.id === 'attachments')?.rows[0]
     expect(row?.label).toBe('Alarm bell needs Field level 2.')
     expect(row?.label).not.toContain('$')
@@ -32,7 +32,7 @@ describe('fire bell and hangar office', () => {
     expect(game.buyFitting(hostKey('fire', 19, 8), 'alarm_bell')).toBe(true)
     expect(game.cash).toBe(cash - fittingDef('alarm_bell').cost)
     expect(game.scrambleSec()).toBe(36)
-    expect(game.buildingCard()?.note).toBe('Scramble 36s. Drive time unchanged.')
+    expect(game.buildingCard()?.note).toBe(scrambleNote(36))
     const before = (game as unknown as { pillarUpkeepBill(): number }).pillarUpkeepBill()
     game.removeFitting(hostKey('fire', 19, 8), 'alarm_bell')
     const after = (game as unknown as { pillarUpkeepBill(): number }).pillarUpkeepBill()

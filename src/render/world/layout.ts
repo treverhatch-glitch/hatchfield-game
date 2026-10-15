@@ -192,6 +192,12 @@ export interface StandInfo {
   jetway: boolean
   /** Side the aircraft taxis in from (lead-in line starts there). */
   entry: Dir
+  /** Bought bridges. A jetway with none listed still draws one. */
+  bridges?: number
+  /** Apron mast is drawn only when this is true. */
+  lit?: boolean
+  /** Flag cloth. Missing means no pole. */
+  flagColor?: string
 }
 
 export function stands(view: WorldView): StandInfo[] {
@@ -224,6 +230,9 @@ export function stands(view: WorldView): StandInfo[] {
         scale: view.standScale?.[`${c},${r}`],
         jetway: view.standAccessAt?.({ c, r }) === 'jetway',
         entry,
+        bridges: view.boughtBridges?.({ c, r }) ?? 0,
+        lit: view.standLit?.({ c, r }) ?? false,
+        flagColor: view.standFlagColor?.({ c, r }) ?? undefined,
       })
     }
   }
@@ -297,7 +306,7 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
       const reach = Math.max(1.2, len - CELL * 0.28)
       cab = { x: root.x + (toStandX / len) * reach, z: root.z + (toStandZ / len) * reach }
     }
-    out.push({
+    const built: JetBridge = {
       stand: { c: s.c, r: s.r },
       terminal: best.cell,
       side: best.side,
@@ -306,9 +315,25 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
       cabY: (dock?.y ?? 3.2) * wu,
       cabH: Math.max(0.65, (dock?.h ?? 1.7) * wu),
       cabW: Math.max(0.55, (dock?.w ?? 1.55) * wu),
-    })
+    }
+    const copies = Math.max(1, s.bridges ?? 1)
+    for (let i = 0; i < copies; i++) out.push(fanBridge(built, i, copies))
   }
   return out
+}
+
+/** Slide extra doors along the facade so a second bridge is not the first one again. */
+function fanBridge(bridge: JetBridge, index: number, count: number): JetBridge {
+  if (count <= 1) return bridge
+  const v = DIR_VEC[bridge.side]
+  const tx = v.dc === 0 ? 1 : 0
+  const tz = v.dr === 0 ? 1 : 0
+  const shift = (index - (count - 1) / 2) * 3.6
+  return {
+    ...bridge,
+    root: { x: bridge.root.x + tx * shift, z: bridge.root.z + tz * shift },
+    cab: { x: bridge.cab.x + tx * shift, z: bridge.cab.z + tz * shift },
+  }
 }
 
 // ---------------------------------------------------------------- airfield lights
@@ -378,16 +403,37 @@ export interface Mast extends P2 {
   yaw: number
 }
 
-/** One flood mast per stand at the head corner, de-duplicated when stands sit side by side. */
+/** One flood mast per lit stand at the head corner, de-duplicated when stands sit side by side. */
 export function apronMasts(list: StandInfo[]): Mast[] {
   const out: Mast[] = []
   for (const s of list) {
+    if (!s.lit) continue
     const head = DIR_VEC[OPPOSITE[s.entry]]
     const side = head.dc === 0 ? { dc: 1, dr: 0 } : { dc: 0, dr: 1 }
     const x = cellX(s.c) + head.dc * CELL * 0.46 + side.dc * CELL * 0.46
     const z = cellZ(s.r) + head.dr * CELL * 0.46 + side.dr * CELL * 0.46
     if (out.some((m) => Math.hypot(m.x - x, m.z - z) < CELL * 0.9)) continue
     out.push({ x, z, yaw: Math.atan2(cellX(s.c) - x, cellZ(s.r) - z) })
+  }
+  return out
+}
+
+export interface FlagMark extends P2 {
+  color: string
+}
+
+/** A pole on the corner opposite the mast. Only a bought flag is in the list. */
+export function standFlags(list: StandInfo[]): FlagMark[] {
+  const out: FlagMark[] = []
+  for (const s of list) {
+    if (!s.flagColor) continue
+    const head = DIR_VEC[OPPOSITE[s.entry]]
+    const side = head.dc === 0 ? { dc: -1, dr: 0 } : { dc: 0, dr: -1 }
+    out.push({
+      x: cellX(s.c) + head.dc * CELL * 0.42 + side.dc * CELL * 0.42,
+      z: cellZ(s.r) + head.dr * CELL * 0.42 + side.dr * CELL * 0.42,
+      color: s.flagColor,
+    })
   }
   return out
 }

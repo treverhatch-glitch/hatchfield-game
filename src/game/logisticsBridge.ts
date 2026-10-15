@@ -32,6 +32,8 @@ export interface LogisticsBuildOptions {
   hydrantStands?: readonly string[]
   /** Stand ids whose fixed ground-power cable is live. */
   fixedPowerStands?: readonly string[]
+  /** Bought jet bridges per stand id. A bridge stand with none listed uses one door. */
+  bridgeCounts?: Readonly<Record<string, number>>
   /** Big jets refuse trucks below their tier. */
   strict?: boolean
 }
@@ -149,7 +151,15 @@ export function buildLogisticsConfig(
       const listed = options.hydrantStands ?? []
       const hydrant = Boolean(options.hydrant) || listed.includes(id)
       const fixedPower = (options.fixedPowerStands ?? []).includes(id)
-      return { id, node: id, hydrant, access, fixedPower }
+      const bought = options.bridgeCounts?.[id] ?? 0
+      return {
+        id,
+        node: id,
+        hydrant,
+        access,
+        fixedPower,
+        ...(access === 'bridge' ? { bridges: Math.max(1, bought) } : {}),
+      }
     })
 
   const vehicles: Partial<Record<VehicleType, number>> = {}

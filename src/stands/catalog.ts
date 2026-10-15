@@ -211,6 +211,64 @@ export function bridgeCap(size: StandSize, rung: StandRung): number {
   return 1
 }
 
+/** Seconds at the bay before the truck rolls. A bell multiplies this. The drive does not. */
+export const SCRAMBLE_SEC = 45
+export const SCRAMBLE_BELL = 0.8
+/** Crew funding at which a baseline scramble drills the call instead of fining it. */
+export const FIRE_DRILL_AT = 0.65
+/** One standing point for each nine seconds the bell saves on a drilled call. */
+export const DRILL_STANDING_SEC = 9
+/** Cloth on a flag with no dedicated gate lease. */
+export const FLAG_CLOTH = '#1f4b7a'
+
+export function scrambleSeconds(hasBell: boolean): number {
+  return Math.round(SCRAMBLE_SEC * (hasBell ? SCRAMBLE_BELL : 1))
+}
+
+/** 1 at the baseline scramble. The bell is 0.8. Fines, standing, and the drill line use it. */
+export function fireScrambleShare(scrambleSec: number): number {
+  if (!(scrambleSec > 0)) return 1
+  return scrambleSec / SCRAMBLE_SEC
+}
+
+export function fireDrillLine(scrambleSec: number): number {
+  return FIRE_DRILL_AT * fireScrambleShare(scrambleSec)
+}
+
+export function fireFine(firePct: number, scrambleSec: number): number {
+  return Math.round((5000 + (1 - firePct) * 12000) * fireScrambleShare(scrambleSec))
+}
+
+export function fireReputationHit(firePct: number, scrambleSec: number): number {
+  const base = firePct < 0.3 ? 8 : 4
+  return Math.max(1, Math.round(base * fireScrambleShare(scrambleSec)))
+}
+
+/** Standing a drilled call returns. Zero at the baseline scramble. */
+export function fireDrillStanding(scrambleSec: number): number {
+  return Math.max(0, Math.round((SCRAMBLE_SEC - scrambleSec) / DRILL_STANDING_SEC))
+}
+
+/** Card sentence. The numbers are the ones tickFireRisk applies. */
+export function scrambleNote(scrambleSec: number): string {
+  const share = fireScrambleShare(scrambleSec)
+  const line = Math.round(fireDrillLine(scrambleSec) * 100)
+  const fines = share === 1 ? 'Fines use the full clock.' : `Fines ×${share.toFixed(1)}.`
+  return `Scramble ${scrambleSec}s. Drive time unchanged. ${fines} Drills from ${line}% crew funding.`
+}
+
+/** Doors this aircraft can use. One door keeps the boarding clocks already in the sim. */
+export function usableBridgeDoors(bought: number, maxBridgeDoors: number): number {
+  if (bought <= 0) return 1
+  const cap = Math.max(1, maxBridgeDoors)
+  return Math.max(1, Math.min(bought, cap))
+}
+
+/** Extra doors split the jetway clock. One door is the clock the sim already uses. */
+export function boardingDoorScale(doors: number): number {
+  return doors > 1 ? 1 / doors : 1
+}
+
 export function hostKey(host: FittingHost, c: number, r: number): string {
   return `${host}:${c},${r}`
 }
