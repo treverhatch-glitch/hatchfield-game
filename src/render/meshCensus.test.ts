@@ -12,7 +12,8 @@ function stubRenderer(): RendererLike {
   }
 }
 
-describe('apron mesh census', () => {
+// Same world init as render.test.ts: near the 5 s default on this VM with full exterior meshes.
+describe('apron mesh census', { timeout: 20_000 }, () => {
   it('lists the most repeated individual meshes on the starter field', () => {
     const scene = new THREE.Scene()
     const sun = new THREE.DirectionalLight()

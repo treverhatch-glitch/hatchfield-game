@@ -75,7 +75,9 @@ function camAt(x: number, z: number, dist: number) {
   return cam
 }
 
-describe('initWorldRender', () => {
+// Full exterior meshes put each world init near 5 s alone on this VM, the default cap.
+// The assertions are about lighting and walkers, not build time.
+describe('initWorldRender', { timeout: 20_000 }, () => {
   it('builds the starter airfield and adopts legacy lights', () => {
     const { scene, sun, earth } = legacyScene()
     const renderer = stubRenderer()
