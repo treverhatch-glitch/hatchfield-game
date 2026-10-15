@@ -13430,18 +13430,21 @@ export class Game {
   /** Bag-loaded: the outbound cart has finished its dock at belt_low. */
   private outboundCartClear(flightId: string): boolean {
     if (!this.cartPosted.has(`out:${flightId}`)) return true
-    return this.cartYard.finishedAt(flightId, 'belt_low')
+    return this.cartYard.finishedAt(flightId, 'belt_low') || !this.cartYard.isOpen(flightId)
   }
 
   /** Bag-delivered: the inbound cart has finished its dock at claim_stop. */
   private inboundCartClear(flightId: string): boolean {
     if (!this.cartPosted.has(`in:${flightId}`)) return true
-    return this.cartYard.finishedAt(`in:${flightId}`, 'claim_stop')
+    return this.cartYard.finishedAt(`in:${flightId}`, 'claim_stop') || !this.cartYard.isOpen(`in:${flightId}`)
   }
 
   /** Catering-done: the hi-lift has finished its dock at catering_door. */
   private cateringCartClear(flightId: string): boolean {
-    if (this.cartPosted.has(`cat:${flightId}`)) return this.cartYard.finishedAt(`cat:${flightId}`, 'catering_door')
+    if (this.cartPosted.has(`cat:${flightId}`)) {
+      const id = `cat:${flightId}`
+      return this.cartYard.finishedAt(id, 'catering_door') || !this.cartYard.isOpen(id)
+    }
     const galley = this.catering?.engine.galley(flightId)
     if (!galley || galley.cartsRequired <= 0) return true
     const flight = this.flights.find((f) => f.id === flightId)

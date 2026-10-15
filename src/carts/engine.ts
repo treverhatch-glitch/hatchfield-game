@@ -175,6 +175,11 @@ export class CartYard {
     return this.arrived.get(shipmentId)?.has(socket) ?? false
   }
 
+  /** True while the shipment is on the yard. A dropped shipment is gone for good. */
+  isOpen(shipmentId: string): boolean {
+    return this.shipments.some((shipment) => shipment.id === shipmentId)
+  }
+
   /** Shipments still on the yard, including one that finished and is waiting for retireDone. */
   openIds(): string[] {
     return this.shipments.map((shipment) => shipment.id)
@@ -386,6 +391,7 @@ export class CartYard {
   }
 
   private dispatch(): void {
+    const stranded: string[] = []
     for (const shipment of this.shipments) {
       if (shipment.done) continue
       const legs = this.legsOf(shipment.kind)
@@ -400,7 +406,11 @@ export class CartYard {
       const vehicle = this.vehicles.find((row) => row.kind === kind && row.phase === 'idle')
       if (!vehicle || cap <= 0) continue
       const trip = this.makeTrip(shipment, legs[shipment.stage], Math.min(room, cap))
-      if (!trip) continue
+      if (!trip) {
+        // A socket this leg needs was bulldozed. Nothing is in flight, so no cart can ever finish it.
+        if (shipment.reserved <= 0) stranded.push(shipment.id)
+        continue
+      }
       shipment.reserved += trip.units
       vehicle.trip = trip
       vehicle.aim = 'from'
@@ -413,6 +423,7 @@ export class CartYard {
       const dy = goal.y - vehicle.y
       if (Math.hypot(dx, dy) > 0.05) vehicle.heading = Math.atan2(dy, dx)
     }
+    for (const id of stranded) this.dropUndone(id)
   }
 
   private makeTrip(shipment: Shipment, leg: CartLeg, units: number): Trip | null {
