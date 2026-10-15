@@ -20,6 +20,7 @@ export function blankLayout(w: number, h: number): BuildLayout {
     rooms: [],
     equipment: [],
     verticals: [],
+    slabs: [],
   }
 }
 
@@ -33,6 +34,7 @@ function clone(l: BuildLayout): BuildLayout {
     rooms: l.rooms.slice(),
     equipment: l.equipment.slice(),
     verticals: l.verticals?.slice(),
+    slabs: l.slabs?.map((s) => ({ ...s, tiles: s.tiles.map((row) => row.slice()), zones: s.zones.map((row) => row.slice()), paint: s.paint?.map((row) => row.slice()) })),
     floorPaint: l.floorPaint?.map((row) => row.slice()),
   }
 }

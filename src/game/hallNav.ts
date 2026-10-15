@@ -14,6 +14,7 @@
  * boarding still come from the sim's own hall model.
  */
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
+import { STARTER_STORIES } from '../terminalbuild/floors.ts'
 import { applyInterior } from '../terminalbuild/interior.ts'
 import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, InteriorEdit, Room, Tile } from '../terminalbuild/types.ts'
 import {
@@ -299,7 +300,7 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   return {
     w,
     h,
-    stories: 1,
+    stories: STARTER_STORIES,
     floor,
     zones: zoneGrid,
     walls,
@@ -307,6 +308,7 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
     rooms,
     equipment,
     verticals: [],
+    slabs: [],
   }
 }
 

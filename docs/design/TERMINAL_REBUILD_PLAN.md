@@ -1,7 +1,7 @@
 # Terminal interior rebuild plan
 
 Status: plan, with owner and producer decisions D1–D6 recorded below. WP1 (hall picture gutted, one metre scale) is the first code package and has landed.
-Owner decision being executed: Trever, Oct 15, 8:06 PM. Gut the terminal interior and rebuild it with one scale, real flows and two stories.
+Owner decision being executed: Trever, Oct 15, 8:42 PM. Gut the terminal interior and rebuild it with one scale and real flows. The starter is 1 story, with arrivals and departures apart on that floor. The 2-story upgrade is WP6.
 Playtest items covered: 3, 5, 33, 34, 35, 36, 37, 38 and 46 from the Oct 15 list. Item 39 (pause) is covered too, because a requirement below depends on it.
 Based on `main` at `68fde433`, with the audit folded in. PR [#119](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/119) (bag-drop kiosk, claim carousel and passport booth plates) is part of that base. Its props are kept assets at real metres (sections 2 and 4.4). Passport control is for international arrivals only (section 4.3).
 
@@ -15,7 +15,7 @@ Related: [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) (floor-ready schema), [TERMI
 
 | # | Decision | Recommendation | What it changes |
 | --- | --- | --- | --- |
-| D1 | **Starter story count.** Option S1: a 1-story starter that already separates arrivals from departures, with a 2-story upgrade in mid-game. Option S2: the starter ships 2-story. | **S1, then the S2 upgrade.** | One data file and one config value (`STARTER_TERMINAL`). The code is the same either way: every work package builds two-floor support. |
+| D1 | **Starter story count.** Option S1: a 1-story starter that already separates arrivals from departures, with a 2-story upgrade later. Option S2: the starter ships 2-story. | **S1. The 2-story upgrade is WP6.** | `STARTER_TERMINAL` is `split1f`. The data model holds a floor index and an upper slab from the start. `ENABLED_STORIES` stays 1 until WP6. |
 | D2 | **Starter footprint.** It goes from the 3×3 apron stamp (66×66 m) to 4×2 cells (88×44 m), with the long side facing the apron. | Approve. | Two code-C contact stands need about 40 m each of facade. 66 m fits only one and a half. The starter stamp's stands and roads shift. This touches Batch D's road work. WP2 makes the change. |
 | D3 | **Old saves.** The terminal interior is rebuilt on load. Player-bought fittings are refunded at purchase price, with a phone note. | Approve. | Without it, saves from before the rebuild need a fresh start. |
 | D4 | **Walkers become the truth.** The passengers you see decide boarding, missed flights and mood. The sim's hidden hall model (`tickHall`, which boards by setting `dead` with no gate-desk queue, audit §4) is retired. | Approve. The audit reaches the same conclusion: one stop list, not a second graph. | This fixes "placed fittings don't work" at the root. Balance moves, so the 30-day and 150-day soaks are the check. |
@@ -28,7 +28,7 @@ The producer decided D2 through D6. The owner picked S1 for D1 when WP1 restarte
 
 | # | Status | What later packages own |
 | --- | --- | --- |
-| D1 | Approved: S1. The starter is 1 story and keeps arrivals apart from departures on one level. S2 is the mid-game upgrade. | WP2 writes `split1f` as the starter and `stacked2f` as the upgrade. WP1 draws the existing 1-story hall at real metres and adds no story code. |
+| D1 | Approved: S1. The starter is 1 story and keeps arrivals apart from departures on that one floor. The 2-story upgrade (departures up, arrivals down) is WP6, not the starter and not WP2. The layout is floor-ready now: every piece has a floor, and `slabs` can hold floor 1. A 1-story hall refuses that slab until `stories` is 2. Walkers stay on floor 0 while `ENABLED_STORIES` is 1. | WP2 stamps `split1f` on this model. WP6 writes `stacked2f`, raises `ENABLED_STORIES`, and sells the upgrade. |
 | D2 | Approved. Starter footprint is 4×2 cells (88×44 m). | WP2 moves the stamp. WP1 stays on the existing 8×5 walk (48×32 m) and does not move the apron stamp. |
 | D3 | Approved. Old saves rebuild their interiors and refund player-bought fittings at purchase price. | WP2, save schema 5→6. Not in WP1. |
 | D4 | Approved. Walking passengers are the authority. | WP3 retires `tickHall` boarding. Not in WP1. |
@@ -41,8 +41,8 @@ Why S1 is recommended over a 2-story starter:
 - A terminal capped at 46 passengers is single-storey in real life. Real regional terminals of about 4,000 m² keep arrivals and departures apart on one level, using a sterile claim hall and a one-way exit. S1 does the same, so arrivals still never pass security.
 - The first hour is easier to read with no floor switching. The camera, the build bar and the inspector all work on one plane.
 - Going 2-story becomes a visible mid-game milestone, which matches the existing "multi-story is a mid-game upgrade" decision.
-- Risk: escalators, stairs and lift queues stay off the critical path of the first flight. They still ship and get tested in WP2. They are first played at the upgrade.
-- Switching to S2 later costs only the starter data file (`stacked2f.ts`), its price, and one line in `STARTER_TERMINAL`.
+- Risk: escalators, stairs and lift queues stay off the critical path of the first flight. They ship and get tested in WP6, which is the first time a player can buy the upper floor.
+- The starter id stays `split1f`. WP6 adds `stacked2f` as the upgrade, not as a replacement starter.
 
 ---
 
@@ -156,7 +156,7 @@ interface BuildLayout {
 }
 ```
 
-`floor` stays on every piece, as [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) already specifies. `ENABLED_STORIES` becomes 2. `STARTER_STORIES` comes from `STARTER_TERMINAL`.
+`floor` stays on every piece, as [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) already specifies. The ground slab is `layout.floor` / `zones` / `floorPaint`. Upper slabs are `layout.slabs` (index 1 and up). That field is on the model now, empty on a 1-story hall. `ENABLED_STORIES` stays 1 until WP6. `STARTER_STORIES` is 1 and `STARTER_TERMINAL` is `split1f`.
 
 ### 4.2 Zones and sides
 
@@ -515,10 +515,10 @@ These run in order, one cloud agent each, on Cursor's default models. The order 
 - **Does:**
   - Add the data model from section 4: 1 m tiles, floors, sides, door kinds, fittings with sockets and empty sockets (the growth slots), belts and ports, and the stage list as data.
   - Build the fitting catalog on `ItemDef` / `KIT_ITEMS` plus the `FOOTPRINTS` numbers. The catalog adds only geometry, side, stage, prop and inspector fields; prices are not forked. The bag drop, carousel and passport booth footprints are measured from the PR #119 builders (section 4.4). `passport_booth` is allowed only in the `claim` and `arrivals` zones (side `sterile_arr`). Its `KIT_ITEMS` entry already lists only `arrivals`, and the catalog adds `claim`.
-  - Write the `split1f` and `stacked2f` data files.
+  - Write the `split1f` starter on the floor-ready model. Do not stamp a second storey. `stacked2f` waits for WP6.
   - Replace `SCHEME_I` / `zoneFor` / `prefabNavLayout` as the nav input. `commitHallItem` writes fittings onto the layout, and the WP1 kit renderer reads layout fittings.
   - Save schema 5 to 6 migration (section 9). Move the starter stamp to 4×2 cells.
-- **Files (new):** `src/terminalbuild/scale.ts`, `fittings.ts`, `stages.ts`, `sockets.ts`, `migrate.ts`, `starter/split1f.ts`, `starter/stacked2f.ts`, `scripts/terminal-layout-dump.mts`. Tests: `scale.test.ts`, `fittings.test.ts`, `starter.test.ts`, `validate.test.ts` additions, `sockets.test.ts`, `migrate.test.ts`, plus fixtures in `src/features/save/fixtures/`.
+- **Files (new):** `src/terminalbuild/scale.ts`, `fittings.ts`, `stages.ts`, `sockets.ts`, `migrate.ts`, `starter/split1f.ts`, `scripts/terminal-layout-dump.mts`. Tests: `scale.test.ts`, `fittings.test.ts`, `starter.test.ts`, `validate.test.ts` additions, `sockets.test.ts`, `migrate.test.ts`, plus fixtures in `src/features/save/fixtures/`. `starter/stacked2f.ts` is WP6.
 - **Files (edit):** `src/terminalbuild/types.ts`, `config.ts` (per-m² prices, `STARTER_TERMINAL`), `floors.ts`, `validate.ts`, `index.ts`; `src/game/hallNav.ts`, `hallNavData.ts`, `types.ts` (`TerminalFit.layout`), `sim.ts` (`decorateFit`, `buildStarterKit`, `commitHallItem`); `src/game/starterLayout.ts` (4×2 stamp); `src/features/save/schema.ts`; `src/render/hallKitMeshes.ts` and `hallKitDetail.ts` (read fittings).
 - **Done when:** security is one room, both lanes sit in it, and the entrance queue reaches them. The dump script prints the section 5 grids. Old saves load and run 1 day.
 - **Gate:** `npm run gate`, and the 30-day soak completes at least as many flights as `main`.
@@ -571,7 +571,7 @@ These run in order, one cloud agent each, on Cursor's default models. The order 
 
 ### WP6: Two floors, stand-access meshes and the acceptance pass (audit run 7, plus the 2-story ask)
 
-- **Depends on:** WP5 and D1. If D1 picks a 2-story starter, run this WP's nav and vertical half before WP4 instead, as WP3b.
+- **Depends on:** WP5 and D1. D1 is S1, so this package is the first time a hall grows a second storey. Do not run it before WP4.
 - **Does:**
   - Multi-floor nav (section 6): per-floor grids, `ARR` and `STAFF` bits, links, Dial flow fields, `step_free` agents, the lift as a service point.
   - Stairs, escalator and lift fittings and editor tools, enabled when `stories === 2`.

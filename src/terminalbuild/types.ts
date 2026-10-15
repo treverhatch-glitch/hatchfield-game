@@ -76,6 +76,20 @@ export interface Equip {
   floor?: number
 }
 
+/**
+ * One storey of tiles. The ground storey is `BuildLayout.floor` / `zones` /
+ * `floorPaint` (index 0). Upper storeys live in `BuildLayout.slabs`.
+ * Storing a slab does not walk it: `ENABLED_STORIES` stays 1 until WP6.
+ */
+export interface FloorSlab {
+  index: number
+  /** Metres above the ground slab. Ground is 0. The next storey is 5 m up. */
+  elevationM: number
+  tiles: boolean[][]
+  zones: (BuildZone | null)[][]
+  paint?: (string | null)[][]
+}
+
 /** A tile that joins two stories. Not offered in the editor while only floor 0 is enabled. */
 export type VerticalKind = 'stairs' | 'escalator' | 'lift'
 
@@ -94,11 +108,11 @@ export interface BuildLayout {
   h: number
   /**
    * How many stories this layout is allowed to hold.
-   * Shipped halls are 1. Floor 1 (departures up, arrivals down) is a later upgrade.
-   * Omitted means 1.
+   * The starter is 1: arrivals and departures stay apart on the ground slab.
+   * WP6 raises this to 2 (departures up, arrivals down). Omitted means 1.
    */
   stories?: number
-  /** Ground-floor slab. Upper stories are not stored here while only floor 0 ships. */
+  /** Ground-floor slab. This is storey 0. It is not shared with an upper slab. */
   floor: boolean[][]
   zones: (BuildZone | null)[][]
   walls: Edge[]
@@ -107,6 +121,12 @@ export interface BuildLayout {
   equipment: Equip[]
   /** Stairs, escalators, and lifts. Empty on a 1-story hall. */
   verticals?: Vertical[]
+  /**
+   * Storeys above the ground slab, keyed by `index` (1 and up).
+   * A 1-story hall leaves this empty. The field is on the model from the start
+   * so WP6 can fill floor 1 without a save migration of walls and furniture.
+   */
+  slabs?: FloorSlab[]
   /**
    * Floor paint per tile, same shape as `floor`. Omitted means the hall terrazzo.
    * Ids are the Gemini interior plates (see FLOOR_PAINTS).

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { blankLayout, placeDoor, placeEquipment, placeRoom, placeWall } from './layout.ts'
 import { edgeBetween, edgeKey, edgeTiles, tileKey } from './grid.ts'
-import { ENABLED_STORIES, STARTER_STORIES, floorLinks, floorOf, storyEnabled } from './floors.ts'
+import { ENABLED_STORIES, STARTER_STORIES, STARTER_TERMINAL, attachSlab, emptySlab, floorLinks, floorOf, layoutSlabs, storyEnabled } from './floors.ts'
 import type { BuildLayout } from './types.ts'
 
 describe('interior floors', () => {
@@ -45,5 +45,25 @@ describe('interior floors', () => {
     }
     expect(floorLinks(l)).toEqual([])
     expect(floorLinks(l, 2)).toEqual([{ kind: 'stairs', x: 0, y: 0, fromFloor: 0, toFloor: 1 }])
+  })
+
+  it('stores an upper slab only when the hall is allowed a second story, and still does not walk it', () => {
+    const ground = blankLayout(3, 2)
+    ground.floor[0][0] = true
+    expect(STARTER_TERMINAL).toBe('split1f')
+    expect(ground.stories).toBe(1)
+    expect(ground.slabs).toEqual([])
+    expect(attachSlab(ground, emptySlab(1, 3, 2)).error).toBe('This hall has no story there yet.')
+    expect(ground.floor[0][0]).toBe(true)
+
+    const ready = attachSlab({ ...ground, stories: 2 }, emptySlab(1, 3, 2))
+    expect(ready.error).toBeUndefined()
+    const slabs = layoutSlabs(ready.layout)
+    expect(slabs.map((s) => s.index)).toEqual([0, 1])
+    expect(slabs[0]?.tiles[0][0]).toBe(true)
+    expect(slabs[1]?.elevationM).toBe(5)
+    expect(slabs[1]?.tiles[0][0]).toBe(false)
+    expect(floorLinks(ready.layout)).toEqual([])
+    expect(storyEnabled(1)).toBe(false)
   })
 })

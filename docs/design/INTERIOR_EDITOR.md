@@ -1,14 +1,14 @@
 # Interior editor — floor-ready schema
 
-Status: schema only. Floor 0 is the only story the game walks. No upper-floor gameplay, no stair tool, no second slab.
+Status: schema only. The starter is one story, with arrivals and departures apart on that floor. Floor 0 is the only story the game walks. No upper-floor gameplay and no stair tool. An upper slab can be stored; WP6 is what turns it on.
 
-The live editor is `BuildLayout` in `src/terminalbuild`. The advisor reference is `TerminalPlan` in `src/terminaladvisor`. Both already name a story on every piece that will need one when floor 1 arrives.
+The live editor is `BuildLayout` in `src/terminalbuild`. The advisor reference is `TerminalPlan` in `src/terminaladvisor`. Both already name a story on every piece. `layout.slabs` holds storeys above the ground slab.
 
 ## What ships today
 
 - `ENABLED_STORIES` is 1 (`src/terminalbuild/floors.ts`). A piece on floor 1 can be stored. The nav graph does not walk it.
-- `STARTER_STORIES` is 1. `blankLayout` and the prefab hall (`prefabNavLayout`) set `stories: 1` and `verticals: []`. The starter terminal stays one story.
-- Floor 1 is reserved for a later mid-game upgrade: departures up, arrivals down. Raising `ENABLED_STORIES` is the switch. Do not build that upgrade in this pass.
+- `STARTER_STORIES` is 1 and `STARTER_TERMINAL` is `split1f`. `blankLayout` and the prefab hall (`prefabNavLayout`) set `stories: 1`, `verticals: []` and `slabs: []`. The starter keeps arrivals and departures apart on the ground floor.
+- Floor 1 is the WP6 upgrade: departures up, arrivals down. Raising `stories` to 2 lets `attachSlab` store it. Raising `ENABLED_STORIES` is what walkers follow. Do not build that upgrade in this pass.
 
 ## Live layout (`BuildLayout`)
 
@@ -36,7 +36,7 @@ Room overlap and furniture collision are per story. A desk on floor 0 does not b
 
 ## Slab
 
-`layout.floor` and `layout.zones` are the ground slab only. Upper stories are not stored in those arrays while only floor 0 ships. A floor-1 upgrade adds a slab (and a zone grid) per story. It does not have to migrate walls, doors, rooms, or furniture: those already carry the index.
+`layout.floor` and `layout.zones` are the ground slab only. Upper stories are `layout.slabs`, one `FloorSlab` per index, not extra rows in the ground arrays. A 1-story hall leaves `slabs` empty. WP6 adds the floor-1 slab. Walls, doors, rooms, and furniture already carry the index, so that upgrade does not migrate them.
 
 ## Nav graph
 
