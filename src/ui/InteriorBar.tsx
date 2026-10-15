@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Game } from '../game/sim'
 import type { HallBuildMode } from '../render/hallWorld'
 import { StampIcon } from './nav/stampIcons.tsx'
+import { useHudBandVar } from './hudBand.ts'
 import { EQUIP_SPEC, FLOOR_PAINTS, ROOM_SPEC, WALL_PAINTS } from '../terminalbuild/config.ts'
 import type { RoomKind } from '../terminalbuild/types.ts'
 
@@ -18,6 +19,8 @@ export function InteriorBar({
   setBuild: (mode: HallBuildMode) => void
 }) {
   const [open, setOpen] = useState<'floor' | 'wall' | 'room' | null>(null)
+  const bar = useRef<HTMLDivElement>(null)
+  useHudBandVar(bar, '--hud-interior-bottom', 'bottom')
   const fit = game.activeHall()
   const rooms = fit?.interior?.rooms ?? []
   const selected = build?.kind === 'room' ? rooms.find((r) => r.id === build.selected) : undefined
@@ -32,7 +35,7 @@ export function InteriorBar({
     setBuild(same ? null : mode)
   }
   return (
-    <div className="interior-bar" data-testid="interior-bar" data-hud-panel="interior">
+    <div ref={bar} className="interior-bar" data-testid="interior-bar" data-hud-panel="interior">
       <div className="kit-tabs">
         <button type="button" data-testid="interior-foundation" className={build?.kind === 'foundation' ? 'on' : ''} onClick={() => tool({ kind: 'foundation' })}>
           <StampIcon id="foundation" /> Foundation

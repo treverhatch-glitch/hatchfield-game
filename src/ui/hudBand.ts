@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 
-/** CSS variables on <html> that describe the top band (see :root in index.css). */
-export type HudBandVar = '--hud-bar-bottom' | '--hud-strip-h'
+/** CSS variables on <html> that describe the top band (see :root in index.css) and the hall build menu. */
+export type HudBandVar = '--hud-bar-bottom' | '--hud-strip-h' | '--hud-interior-bottom'
 
 /**
  * Keep a top-band CSS variable in step with an element. `edge` 'bottom' writes the

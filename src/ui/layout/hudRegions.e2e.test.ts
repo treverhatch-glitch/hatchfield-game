@@ -38,7 +38,9 @@ const PANELS: Record<string, string> = {
   'hall-sheet': '[data-testid="hall-build"]',
   'guest-card': '.guest-card',
   debug: '[data-testid="debug-hud"]',
+  'playtest-year': '[data-testid="playtest-year-report"]',
   toasts: '.feedback-toasts',
+  banner: '[data-testid="celebration-banner"]',
 }
 
 type HatchProbe = {
@@ -120,10 +122,26 @@ describe('HUD regions in the browser', () => {
 
           // Terminal: the build menu is centred and clear of the dock and the top band.
           await page.getByTestId('view-terminal').click()
-          await page.getByTestId('interior-bar').waitFor({ state: 'visible' })
+          // Building the hall scene takes tens of seconds under SwiftShader while the rest of the suite runs.
+          await page.getByTestId('interior-bar').waitFor({ state: 'visible', timeout: 120_000 })
           const boxes = await expectApart(page, `${at} terminal`)
           const menu = boxes.find((item) => item.id === 'interior')!
           expect(Math.abs(menu.x + menu.w / 2 - viewport.width / 2), `interior bar centre at ${at}`).toBeLessThan(4)
+
+          // Notices raised in the hall (a toast and a signing banner) sit under the build menu.
+          await page.evaluate(() => {
+            const layer = document.querySelector('[data-testid="feedback-layer"]')!
+            const toasts = document.createElement('div')
+            toasts.className = 'feedback-toasts layout-probe'
+            toasts.innerHTML = '<div class="feedback-toast">Probe toast · +$1,200</div>'
+            const banner = document.createElement('div')
+            banner.className = 'feedback-banner layout-probe'
+            banner.dataset.testid = 'celebration-banner'
+            banner.innerHTML = '<strong>Contract signed</strong><p>Probe Air joins the field.</p>'
+            layer.append(toasts, banner)
+          })
+          await expectApart(page, `${at} terminal + notices`)
+          await page.evaluate(() => document.querySelectorAll('.layout-probe').forEach((el) => el.remove()))
           await page.close()
         }
       } finally {
