@@ -33,4 +33,4 @@ opaque. Nose is on the left of `fuselage.jpg` and the crown is the top.
 `tail.jpg` has the leading edge on the left and the tip at the top. A word
 reads on the port side and is mirrored on the starboard side.
 
-Long side of a high plate is at most 1280 px. Med is 640, low is 320.
+High plates keep the crop's own pixels, up to 4096 on the long side. Med is 640, low is 320. Those two folders are the only downscale.

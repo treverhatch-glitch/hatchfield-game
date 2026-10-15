@@ -26,7 +26,9 @@ ROSTER = ROOT / 'src' / 'airlines' / 'roster.ts'
 DATA = ROOT / 'src' / 'airlines' / 'data.ts'
 
 # Keep in step with src/render/aircraft/liveryFiles.ts
-LONG_SIDE = {'low': 320, 'med': 640, 'high': 1280}
+# High is a ceiling, not a downscale. Med and low are the only smaller copies.
+LONG_SIDE = {'low': 320, 'med': 640, 'high': 4096}
+GEMINI = Path('/cursor/stores/bot/art/gemini/airlines')
 LOGO_SIDE = {'low': 64, 'med': 128, 'high': 256}
 
 GROK_IDS = ('bushline_local', 'zoomjet', 'crown_pacific', 'siam_breeze', 'northstar_cargo')
@@ -210,8 +212,15 @@ def save_levels(im: Image.Image, folder: Path, name: str, sides: dict[str, int])
     low.save(folder / 'low' / name, quality=76, optimize=True)
 
 
+def open_ref(aid: str) -> Image.Image:
+    for path in (GEMINI / f'{aid}.jpeg', GEMINI / f'{aid}.jpg', REFS / f'{aid}.jpg', REFS / f'{aid}.jpeg'):
+        if path.exists():
+            return Image.open(path)
+    raise FileNotFoundError(aid)
+
+
 def plates_for(aid: str, primary: str) -> tuple[Image.Image, Image.Image, Image.Image]:
-    rgb, mask = remove_bg(Image.open(REFS / f'{aid}.jpg'))
+    rgb, mask = remove_bg(open_ref(aid))
     ys, xs = np.where(mask)
     if len(xs) == 0:
         raise RuntimeError(f'no aircraft in {aid}')
@@ -224,7 +233,10 @@ def plates_for(aid: str, primary: str) -> tuple[Image.Image, Image.Image, Image.
         sub = sub[:, ::-1]
     band = col[max(0, r0 - 1) : min(col.shape[0], r1 + 1)]
     med = tuple(int(v) for v in np.median(band.reshape(-1, 3), axis=0))
-    fuse = Image.fromarray(band).resize((1024, 256), Image.Resampling.LANCZOS)
+    # 4:1 side plate at the crop's own width. Texture quality is what scales it down.
+    band_im = Image.fromarray(band)
+    fuse_w = max(4, band_im.width)
+    fuse = band_im.resize((fuse_w, max(1, round(fuse_w / 4))), Image.Resampling.LANCZOS)
     fin = fin_crop(col, sub, r0, r1)
     if fin is None:
         # No clean fin (helicopters, odd angles). The logo is the title band.
@@ -236,7 +248,7 @@ def plates_for(aid: str, primary: str) -> tuple[Image.Image, Image.Image, Image.
     else:
         fin_im = Image.fromarray(fin)
         logo = contain(fin_im, 256, (255, 255, 255))
-        tail = contain(fin_im, 512, med)
+        tail = contain(fin_im, max(fin_im.size), med)
     # Engine colour falls back to the palette primary when the plate is flat.
     _ = primary
     return fuse, tail, logo

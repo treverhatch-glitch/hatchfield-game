@@ -9,7 +9,7 @@
  *
  * Image axes (Three flips Y, so the top of the PNG is V = 1):
  *
- * fuselage.png — 1024×256 (4:1 side elevation)
+ * fuselage.jpg — 4:1 side elevation at the crop's own width
  *   U 0 → 1 = nose → tail on the port side (−Z). Starboard (+Z) flips U so a
  *   left-to-right wordmark reads outward on both sides.
  *   V 0 → 1 = belly → crown. The nose tip sits near V 0.5, the crown at V 1.

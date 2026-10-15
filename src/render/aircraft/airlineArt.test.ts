@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ROSTER } from '../../airlines/roster'
 import { airlineLogoUrl } from './airlineLogo'
@@ -73,6 +73,22 @@ describe('roster livery plates', () => {
       expect(existsSync(`public${url}`)).toBe(true)
       expect(existsSync(`public/assets/airline-logos/low/${airline.id}.jpg`)).toBe(true)
     }
-    expect(LIVERY_LONG_SIDE.high).toBe(1280)
+    expect(LIVERY_LONG_SIDE.high).toBe(4096)
+    const plate = readFileSync('public/textures/liveries/brisa/fuselage.jpg')
+    let width = 0
+    for (let i = 2; i < plate.length - 8; i++) {
+      if (plate[i] !== 0xff) continue
+      const marker = plate[i + 1]
+      if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+        width = plate.readUInt16BE(i + 7)
+        break
+      }
+      if (marker === 0xd8 || marker === 0xd9) {
+        i += 1
+        continue
+      }
+      i += 1 + plate.readUInt16BE(i + 2)
+    }
+    expect(width).toBeGreaterThan(1280)
   })
 })

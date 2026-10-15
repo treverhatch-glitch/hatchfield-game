@@ -2,7 +2,8 @@
  * Where airline livery JPEGs live, and which size the browser loads.
  * High-res is the default. The only downsample is this setting
  * (`hatchfield-texture-quality` = low | med | high).
- * Long-side caps match scripts/build-liveries.py.
+ * Long-side caps match scripts/build-roster-liveries.py.
+ * High keeps the crop. Med and low are the only smaller files.
  * `types` on each manifest row is the airframes that plate is painted for.
  */
 import manifest from '../../../public/textures/liveries/manifest.json'
@@ -14,7 +15,8 @@ export const DEFAULT_TEXTURE_QUALITY: TextureQuality = 'high'
 export const LIVERY_LONG_SIDE: Record<TextureQuality, number> = {
   low: 320,
   med: 640,
-  high: 1280,
+  /** Ceiling only. A plate under this is stored at the crop's own pixels. */
+  high: 4096,
 }
 
 export type LiverySlotName = 'fuselage' | 'tail'
