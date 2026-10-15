@@ -6150,7 +6150,6 @@ export class Game {
     // One desk body so the first bank doesn't miss gates on an empty counter.
     this.deskStaff = 1
     this.assignHallStaff()
-    this.seedDayOneCrowd()
     // Airport is live — first airline call comes quick; later ones stay slow.
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = FIRST_LETTER_COOL
@@ -10649,97 +10648,7 @@ export class Game {
     return f?.airline ?? null
   }
 
-  /**
-   * Walkers so the hall reads as open on day 1, before a flight releases.
-   * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
-   * Shirts stay in a natural clothing range: neon orange and amber read as
-   * flying dots from the airport camera on a phone.
-   */
-  private seedDayOneCrowd() {
-    const fit = this.fits[0]
-    if (!fit) return
-    const hallId = this.hallKey(fit)
-    const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
-    const shirts = [
-      '#2c3e50',
-      '#5c4636',
-      '#3d5c4a',
-      '#7a3e3e',
-      '#cfc6b8',
-      '#4e5b38',
-      '#6b5a48',
-      '#3e5160',
-      '#8a6a52',
-      '#243044',
-      '#5e5648',
-      '#6d7d72',
-    ]
-    const tags: PaxTag[] = [
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-      'family',
-      'budget',
-      'business',
-    ]
-    // Already cleared, so they walk the whole route without joining the lane.
-    // Spread them from the doors through security to the shops.
-    const spots = [
-      { seg: 0, t: 0.4, lane: -1.2 },
-      { seg: 0, t: 0.72, lane: 0.4 },
-      { seg: 1, t: 0.22, lane: -1.4 },
-      { seg: 1, t: 0.48, lane: 0.2 },
-      { seg: 1, t: 0.7, lane: 1.3 },
-      { seg: 2, t: 0.28, lane: -0.8 },
-      { seg: 2, t: 0.58, lane: 0.55 },
-      { seg: 3, t: 0.2, lane: -1.1 },
-      { seg: 3, t: 0.48, lane: 0.25 },
-      { seg: 3, t: 0.74, lane: 1.15 },
-      { seg: 2, t: 0.82, lane: -0.15 },
-      { seg: 1, t: 0.34, lane: 0.9 },
-    ]
-    const names = ['Ada', 'Ben', 'Cara', 'Dev', 'Eve', 'Finn', 'Gia', 'Hank', 'Ivy', 'Jon', 'Kim', 'Leo']
-    for (let i = 0; i < spots.length; i++) {
-      // Built by hand so the crowd does not consume the sim's random stream.
-      const g: HallGuest = {
-        id: `day1-preview-${i}`,
-        flightId: `day1-preview-${i}`,
-        name: names[i],
-        tag: tags[i],
-        job: 'depart',
-        node: path[spots[i].seg],
-        path: [...path],
-        seg: spots[i].seg,
-        t: spots[i].t,
-        lane: spots[i].lane,
-        preview: true,
-        previewDir: 1,
-        needs: { hunger: 4, bladder: 4, energy: 4, boarding: 80, bags: 0, shop: 4, play: 4 },
-        wallet: 0,
-        prefs: { food: 0, shop: 0, play: 0, lounge: 0, nap: 0, landside: 0 },
-        happiness: 70,
-        patience: 70,
-        spent: 0,
-        thought: 'Walking to the gate',
-        color: shirts[i],
-        dead: false,
-        clearedSec: true,
-        carryOn: i % 2 === 0,
-        hasChecked: i % 5 === 0,
-        hallId,
-        lost: false,
-      }
-      this.hallGuests.push(g)
-    }
-  }
-
-  /** Real released passengers replace the day-one pacing crowd. */
+  /** Real released passengers replace any day-one pacing crowd still in an old save. */
   private retireDayOneCrowd() {
     if (!this.hallGuests.some((g) => g.preview)) return
     const real = this.hallGuests.filter(
