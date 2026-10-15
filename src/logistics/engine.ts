@@ -445,8 +445,8 @@ export class LogisticsSim {
   }
 
   get fuelSellPrice(): number {
-    const f = this.config.fuelFarm
-    return f.purchasePricePerLitre + f.throughputFeePerLitre
+    // The scale contract is the product price. This farm only keeps the throughput fee.
+    return this.config.fuelFarm.throughputFeePerLitre
   }
 
   get profit(): number {
@@ -1448,7 +1448,8 @@ export class LogisticsSim {
       const f = this.config.fuelFarm
       const accepted = Math.min(d.litres, f.capacityLitres - this.fuelLitres)
       this.fuelLitres += accepted
-      this.money(-accepted * f.purchasePricePerLitre, 'fuel_purchase')
+      // Quarantined. purchasePricePerLitre must not post to the bank.
+      // The scale contract bills the product. Do not restore this debit.
       this.emit({ type: 'delivery_arrived', time: this.now, litres: accepted, vehicleId: d.vehicleId })
       if (this.fuelLitres >= f.lowStockLitres) this.fuelLowFlag = false
       changed = true

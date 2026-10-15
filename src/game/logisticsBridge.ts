@@ -178,7 +178,8 @@ export function buildLogisticsConfig(
       capacityLitres,
       initialLitres,
       lowStockLitres: Math.min(60_000, Math.round(capacityLitres * 0.15)),
-      purchasePricePerLitre: 0.7,
+      // Quarantined. The scale contract is the product price. Do not restore $0.70/L.
+      purchasePricePerLitre: 0,
       throughputFeePerLitre: 0.012,
       tankerLitres: 36_000,
       deliveryLeadMinutes: 90,

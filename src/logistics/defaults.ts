@@ -189,7 +189,8 @@ export function defaultConfig(overrides: Partial<LogisticsConfig> = {}): Logisti
       capacityLitres: 500000,
       initialLitres: 300000,
       lowStockLitres: 80000,
-      purchasePricePerLitre: 0.7,
+      // Quarantined. Was $0.70/L. Do not restore it; a bridge would debit the bank.
+      purchasePricePerLitre: 0,
       throughputFeePerLitre: 0.012,
       tankerLitres: 36000,
       deliveryLeadMinutes: 120,

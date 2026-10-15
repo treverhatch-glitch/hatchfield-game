@@ -250,7 +250,7 @@ describe('stock and money', () => {
     sim.tick(60)
     const arrived = ev.find((e) => e.type === 'delivery_arrived')!
     expect(arrived.type === 'delivery_arrived' && arrived.litres).toBe(36000)
-    expect(sim.ledger.fuelPurchase).toBeCloseTo(36000 * 0.7)
+    expect(sim.ledger.fuelPurchase).toBe(0)
   })
 
   it('delivery is capped at farm capacity', () => {
@@ -259,7 +259,7 @@ describe('stock and money', () => {
     sim.orderFuel()
     sim.tick(2)
     expect(sim.fuelLitres).toBe(500000)
-    expect(sim.ledger.fuelPurchase).toBeCloseTo(10000 * 0.7)
+    expect(sim.ledger.fuelPurchase).toBe(0)
   })
 
   it('fuel sold at a throughput fee, catering fees, upkeep accrues', () => {
@@ -267,7 +267,7 @@ describe('stock and money', () => {
     const id = sim.startTurnaround('stand-2', 'a320neo', 90)
     runUntilDone(sim, id)
     const n = needsFor('a320neo')
-    expect(sim.ledger.fuelSales).toBeCloseTo(n.fuelLitres * (0.7 + 0.012))
+    expect(sim.ledger.fuelSales).toBeCloseTo(n.fuelLitres * 0.012)
     expect(sim.ledger.cateringFees).toBeCloseTo(n.meals * 6)
     const cfg = defaultConfig()
     const perDay = Object.entries(cfg.vehicles).reduce(

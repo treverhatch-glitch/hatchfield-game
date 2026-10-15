@@ -99,6 +99,7 @@ export interface FuelFarmConfig {
   /** Below this the farm raises a low-stock alert. */
   lowStockLitres: number
   /** What the airport pays the supplier per litre. */
+  /** Quarantined. Keep at 0. The scale contract is the product price. */
   purchasePricePerLitre: number
   /** Airport throughput fee per litre. The airline pays the fuel plus this fee. */
   throughputFeePerLitre: number
