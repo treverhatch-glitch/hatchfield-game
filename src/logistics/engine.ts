@@ -1018,7 +1018,8 @@ export class LogisticsSim {
         this.addTimer(t, s, n.cleaningMinutes, 0)
         return
       case 'gpu':
-        this.addRequest(t, s, 'gpu', 'onsite', 1)
+        if (this.stand(t).fixedPower) this.addTimer(t, s, n.gpuMinutes, 0)
+        else this.addRequest(t, s, 'gpu', 'onsite', 1)
         return
       case 'lav':
         this.addRequest(t, s, 'lavatory_truck', 'onsite', 1)

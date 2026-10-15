@@ -86,6 +86,8 @@ export interface StandConfig {
   node: string
   /** Hydrant pits under the stand: fuel goes straight from the farm, no truck. */
   hydrant: boolean
+  /** Fixed ground power is live. The GPU truck stays in the depot. */
+  fixedPower?: boolean
   /** Jet bridge, airstairs at a contact stand, or a remote stand served by bus. Default 'stairs'. */
   access?: StandAccess
   /** Jet bridges on a bridge stand (3 = A380-capable incl. upper deck). Default: pax.doors.bridge for the size. */

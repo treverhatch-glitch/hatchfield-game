@@ -99,3 +99,5 @@ Passengers, then the return:
 `bridge_hall` → `bridge_cab` → `plane_pax_sill` → `bridge_cab` → `bridge_hall`
 
 Fuel farm: the coupler waits on `farm_fill`, the truck stops with `truck_fill` on `farm_bay`, the coupler follows a catenary onto `truck_fill`, and it leaves with the truck.
+
+Stand fittings name the point on the card. `bridge_cab` is the jet bridge. `plane_gpu_port` is the fixed ground-power cable. `apron_mast` is the stand light. `deice_fill` is where the de-ice truck fills. `stand_flag` is the flag. `alarm_bell` is the fire-station bell. `line_office` is the hangar office.

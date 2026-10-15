@@ -30,6 +30,8 @@ export interface LogisticsBuildOptions {
   hydrant?: boolean
   /** Stand ids with a pit and a dispenser. Ignored when `hydrant` is true. */
   hydrantStands?: readonly string[]
+  /** Stand ids whose fixed ground-power cable is live. */
+  fixedPowerStands?: readonly string[]
   /** Big jets refuse trucks below their tier. */
   strict?: boolean
 }
@@ -146,7 +148,8 @@ export function buildLogisticsConfig(
       const access: RampAccess = link === 'jetway' ? 'bridge' : hasTermBus ? 'remote' : 'stairs'
       const listed = options.hydrantStands ?? []
       const hydrant = Boolean(options.hydrant) || listed.includes(id)
-      return { id, node: id, hydrant, access }
+      const fixedPower = (options.fixedPowerStands ?? []).includes(id)
+      return { id, node: id, hydrant, access, fixedPower }
     })
 
   const vehicles: Partial<Record<VehicleType, number>> = {}

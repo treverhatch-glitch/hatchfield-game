@@ -79,6 +79,8 @@ export interface FittingDef {
   needs: 'deice' | 'substation' | null
   /** How many copies one host may hold. */
   max: number
+  /** Service point named on the card. */
+  socket: string
 }
 
 export const FITTINGS: readonly FittingDef[] = [
@@ -94,6 +96,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 3,
+    socket: 'bridge_cab',
   },
   {
     id: 'gpu_pca',
@@ -107,6 +110,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 1,
+    socket: 'plane_gpu_port',
   },
   {
     id: 'apron_light',
@@ -120,6 +124,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 1,
+    socket: 'apron_mast',
   },
   {
     id: 'deice_outlet',
@@ -133,6 +138,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: 'deice',
     needs: 'deice',
     max: 1,
+    socket: 'deice_fill',
   },
   {
     id: 'flag',
@@ -146,6 +152,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 1,
+    socket: 'stand_flag',
   },
   {
     id: 'alarm_bell',
@@ -159,6 +166,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 1,
+    socket: 'alarm_bell',
   },
   {
     id: 'line_office',
@@ -172,6 +180,7 @@ export const FITTINGS: readonly FittingDef[] = [
     research: null,
     needs: null,
     max: 1,
+    socket: 'line_office',
   },
 ]
 

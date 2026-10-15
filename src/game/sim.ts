@@ -1574,6 +1574,7 @@ export class Game {
   }
   private ground: (LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] }) | null = null
   private groundRev = -1
+  private groundPowerKey = ''
   private groundAnnounced = false
   private groundNotes: Advice[] = []
   private groundNoteKey = ''
@@ -1951,6 +1952,7 @@ export class Game {
     }
     this.ground = null
     this.groundRev = -1
+    this.groundPowerKey = ''
     this.groundAnnounced = false
     this.groundNotes = []
     this.groundNoteKey = ''
@@ -11311,7 +11313,7 @@ export class Game {
             aim: { x: 2.2, z: Math.sign(door.z || 1) * 2.4 },
           })
         }
-        if (!has('gpu', flight.x, flight.y)) {
+        if (!has('gpu', flight.x, flight.y) && !this.cableLive(flight.stand)) {
           const spec = getAircraftSpec(flight.airframeId || 'b738')
           const at = placeLocal(origin, { x: spec.lengthM * 0.22, y: 0, z: door.z + Math.sign(door.z || 1) * 2.4 }, METERS_PER_CELL)
           clocks.push({
@@ -12381,9 +12383,11 @@ export class Game {
 
   private ensureGround() {
     const rev = this.mapRev
-    if (this.ground && this.groundRev === rev) return this.ground
-    if (!this.ground && this.groundRev === rev) return null
-    if (this.ground && this.ground.sim.openTurnarounds > 0 && this.groundRev !== rev) return this.ground
+    const powerKey = this.liveCableKey()
+    if (this.ground && this.groundRev === rev && this.groundPowerKey === powerKey) return this.ground
+    if (!this.ground && this.groundRev === rev && this.groundPowerKey === powerKey) return null
+    if (this.ground && this.ground.sim.openTurnarounds > 0 && (this.groundRev !== rev || this.groundPowerKey !== powerKey))
+      return this.ground
     const prev = this.ground?.snapshot()
     const cap = tankDef(this.tankTier).capacityLitres
     if (this.tankLitres <= 0 && this.fuelLoads > 0) {
@@ -12398,12 +12402,14 @@ export class Game {
         capacityLitres: cap,
         initialLitres: Math.min(cap, Math.max(0, this.tankLitres)),
         hydrantStands: liveHydrantStands(this.standPits, this.scaleFleet.hydrant_dispenser ?? 0),
+        fixedPowerStands: powerKey ? powerKey.split('|') : [],
         strict: true,
       },
     )
     if (!config) {
       this.ground = null
       this.groundRev = rev
+      this.groundPowerKey = powerKey
       if (this.groundNotes.length) {
         this.groundNotes = []
         this.groundNoteKey = ''
@@ -12450,6 +12456,7 @@ export class Game {
       },
     })
     this.groundRev = rev
+    this.groundPowerKey = powerKey
     this.stampHubVehicleLeases()
     if (first) {
       this.groundAnnounced = true
@@ -18629,9 +18636,16 @@ export class Game {
   /** Stand card: hydrant only when this stand has a pit and a dispenser exists. */
   private standFuelNote(v: Vec): string {
     const key = `${v.c},${v.r}`
-    if (!this.standPits[key]) return HYDRANT_CARD.bowser
-    if ((this.scaleFleet.hydrant_dispenser ?? 0) > 0) return HYDRANT_CARD.hydrant
-    return HYDRANT_CARD.short
+    const fuel = !this.standPits[key]
+      ? HYDRANT_CARD.bowser
+      : (this.scaleFleet.hydrant_dispenser ?? 0) > 0
+        ? HYDRANT_CARD.hydrant
+        : HYDRANT_CARD.short
+    const extra: string[] = []
+    if (this.isNight() && !this.hasFitting(v, 'apron_light')) extra.push('Unlit')
+    if (this.weather !== 'clear' && !this.hasFitting(v, 'gpu_pca')) extra.push('Weather dwell')
+    if (this.hasFitting(v, 'gpu_pca') && !this.cableLive(v)) extra.push('Plant is short. A GPU truck is coming.')
+    return extra.length ? `${fuel} · ${extra.join(' · ')}` : fuel
   }
 
   /** One line on the farm card: litres, who supplies them, and the band. */
@@ -20357,8 +20371,47 @@ export class Game {
 
   /** Fittings the card offers. Later tickets append rows here. */
   private shownFittingIds(host: FittingHost): FittingId[] {
-    if (host === 'stand') return ['jet_bridge']
+    if (host === 'stand') return ['jet_bridge', 'gpu_pca', 'apron_light', 'deice_outlet', 'flag']
     return []
+  }
+
+  private hasFitting(stand: Vec | null, id: FittingId): boolean {
+    if (!stand) return false
+    return (this.fittings[hostKey('stand', stand.c, stand.r)] ?? []).some((item) => item.id === id)
+  }
+
+  /** The cable is live when the plant covers the field, or a substation is already built. */
+  private cableLive(stand: Vec | null): boolean {
+    if (!this.hasFitting(stand, 'gpu_pca')) return false
+    if (this.progressionBuilt.includes('substation')) return true
+    return !this.powerReport().brownout
+  }
+
+  /** Stand ids whose cable is live, stable for the logistics cache. */
+  private liveCableKey(): string {
+    if (this.powerReport().brownout && !this.progressionBuilt.includes('substation')) return ''
+    const ids: string[] = []
+    for (const [key, list] of Object.entries(this.fittings)) {
+      if (!list.some((item) => item.id === 'gpu_pca')) continue
+      const parsed = parseHostKey(key)
+      if (parsed?.host === 'stand') ids.push(`${parsed.c},${parsed.r}`)
+    }
+    ids.sort()
+    return ids.join('|')
+  }
+
+  /** Boarding cap. Night and weather stretch it until the stand has the fitting. */
+  private boardCap(f: Flight): number {
+    const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+    const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
+    const base =
+      (mode === 'jetway' ? (f.boardingSlow ? 11 : 7.5) : mode === 'bus' ? (f.boardingSlow ? 18 : 13) : f.boardingSlow ? 24 : 17) *
+        pace +
+      (this.diplomacy?.extraDelaySec(f.airline) ?? 0)
+    let mult = 1
+    if (f.stand && this.isNight() && !this.hasFitting(f.stand, 'apron_light')) mult *= 1.2
+    if (f.stand && this.weather !== 'clear' && !this.hasFitting(f.stand, 'gpu_pca')) mult *= 1.15
+    return base * mult
   }
 
   private asFittingId(id: string): FittingId | null {
@@ -20479,14 +20532,15 @@ export class Game {
       const ask = this.fittingAsk('stand', v.c, v.r, id)
       const refusal = fittingRefusal(ask)
       const price = id === 'jet_bridge' && ask.size ? jetBridgeCost(ask.size) : fittingDef(id).cost
-      const name = fittingDef(id).name
+      const def = fittingDef(id)
+      const priced = `$${price.toLocaleString('en-US')}`
       rows.push({
         id: `fitbuy:${host}:${id}`,
-        label: refusal ?? `${name} · $${price.toLocaleString('en-US')}`,
+        label: refusal ?? `${def.name} · ${def.socket} · ${priced}`,
         disabled: refusal != null,
       })
       if (ask.count > 0) {
-        rows.push({ id: `fitdrop:${host}:${id}`, label: `Remove ${name.toLowerCase()}`, disabled: false })
+        rows.push({ id: `fitdrop:${host}:${id}`, label: `Remove ${def.name.toLowerCase()}`, disabled: false })
       }
     }
     const pit = progressionBuildable('hydrant')
@@ -22726,7 +22780,7 @@ export class Game {
           : resolved === 'fuel_reload'
             ? 1.6
             : resolved === 'deice'
-              ? 1.1
+              ? 1.1 + (f?.stand && this.hasFitting(f.stand, 'deice_outlet') ? 0 : 8)
               : 0
     let cargoUnits = 0
     if (kind === 'bags' && f && !f.cargo) {
@@ -24639,18 +24693,7 @@ export class Game {
       } else if (f.phase === 'board') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
         const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
-        const boardLimit =
-          (mode === 'jetway'
-            ? f.boardingSlow
-              ? 11
-              : 7.5
-            : mode === 'bus'
-              ? f.boardingSlow
-                ? 18
-                : 13
-              : f.boardingSlow
-                ? 24
-                : 17) * pace + (this.diplomacy?.extraDelaySec(f.airline) ?? 0)
+        const boardLimit = this.boardCap(f)
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const minBoard =
           (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace
