@@ -1540,6 +1540,8 @@ export class Game {
   /** Path each aircraft was last cleared along (by identity). */
   private atcPaths = new Map<string, Vec[]>()
   private atcYields = new Map<string, number>()
+  /** Clock when a departure began waiting at the hold line for the next arrival. */
+  private holeHoldSince = new Map<string, number>()
   /** Stall ladder. Timing is pure; this class only applies each step. */
   private stuckWatch = new StuckWatchdog()
   /** Recoveries logged by the ladder. The debug HUD reads the count. */
@@ -24590,6 +24592,8 @@ export class Game {
    * seconds must not accumulate or a queued departure looks frozen.
    */
   private taxiHoldPaused(flight: Flight): boolean {
+    const hole = this.holeHoldSec(flight)
+    if (hole != null && hole * SIM_MINUTES_PER_REAL_SECOND < STUCK_WATCH.authorizedHoldMin) return true
     const wait = this.atc.waitFor(flight.id)
     if (!wait || (wait.reason !== 'taxi' && wait.reason !== 'runway')) return false
     const ageMin = Math.max(0, this.clock - wait.since) * SIM_MINUTES_PER_REAL_SECOND
@@ -24601,8 +24605,39 @@ export class Game {
     return true
   }
 
+  /**
+   * Waiting at the hold line because the roll does not fit before the next
+   * arrival. That is the departure slot, not a taxi stall. The first
+   * `authorizedHoldMin` does not age `phaseTime` and does not start the ladder.
+   */
+  private holdingShortForArrival(flight: Flight): boolean {
+    return (
+      flight.phase === 'taxi_out' &&
+      !this.atc.holdsRunway(flight.id) &&
+      !this.runwayOverbooked() &&
+      this.aboutToEnterStrip(flight) &&
+      !this.departureFitsHole(flight)
+    )
+  }
+
+  /** Field seconds this departure has been held short for an arrival, or null when it is not. */
+  private holeHoldSec(flight: Flight): number | null {
+    if (!this.holdingShortForArrival(flight)) {
+      this.holeHoldSince.delete(flight.id)
+      return null
+    }
+    let since = this.holeHoldSince.get(flight.id)
+    if (since == null) {
+      since = this.clock
+      this.holeHoldSince.set(flight.id, since)
+    }
+    return Math.max(0, this.clock - since)
+  }
+
   /** A live ground-control hold inside the legal window is progress, not a stall. */
   private holdIsAuthorized(flight: Flight, hard: ReadonlySet<string>): boolean {
+    const hole = this.holeHoldSec(flight)
+    if (hole != null && hole * SIM_MINUTES_PER_REAL_SECOND < STUCK_WATCH.authorizedHoldMin) return true
     const wait = this.atc.waitFor(flight.id)
     if (!wait) return false
     const ageMin = Math.max(0, this.clock - wait.since) * SIM_MINUTES_PER_REAL_SECOND
@@ -27680,12 +27715,7 @@ export class Game {
         } else {
           // Hold short of the pavement. Taxi up to that line is still allowed.
           // One roll has to finish before the next arrival locks.
-          if (
-            !this.atc.holdsRunway(f.id) &&
-            !this.runwayOverbooked() &&
-            this.aboutToEnterStrip(f) &&
-            !this.departureFitsHole(f)
-          ) {
+          if (this.holdingShortForArrival(f)) {
             /* stay on the taxi side */
           } else if (this.atcFollow(f, 1.2, step)) {
             f.phase = 'takeoff'
