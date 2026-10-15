@@ -29,6 +29,11 @@ export const DAY_NIGHT = {
   daySeconds: DAY_SECONDS,
   /** Hours used by the dawn / noon / dusk / night screenshots. */
   shots: { dawn: 6.6, noon: 12, dusk: 19, night: 23 },
+  /**
+   * Late morning. The cycle-off switch holds the sun here:
+   * noon sky, lights out, no golden-hour cast.
+   */
+  hold: 11,
 } as const
 
 /** Rig values a full-night override blends toward. Matches the midnight key. */
@@ -173,6 +178,23 @@ export function idleDayNight(): DayNightSample {
 export function resolveHour(clock: number, hourOverride: number | null, control: DayNightControl | null): number {
   if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
   if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
+  return simClockToHour(clock)
+}
+
+/**
+ * Hour the renderer paints. A photo override or a day/night control hour still
+ * wins when the cycle is off, so camera tools keep working. Otherwise the
+ * cycle-off switch holds `DAY_NIGHT.hold`.
+ */
+export function resolvePlayHour(
+  clock: number,
+  hourOverride: number | null,
+  control: DayNightControl | null,
+  cycleOn = true,
+): number {
+  if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
+  if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
+  if (!cycleOn) return DAY_NIGHT.hold
   return simClockToHour(clock)
 }
 

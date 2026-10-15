@@ -51,6 +51,8 @@ export interface Settings {
   /** Master mute. Category sliders stay put so unmuting restores the mix. */
   audioMuted: boolean
   busVolume: BusVolume
+  /** False holds the apron at late morning. The sun cycle is on by default. */
+  dayNightCycle: boolean
 }
 
 export const GRAPHICS_PRESETS: Record<QualityPreset, Omit<GraphicsSettings, 'preset'>> = {
@@ -73,6 +75,7 @@ export const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.8,
   audioMuted: false,
   busVolume: { ...DEFAULT_BUS_VOLUME },
+  dayNightCycle: true,
 }
 
 /** Overlay palettes: good -> warn -> bad -> path -> highlight, chosen to stay distinct per mode. */
@@ -128,6 +131,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     masterVolume: num(r.masterVolume, d.masterVolume, 0, 1),
     audioMuted: bool(r.audioMuted, d.audioMuted),
     busVolume,
+    dayNightCycle: bool(r.dayNightCycle, d.dayNightCycle),
   }
 }
 
@@ -194,4 +198,15 @@ export class SettingsStore {
     this.listeners.push(fn)
     return () => { this.listeners = this.listeners.filter((l) => l !== fn) }
   }
+}
+
+let sharedStore: SettingsStore | undefined
+
+/** One store for audio, graphics prefs, and the day/night cycle switch. */
+export function sharedSettings(): SettingsStore {
+  return (sharedStore ??= new SettingsStore())
+}
+
+export function readDayNightCycle(store: SettingsStore = sharedSettings()): boolean {
+  return store.get().dayNightCycle
 }

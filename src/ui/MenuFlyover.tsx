@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { readDayNightCycle } from '../features/settings/settings.ts'
 import { Game } from '../game/sim'
 import { toWorld, World } from '../render/world'
 
@@ -110,6 +111,7 @@ export function MenuFlyover() {
         console.error('menu flyover tick', err)
       }
       live.camGoal = null
+      live.dayNightCycle = readDayNightCycle()
       // Same family of shot as the apron camera, drifting so the field reads as a flyover.
       world.yaw = 0.45 + t * 0.07
       world.pitch = 0.58 + Math.sin(t * 0.11) * 0.04

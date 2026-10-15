@@ -13,11 +13,12 @@ const URL = process.env.SHOT_URL || 'http://127.0.0.1:45921/'
 const CHROME = process.env.PLAYWRIGHT_CHROME || '/usr/local/bin/google-chrome'
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl']
 
-const SHOTS: { name: string; day: number; hour: number; yaw: number }[] = [
+const SHOTS: { name: string; day: number; hour: number; yaw: number; cycle?: boolean }[] = [
   { name: 'dawn', day: 100, hour: DAY_NIGHT.shots.dawn, yaw: -1.15 },
   { name: 'noon', day: 100, hour: DAY_NIGHT.shots.noon, yaw: -0.4 },
   { name: 'dusk', day: 100, hour: DAY_NIGHT.shots.dusk, yaw: 1.15 },
   { name: 'night', day: 300, hour: DAY_NIGHT.shots.night, yaw: -0.55 },
+  { name: 'cycle-off', day: 100, hour: DAY_NIGHT.shots.night, yaw: -0.4, cycle: false },
 ]
 
 function call(body: string) {
@@ -30,11 +31,11 @@ async function ready(page: Page) {
   await page.reload({ waitUntil: 'networkidle' })
   await page.getByTestId('new-game').click()
   await page.getByTestId('start-pax').click()
-  await page.getByTestId('tab-economy').click()
-  await page.getByTestId('starter-kit').click()
+  const kit = page.getByTestId('starter-kit-coach')
+  await kit.waitFor({ timeout: 15000 })
+  await kit.click()
   const coach = page.getByTestId('coach').getByRole('button', { name: 'Got it' })
   if (await coach.count()) await coach.click()
-  await page.getByTestId('tab-economy').click()
   await page.evaluate(call('window.__hatch.speed = 5'))
   for (let i = 0; i < 120; i++) {
     const parked = await page.evaluate(
@@ -72,11 +73,13 @@ async function ready(page: Page) {
   await page.waitForTimeout(400)
 }
 
-async function show(page: Page, day: number, hour: number, yaw: number) {
+async function show(page: Page, day: number, hour: number, yaw: number, cycle = true) {
   const clock = clockForHour(day, hour)
   await page.evaluate(
-    ((arg: { stamp: number; yaw: number }) => {
-      const g = (window as unknown as { __hatch: { clock: number; speed: number; weather: string } }).__hatch
+    ((arg: { stamp: number; yaw: number; cycle: boolean }) => {
+      const g = (window as unknown as {
+        __hatch: { clock: number; speed: number; weather: string; setDayNightCycle: (on: boolean) => void }
+      }).__hatch
       const w = (window as unknown as {
         __world?: {
           setTimeOfDay: (h: number | null) => void
@@ -90,6 +93,7 @@ async function show(page: Page, day: number, hour: number, yaw: number) {
       }).__world
       g.speed = 0
       g.weather = 'clear'
+      g.setDayNightCycle(arg.cycle)
       g.clock = arg.stamp
       w?.setDayNight(null)
       w?.setTimeOfDay(null)
@@ -100,8 +104,8 @@ async function show(page: Page, day: number, hour: number, yaw: number) {
         w.yaw = arg.yaw
         w.placeCam()
       }
-    }) as (arg: { stamp: number; yaw: number }) => void,
-    { stamp: clock, yaw },
+    }) as (arg: { stamp: number; yaw: number; cycle: boolean }) => void,
+    { stamp: clock, yaw, cycle },
   )
   await page.waitForTimeout(500)
 }
@@ -112,7 +116,7 @@ page.on('pageerror', (err) => console.log('pageerror', err.message))
 await ready(page)
 const canvas = page.locator('canvas.field')
 for (const shot of SHOTS) {
-  await show(page, shot.day, shot.hour, shot.yaw)
+  await show(page, shot.day, shot.hour, shot.yaw, shot.cycle !== false)
   const sample = await page.evaluate(
     call(`
       const w = window.__world

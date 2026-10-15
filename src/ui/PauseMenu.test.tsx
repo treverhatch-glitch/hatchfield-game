@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { readDayNightCycle } from '../features/settings/settings.ts'
 import { Game } from '../game/sim.ts'
 import { GameSettings } from './PauseMenu.tsx'
 import { newGameHintPrefs } from '../game/hints.ts'
@@ -37,5 +38,36 @@ describe('GameSettings', () => {
     game.hintPrefs = { allEnabled: false, muted: ['standing'] }
     const html = renderToStaticMarkup(<GameSettings game={game} />)
     expect(html).toContain('1 hint type hidden. Tick the box to turn every type back on.')
+  })
+
+  it('shows the day and night cycle switch and keeps it in the save', () => {
+    const game = new Game()
+    game.setDayNightCycle(true)
+    const on = renderToStaticMarkup(<GameSettings game={game} />)
+    expect(on).toContain('data-testid="settings-day-night-cycle" checked=""')
+    expect(on).toContain('The sun moves from dawn to night.')
+
+    game.sandbox = true
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.buildStarterKit()
+    game.setDayNightCycle(false)
+    expect(game.dayNightCycle).toBe(false)
+    expect(readDayNightCycle()).toBe(false)
+    const off = renderToStaticMarkup(<GameSettings game={game} />)
+    expect(off).toContain('data-testid="settings-day-night-cycle"')
+    expect(off).not.toContain('data-testid="settings-day-night-cycle" checked=""')
+    expect(off).toContain('Held at late morning')
+
+    game.beginNew('easy')
+    expect(game.dayNightCycle).toBe(false)
+    game.buyLand('city')
+    game.persist()
+    const again = new Game()
+    expect(again.load()).toBe(true)
+    expect(again.dayNightCycle).toBe(false)
+    again.setDayNightCycle(true)
+    expect(readDayNightCycle()).toBe(true)
+    expect(again.dayNightCycle).toBe(true)
   })
 })

@@ -124,6 +124,19 @@ export interface DaylightKey {
   exposure: number
 }
 
+/**
+ * Sun disc on the sky dome. Field lights stay on a wider window (`lightsFactor`),
+ * so dawn can show a low sun while the runway is still lit.
+ */
+export const SUN_DISC = {
+  /** Stars fade out across this morning span. */
+  dawnStart: 5.2,
+  dawnEnd: 6.8,
+  /** Stars come back after the sun has left the horizon. */
+  duskStart: 19.2,
+  duskEnd: 20.6,
+} as const
+
 /** Tuned sun key over a cooler hemisphere. Noon is sun-led; night is a dim moon. */
 export const DAYLIGHT_KEYS: readonly DaylightKey[] = [
   { h: 0, top: 0x0a1430, horizon: 0x1b2a4a, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x30406a, hemiI: 0.32, exposure: 1.15 },

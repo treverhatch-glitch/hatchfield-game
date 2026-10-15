@@ -18,6 +18,8 @@ describe('settings', () => {
     expect(s.graphics.preset).toBe('high')
     expect(s.overlays.pathfinding).toBe(false)
     expect(s.masterVolume).toBe(0)
+    expect(s.dayNightCycle).toBe(true)
+    expect(sanitizeSettings({ dayNightCycle: false }).dayNightCycle).toBe(false)
     expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS)
   })
   it('presets and custom graphics', () => {

@@ -391,6 +391,8 @@ export default function App() {
             }}
             enableHints={game.enableHintsAtStart}
             onEnableHintsChange={setEnableHints}
+            dayNightCycle={game.dayNightCycle}
+            onDayNightCycleChange={(on) => game.setDayNightCycle(on)}
             onNewGame={() => openNewGame('pax')}
             onChooseKit={openNewGame}
             onContinue={() => {

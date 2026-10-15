@@ -11,7 +11,7 @@ import {
   applyDayNight,
   daylightFactor,
   idleDayNight,
-  resolveHour,
+  resolvePlayHour,
   SKY_PHOTO_WEATHER,
   skyPhotoBlend,
   type DayNightControl,
@@ -435,7 +435,12 @@ export class WorldRenderer {
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
-    const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl)
+    const hour = resolvePlayHour(
+      view.clock ?? 0,
+      this.hourOverride,
+      this.dayNightControl,
+      view.dayNightCycle !== false,
+    )
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
     let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), this.dayNightControl)

@@ -1262,6 +1262,16 @@ function glowTexture(): THREE.DataTexture {
   return glowTex
 }
 
+/** Landing lamps are built in the rig. Give them the same night halo as the nav lights. */
+function attachLandingGlow(frame: Frame) {
+  if (frame.tier !== 'mid') return
+  for (const lamp of frame.lamps) {
+    if (lamp.name !== 'landing-light') continue
+    if (lamp.children.some((child) => child.userData.glow)) continue
+    lamp.add(lampGlow('#f5f8ff'))
+  }
+}
+
 /** Additive halo sprite on a nav lamp. Opacity follows the night lamp level (see lod.ts). */
 function lampGlow(color: string): THREE.Sprite {
   const mat = sharedMat(`lamp-glow:${color}`, () => new THREE.SpriteMaterial({
@@ -1367,16 +1377,22 @@ function addHeloLights(frame: Frame) {
   port.position.set(spec.lengthM * 0.05, centerY, -spec.rx * 0.95)
   port.name = 'nav-port'
   port.userData.baseScale = radius
-  frame.lamps.push(addMesh(frame, port, 'navRed', 'light'))
+  const portLamp = addMesh(frame, port, 'navRed', 'light')
+  frame.lamps.push(portLamp)
   const star = port.clone()
   star.position.z *= -1
   star.name = 'nav-starboard'
-  frame.lamps.push(addMesh(frame, star, 'navGreen', 'light'))
+  const starLamp = addMesh(frame, star, 'navGreen', 'light')
+  frame.lamps.push(starLamp)
   const tail = port.clone()
   const tailSt = loftStation('helo', 0.99)
   tail.position.set(tailX + spec.lengthM * 0.01, centerY + spec.ry * tailSt.dy, 0)
   tail.name = 'nav-tail'
-  frame.lamps.push(addMesh(frame, tail, 'navWhite', 'light'))
+  const tailLamp = addMesh(frame, tail, 'navWhite', 'light')
+  frame.lamps.push(tailLamp)
+  portLamp.add(lampGlow(slotColor('navRed', frame.livery)))
+  starLamp.add(lampGlow(slotColor('navGreen', frame.livery)))
+  tailLamp.add(lampGlow(slotColor('navWhite', frame.livery)))
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
   beacon.position.set(0, centerY + spec.ry * 0.97, 0)
@@ -1425,6 +1441,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
     addLights(frame)
   }
+  attachLandingGlow(frame)
   mergeStaticShell({
     tier: frame.tier,
     specId: frame.spec.id,

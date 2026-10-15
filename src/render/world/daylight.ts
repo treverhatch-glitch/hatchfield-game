@@ -4,7 +4,7 @@
  * The light rig reads the painted sky, then `applyDayNight` in `dayNight.ts`.
  */
 import type { Weather } from '../../game/types'
-import { DAYLIGHT_KEYS, LIGHT_LOOK, type DaylightKey } from '../look'
+import { DAYLIGHT_KEYS, LIGHT_LOOK, SUN_DISC, type DaylightKey } from '../look'
 
 /** Sim day is 180 s; `Game.isNight()` is the last third. Map so night = 19:00–08:00. */
 export const DAY_SECONDS = 180
@@ -92,6 +92,17 @@ export function lightsFactor(hour: number): number {
   return 1 - smoothstep(7.4, 8.2, h)
 }
 
+/**
+ * 1 when the sky should be a star field, 0 once the sun disc is up.
+ * Narrower than `lightsFactor`, so sunrise and sunset keep a visible sun
+ * while the runway lights are still ramping.
+ */
+export function starsFactor(hour: number): number {
+  const h = ((hour % 24) + 24) % 24
+  if (h >= 12) return smoothstep(SUN_DISC.duskStart, SUN_DISC.duskEnd, h)
+  return 1 - smoothstep(SUN_DISC.dawnStart, SUN_DISC.dawnEnd, h)
+}
+
 export function sunDirection(hour: number): { x: number; y: number; z: number } {
   const h = ((hour % 24) + 24) % 24
   const day = h >= 6 && h <= 20
@@ -131,7 +142,7 @@ export function skyState(hour: number, weather: Weather = 'clear'): SkyState {
     fogFar: 600,
     exposure: k.exposure,
     lights,
-    stars: lights,
+    stars: starsFactor(hour),
     wet: 0,
     precip: 0,
     lightning: false,

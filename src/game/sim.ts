@@ -225,6 +225,7 @@ import {
   type HintPrefs,
 } from './hints.ts'
 import { HINT_REFRESH_SEC } from './hintsData.ts'
+import { readDayNightCycle, sharedSettings } from '../features/settings/settings.ts'
 import {
   claimHoldUnits,
   CURB_REACH,
@@ -1577,6 +1578,11 @@ export class Game {
   apronFocus: { c: number; r: number }[] = []
   /** Hint switches for this game. Saved, and mirrored to settings. */
   hintPrefs: HintPrefs = newGameHintPrefs()
+  /**
+   * Sun cycle. Off holds the field at late morning. Saved with the airport
+   * and mirrored to settings, so the title screen and the next launch agree.
+   */
+  dayNightCycle = readDayNightCycle()
   /** Stuck-state tip chips. Separate from hints, letters, and alerts. */
   tipBook: TipBook = newTipBook()
   tipVisible: TipOffer[] = []
@@ -6885,6 +6891,7 @@ export class Game {
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
+      dayNightCycle: this.dayNightCycle,
       tipChips: this.tipBook,
       buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
@@ -7147,6 +7154,10 @@ export class Game {
       // The save wins; older saves fall back to the settings mirror, then to defaults.
       this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
       writeHintSettings(this.hintPrefs)
+      if (typeof s.dayNightCycle === 'boolean') {
+        this.dayNightCycle = s.dayNightCycle
+        sharedSettings().update((cur) => ({ ...cur, dayNightCycle: s.dayNightCycle as boolean }))
+      }
       this.tipBook = sanitizeTipBook(s.tipChips)
       this.tipVisible = []
       this.buildTrayOpened = s.buildTrayOpened ?? false
@@ -10746,6 +10757,14 @@ export class Game {
       fuelCell,
       stuckCell: stuck ? { c: Math.round(stuck.x), r: Math.round(stuck.y) } : null,
     }
+  }
+
+  /** Settings and the title screen. Off holds the sun at late morning. */
+  setDayNightCycle(on: boolean) {
+    const next = on !== false
+    this.dayNightCycle = next
+    sharedSettings().update((s) => ({ ...s, dayNightCycle: next }))
+    this.emit()
   }
 
   /** Settings → All hints enabled. The only way muted kinds come back. */

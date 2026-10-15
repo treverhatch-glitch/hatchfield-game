@@ -10,6 +10,8 @@ export function TitleScreen({
   onSandboxChange,
   enableHints,
   onEnableHintsChange,
+  dayNightCycle = true,
+  onDayNightCycleChange,
   onNewGame,
   onChooseKit,
   onContinue,
@@ -19,6 +21,9 @@ export function TitleScreen({
   /** Pregame setup: unchecked starts the new game with hints off. */
   enableHints: boolean
   onEnableHintsChange: (on: boolean) => void
+  /** Sun cycle. Off holds the apron at late morning. */
+  dayNightCycle?: boolean
+  onDayNightCycleChange?: (on: boolean) => void
   onNewGame: () => void
   /** Open the new-game sheet with this kit already chosen. */
   onChooseKit: (focus: StartFocus) => void
@@ -28,6 +33,7 @@ export function TitleScreen({
   const [tilt, setTilt] = useState({ x: 0, y: 0, hot: false })
   const [sandboxOn, setSandboxOn] = useState(sandbox)
   const [hintsOn, setHintsOn] = useState(enableHints)
+  const [cycleOn, setCycleOn] = useState(dayNightCycle)
   const kits: StartFocus[] = ['pax', 'cargo']
   return (
     <div className="menu-panel" data-testid="start-menu">
@@ -93,6 +99,18 @@ export function TitleScreen({
           )
         })}
       </div>
+      <label className="sandbox-toggle" title="Turn this off to hold the field in late-morning light.">
+        <input
+          type="checkbox"
+          checked={cycleOn}
+          data-testid="day-night-cycle-toggle"
+          onChange={(e) => {
+            setCycleOn(e.target.checked)
+            onDayNightCycleChange?.(e.target.checked)
+          }}
+        />
+        <span>Day and night cycle</span>
+      </label>
       <label className="sandbox-toggle" title="Dev / trial: spend never fails">
         <input
           type="checkbox"

@@ -219,6 +219,21 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
           </li>
         ))}
       </ul>
+      <h3>Day and night</h3>
+      <label className="sandbox-toggle">
+        <input
+          type="checkbox"
+          data-testid="settings-day-night-cycle"
+          checked={game.dayNightCycle}
+          onChange={(e) => game.setDayNightCycle(e.target.checked)}
+        />
+        <span>Day and night cycle</span>
+      </label>
+      <p className="muted" data-testid="settings-day-night-note">
+        {game.dayNightCycle
+          ? 'The sun moves from dawn to night. Runway lights come on after dusk.'
+          : 'Held at late morning. The field stays in daylight until you turn the cycle back on.'}
+      </p>
       <h3>Graphics</h3>
       <div className="gfx-quality" role="radiogroup" aria-label="Graphics quality">
         {(['low', 'med', 'high', 'ultra'] as const).map((level) => (

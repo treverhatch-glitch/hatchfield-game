@@ -9,6 +9,7 @@ import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
 import { contactSpots } from './contact'
+import { clockForHour, DAY_NIGHT } from './dayNight'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -326,6 +327,30 @@ describe('initWorldRender', () => {
     wr.setTimeOfDay(12)
     wr.update(game, cam, 1 / 60)
     expect(wr.dayNightSample.lights).toBe(0)
+    wr.dispose()
+  })
+
+  it('holds late morning when the cycle is off, and a photo hour still wins', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const cam = camAt(0, 0, 80)
+    const night = blankView([], { clock: clockForHour(2, 23), dayNightCycle: false, weather: 'clear' })
+    wr.update(night, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(DAY_NIGHT.hold)
+    expect(wr.dayNightSample.lights).toBe(0)
+    expect(wr.dayNightSample.runwayEdge).toBe(0)
+    expect(sun.intensity).toBeGreaterThan(2)
+    wr.setTimeOfDay(DAY_NIGHT.shots.dusk)
+    wr.update(night, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(DAY_NIGHT.shots.dusk)
+    expect(wr.dayNightSample.lights).toBeGreaterThan(0.2)
+    wr.setTimeOfDay(null)
+    wr.update(night, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(DAY_NIGHT.hold)
+    wr.setDayNight({ hour: 23 })
+    wr.update(night, cam, 1 / 60)
+    expect(wr.dayNightSample.hour).toBeCloseTo(23)
+    expect(wr.dayNightSample.lights).toBe(1)
     wr.dispose()
   })
 
