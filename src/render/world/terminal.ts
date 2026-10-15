@@ -12,6 +12,7 @@ import { ROSTER } from '../../airlines/roster'
 import type { QualityLevel } from './quality'
 import { MATERIAL_TARGETS } from '../../build/materialTargets'
 import { tint as lighten } from './buildingSkin'
+import { exteriorTexture } from './exteriorArt'
 import {
   BAG_COLORS,
   bake,
@@ -280,10 +281,11 @@ export class TerminalBuilding {
     )
     shared.surfaces.watch(this.floorMat)
     tileByPosition(this.floorMat, shared.surfaces.repeatFor('terrazzo'))
+    const curtain = exteriorTexture('curtain')
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
         color: 0xffffff,
-        map: shared.surfaces.maps.glass,
+        map: curtain ?? shared.surfaces.maps.glass,
         transparent: true,
         opacity: 0.82,
         depthWrite: false,
@@ -291,7 +293,7 @@ export class TerminalBuilding {
         emissiveIntensity: 0,
       }),
     )
-    shared.surfaces.watch(this.glassMat)
+    if (!curtain) shared.surfaces.watch(this.glassMat)
     tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18

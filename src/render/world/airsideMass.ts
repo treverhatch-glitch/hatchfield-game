@@ -9,6 +9,7 @@ import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { mountSockets } from '../socketMount'
 import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from './buildingSkin'
+import { exteriorTexture } from './exteriorArt'
 import { mountServiceBay, mountSign } from './buildingSign'
 
 function wall(target: Parameters<typeof skinMaterial>[0], part: Parameters<typeof skinMaterial>[1]) {
@@ -172,10 +173,16 @@ export function addControlTower(g: THREE.Group) {
   )
   shaft.position.y = CELL * 0.28
   shaft.castShadow = true
-  const cab = new THREE.Mesh(
-    new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12),
-    new THREE.MeshStandardMaterial({ color: '#2f6f9a', metalness: 0.3 }),
-  )
+  const cabMat = new THREE.MeshStandardMaterial({
+    color: '#c5d8e6',
+    roughness: 0.15,
+    metalness: 0.2,
+    emissive: '#1a3348',
+    emissiveIntensity: 0.25,
+  })
+  const curtain = exteriorTexture('curtain')
+  if (curtain) cabMat.map = curtain
+  const cab = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12), 2.4, WORLD_PER_METER), cabMat)
   cab.position.y = CELL * 0.58
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(cabR * 0.7, cabR * 1.04, CELL * 0.04, 12), wall('control_tower', 'roof'))
   cap.position.y = CELL * 0.66
