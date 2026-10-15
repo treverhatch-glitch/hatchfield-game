@@ -444,7 +444,8 @@ import {
   type DeskLeasePoint,
 } from '../checkin/index.ts'
 import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type CardSection, type Reading } from '../buildinginfo/index.ts'
-import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
+import { HALL_MOOD_LINK, HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
+import { hallForecast } from './hallCapacity.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
   BAG_RECORD_SEC,
@@ -10697,8 +10698,23 @@ export class Game {
     })
     this.hallNav.tick(step)
     this.applyHallWaits()
+    this.applyHallMood()
     // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
     this.queueReputation(this.hallNav.takeReputation())
+  }
+
+  /** Thoughts a walker has about the hall (lost, nowhere to sit, crowded, empty shelf) move the fare's happiness too. */
+  applyHallMood() {
+    const moods = this.hallNav.drainMood()
+    if (!moods.length) return
+    const byId = new Map<string, HallGuest>()
+    for (const g of this.hallGuests) if (!g.dead && !g.preview) byId.set(g.id, g)
+    for (const m of moods) {
+      const g = byId.get(m.id)
+      const weight = HALL_MOOD_LINK.weight[m.key] ?? 0
+      if (!g || !weight) continue
+      g.happiness = Math.max(0, Math.min(100, g.happiness + m.delta * weight))
+    }
   }
 
   /** Waits in the walk's real queues move the waiting guest's mood: quick service pleases, a long line stings. */
@@ -20710,6 +20726,7 @@ export class Game {
       queueLength: throughput.queueLength,
       queueKind: 'passengers',
       bays,
+      note: hallForecast(node, metrics)?.text,
       alert: alloc?.reason ?? undefined,
       actions: alloc ? this.checkinActions(alloc) : undefined,
     }

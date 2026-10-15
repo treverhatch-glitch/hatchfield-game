@@ -57,6 +57,7 @@ import {
   type Signage,
 } from './guests.ts'
 import { computeField, type Field } from './field.ts'
+import { guestName } from './guestNames.ts'
 import {
   apronCells,
   buildFacilities,
@@ -130,8 +131,17 @@ export interface PaxEvent {
 }
 
 /** Everything the guest card shows about one passenger. */
+/** One thought that moved a guest's satisfaction. */
+export interface GuestMood {
+  id: string
+  key: ThoughtKey
+  /** Satisfaction points (0–100 scale) the thought moved. */
+  delta: number
+}
+
 export interface GuestCard {
   id: string
+  name: string
   purpose: GuestPurpose
   traits: GuestTrait[]
   /** 0 (fine) to 1 (urgent). */
@@ -330,6 +340,7 @@ export class PaxNav {
   private byId = new Map<string, Agent>()
   private events: PaxEvent[] = []
   private waitLog: PaxWait[] = []
+  private moodLog: GuestMood[] = []
   private rng: PaxRng
   private tileM: number
   private now = 0
@@ -828,7 +839,20 @@ export class PaxNav {
   private say(a: Agent, key: ThoughtKey, place?: string) {
     const m = (a.lead ?? a).m
     if (!m) return
-    this.fb.satDelta += think(m, key, this.now, place)
+    const delta = think(m, key, this.now, place)
+    this.fb.satDelta += delta
+    if (delta !== 0) {
+      this.moodLog.push({ id: (a.lead ?? a).id, key, delta })
+      if (this.moodLog.length > PAXNAV_TUNING.waitLogCap) this.moodLog.splice(0, this.moodLog.length >> 1)
+    }
+  }
+
+  /** Thoughts that moved a guest's satisfaction since the last drain, for the sim to carry onto the fare. */
+  drainMood(): GuestMood[] {
+    if (!this.moodLog.length) return []
+    const out = this.moodLog
+    this.moodLog = []
+    return out
   }
 
   /** Seconds from now until boarding opens, less what the stops still ahead should take. */
@@ -1590,6 +1614,7 @@ export class PaxNav {
     const group = lead.group ? [lead.id, ...lead.group.filter((f) => !f.dead).map((f) => f.id)] : []
     return {
       id: a.id,
+      name: guestName(a.id),
       purpose: a.m.purpose,
       traits: [...a.m.traits],
       needs,

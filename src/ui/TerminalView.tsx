@@ -8,6 +8,7 @@ import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
 import { registerHallTools } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
+import { GUEST_GLANCE } from '../paxnav/guestConfig.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
 import { WalkerCard, WalkerOnlyCard } from './WalkerCard'
 import {
@@ -131,6 +132,28 @@ function KitBar({
   )
 }
 
+/** Hover read on a passenger: name, mood, the need that matters most and what they are thinking. */
+function WalkerTooltip({ game, hover }: { game: Game; hover: { id: string; sx: number; sy: number } | null }) {
+  if (!hover || game.view !== 'hall') return null
+  const g = game.hallNav.glance(hover.id)
+  if (!g) return null
+  return (
+    <div className="walker-tip" style={{ left: hover.sx + 16, top: hover.sy + 16 }} data-testid="walker-tip">
+      <strong data-testid="walker-tip-name">{g.name}</strong>
+      <span data-testid="walker-tip-mood">
+        Mood: {g.mood}
+        {g.satisfaction != null ? ` (${Math.round(g.satisfaction)})` : ''}
+      </span>
+      <span data-testid="walker-tip-need">
+        Top need: {g.topNeed ? `${g.topNeed.label} (${Math.round(g.topNeed.level * 100)}%)` : GUEST_GLANCE.calmNeed}
+      </span>
+      <span className="walker-tip-thought" data-testid="walker-tip-thought">
+        {g.thought}
+      </span>
+    </div>
+  )
+}
+
 function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover | null }) {
   if (!build || !hover) return null
   if (build.kind === 'foundation' || build.kind === 'wall' || build.kind === 'door' || build.kind === 'floor' || build.kind === 'wallpaper' || build.kind === 'room') {
@@ -187,6 +210,7 @@ export function TerminalView({ game }: { game: Game }) {
   const [build, setBuild] = useState<HallBuildMode>(null)
   const [sheet, setSheet] = useState(false)
   const [hover, setHover] = useState<HallHover | null>(null)
+  const [walkerHover, setWalkerHover] = useState<{ id: string; sx: number; sy: number } | null>(null)
   const buildRef = useRef<HallBuildMode>(null)
 
   useEffect(() => {
@@ -234,6 +258,7 @@ export function TerminalView({ game }: { game: Game }) {
     world.onMovePick = (id, def) =>
       setBuild({ kind: 'move', itemId: id, def, rot: buildRef.current?.kind === 'move' ? buildRef.current.rot : 0 })
     world.onHover = setHover
+    world.onWalkerHover = setWalkerHover
     world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.setBuild(buildRef.current)
 
@@ -321,6 +346,7 @@ export function TerminalView({ game }: { game: Game }) {
       <InteriorBar game={game} build={build} setBuild={setBuild} />
       <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
+      <WalkerTooltip game={game} hover={build ? null : walkerHover} />
       {game.view === 'hall' && sheet
         ? createPortal(
             <aside className="hall-build" data-testid="hall-build">

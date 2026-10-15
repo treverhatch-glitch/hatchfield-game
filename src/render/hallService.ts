@@ -19,6 +19,7 @@ import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
 import type { FacilityMetrics } from '../paxnav/paxnav.ts'
 import type { CrewRole } from '../paxnav/crew.ts'
+import { PEOPLE_LOD_FULL } from '../people/config.ts'
 import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
 import { crewLook } from '../people/variants.ts'
 import type { CrewKind, PersonLook } from '../people/types.ts'
@@ -207,7 +208,7 @@ export class HallServiceFx {
     this.signBack.name = 'shared'
     this.signGroup.name = 'hall-desk-signs'
     this.group.add(this.signGroup)
-    this.staff = new PeopleRenderer(this.group, { capacity: L.maxStaff })
+    this.staff = new PeopleRenderer(this.group, { capacity: L.maxStaff, lod: PEOPLE_LOD_FULL })
   }
 
   /**

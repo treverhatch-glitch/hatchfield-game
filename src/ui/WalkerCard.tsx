@@ -4,7 +4,7 @@
  * side-panel block, never a modal; reads the sim, writes nothing.
  */
 import type { Game } from '../game/sim'
-import type { GuestCard } from '../paxnav/index.ts'
+import { moodWord, type GuestCard } from '../paxnav/index.ts'
 
 const TRAIT_LABEL: Record<string, string> = {
   business: 'Business',
@@ -41,6 +41,9 @@ function WalkerBody({ card }: { card: GuestCard }) {
   const latest = card.thoughts[card.thoughts.length - 1]
   return (
     <div className="walker-card" data-testid="walker-card">
+      <p data-testid="walker-name">
+        <strong>{card.name}</strong> · {moodWord(card.satisfaction)}
+      </p>
       <p className="muted" data-testid="walker-traits">
         {card.traits.map((t) => TRAIT_LABEL[t] ?? t).join(' · ')}
         {card.group.length ? ` · party of ${card.group.length}` : ''}

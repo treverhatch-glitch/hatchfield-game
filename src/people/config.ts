@@ -15,6 +15,18 @@ export const PEOPLE_LOD = {
 /** Hard instance capacity per part mesh. */
 export const PEOPLE_CAPACITY = 4096
 
+/**
+ * Full quality for every drawn person: level 0 at any distance, no per-level caps.
+ * The passenger scenes use this; `PEOPLE_LOD` stays for demos and the perf benches.
+ */
+export const PEOPLE_LOD_FULL = {
+  nearDistance: 1e6,
+  midDistance: 1e6,
+  farDistance: 1e6,
+  nearCap: PEOPLE_CAPACITY,
+  midCap: PEOPLE_CAPACITY,
+} as const
+
 export const SKIN_TONES = [0xf6d5b8, 0xe8b88f, 0xd09a6c, 0xb67a4d, 0x8d5a38, 0x5e3a25] as const
 export const HAIR_COLORS = [0x15110e, 0x3b2616, 0x6b4423, 0xa8742f, 0xd8b66a, 0x8a8a8a, 0xb23a1e] as const
 export const SHIRT_COLORS = [

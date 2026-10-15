@@ -1,10 +1,12 @@
-import { CHECKIN_RATES, DEFAULT_BAG_SHARE } from './data';
+import { CHECKIN_RATES, DEFAULT_BAG_SHARE, type CheckinType } from './data';
 import { queueWaitMinutes } from './queue';
 
 export interface CheckinConfig {
   desks: number;
   kiosks: number;
   bagDrops: number;
+  /** Measured pax/hr per channel point. Overrides the table rate where the live walk knows better. */
+  ratesPerHr?: Partial<Record<CheckinType, number>>;
 }
 
 export interface CheckinChannelResult {
@@ -51,6 +53,10 @@ export function checkinMix(
     ? Math.max(0, Math.min(1, bagShare))
     : DEFAULT_BAG_SHARE;
 
+  const rate = (type: CheckinType): number => {
+    const live = config?.ratesPerHr?.[type];
+    return typeof live === 'number' && Number.isFinite(live) && live > 0 ? live : CHECKIN_RATES[type];
+  };
   const desks = Math.max(0, Math.floor(config?.desks ?? 0));
   const kiosks = Math.max(0, Math.floor(config?.kiosks ?? 0));
   const bagDrops = Math.max(0, Math.floor(config?.bagDrops ?? 0));
@@ -59,18 +65,18 @@ export function checkinMix(
   const paxNoBags = roundValue(safePax * (1 - safeBagShare));
 
   // Kiosks process no-bag pax
-  const kioskCapacity = kiosks * CHECKIN_RATES.kiosk;
+  const kioskCapacity = kiosks * rate('kiosk');
   const kioskPax = roundValue(Math.min(paxNoBags, kioskCapacity));
   const overflowNoBagPax = roundValue(paxNoBags - kioskPax);
 
   // Bag drops process bag pax
-  const bagDropCapacity = bagDrops * CHECKIN_RATES.bagDrop;
+  const bagDropCapacity = bagDrops * rate('bagDrop');
   const bagDropPax = roundValue(Math.min(paxWithBags, bagDropCapacity));
   const overflowBagPax = roundValue(paxWithBags - bagDropPax);
 
   // Desks process overflow
   const deskPax = roundValue(overflowNoBagPax + overflowBagPax);
-  const deskCapacity = desks * CHECKIN_RATES.desk;
+  const deskCapacity = desks * rate('desk');
 
   const buildChannelResult = (
     count: number,
@@ -96,9 +102,9 @@ export function checkinMix(
     };
   };
 
-  const kioskResult = buildChannelResult(kiosks, kioskPax, CHECKIN_RATES.kiosk);
-  const bagDropResult = buildChannelResult(bagDrops, bagDropPax, CHECKIN_RATES.bagDrop);
-  const deskResult = buildChannelResult(desks, deskPax, CHECKIN_RATES.desk);
+  const kioskResult = buildChannelResult(kiosks, kioskPax, rate('kiosk'));
+  const bagDropResult = buildChannelResult(bagDrops, bagDropPax, rate('bagDrop'));
+  const deskResult = buildChannelResult(desks, deskPax, rate('desk'));
 
   const totalCapacity = deskCapacity + kioskCapacity + bagDropCapacity;
   const rawOverallUtil =

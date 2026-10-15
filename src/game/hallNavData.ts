@@ -1,6 +1,7 @@
 /** Tunables for the live passenger walk in the Terminal view (src/game/hallNav.ts). */
 import type { EquipKind } from '../terminalbuild/types.ts'
 import type { ItemDef } from './terminal.ts'
+import type { ThoughtKey } from '../paxnav/guestConfig.ts'
 
 export const HALL_NAV_TUNING = {
   /**
@@ -53,6 +54,41 @@ export const HALL_QUEUE_TUNING = {
   quickMood: 1,
 }
 
+/**
+ * How a walker's thoughts carry onto the fare it stands for (sim `HallGuest.happiness`),
+ * which at the gate moves airline heat and the diplomacy mood grade. 0 leaves a thought
+ * to the model that already scores it: waits go through `waitMoodDelta`, shop and
+ * restroom visits through the hall's own purchase and wear rules, a missed flight
+ * through the missed-gate penalty.
+ */
+export const HALL_MOOD_LINK = {
+  /** Share of a thought's satisfaction move that lands on the fare's happiness. */
+  weight: {
+    lost: 0.6,
+    no_amenity: 0.6,
+    out_of_stock: 0.6,
+    no_seats: 0.6,
+    nice_seats: 0.6,
+    crowded: 0.6,
+    hungry: 0.3,
+    thirsty: 0.3,
+    need_toilet: 0.3,
+    bored: 0.3,
+    tired: 0.3,
+    anxious: 0.3,
+  } as Partial<Record<ThoughtKey, number>>,
+}
+
+/** Capacity forecast on the check-in and security cards (src/game/hallCapacity.ts). */
+export const HALL_CAPACITY_TUNING = {
+  /**
+   * Nav seconds over which the passengers committed to a point count as one
+   * hour's rate. 1200 (20 nav minutes): a lane with 30 people headed for it
+   * is read as 90 pax/hr, so a 120 pax/hr lane shows 75% loaded.
+   */
+  planWindowNavSec: 1200,
+}
+
 /** Terminal crew in the hall walk (src/paxnav/crew.ts). */
 export const HALL_CREW_TUNING = {
   /** Clock seconds per shift: a third of the 180 s game day. */
@@ -61,6 +97,8 @@ export const HALL_CREW_TUNING = {
 
 /** Arriving passengers on the hall's nav grid (src/game/hallArrivals.ts). Nav seconds, metres. */
 export const HALL_ARRIVAL_TUNING = {
+  /** Hover line for an arriving passenger. */
+  glanceThought: 'Heading for the bags and the exit',
   /** Seed for arrival rolls (jet bridge cell, bags, needs, pace). */
   seed: 207,
   /** Share of arrivals with a checked bag to collect at the claim belt. */
@@ -81,22 +119,16 @@ export const PREFAB_CLAIM_KIT = {
 
 /** Terminal-view walker drawing (src/render/hallNavCrowd.ts). Never changes who is in the sim. */
 export const HALL_CROWD_TUNING = {
-  /** Most walkers drawn in one frame; the nearest to the camera win. 0 = no cap. */
-  maxVisible: 600,
-  /** Walkers farther than this from the camera, metres, are not drawn. */
-  drawDistM: 140,
-  /**
-   * Past this distance, metres, walkers drop the head and bag and draw as a body only.
-   * The default hall camera sits near 66 m, so this stays past that shot.
-   */
-  lodDistM: 120,
-  /**
-   * Inside this distance, metres, the nearest `nearCap` walkers use the shared
-   * low-poly body (sheet outfit and props). Farther walkers stay the cheap limbs.
-   * Wide enough that the opening hall camera still shows a walk cycle.
-   */
-  nearDistM: 90,
-  nearCap: 96,
+  /** Most walkers drawn in one frame, nearest first. 0 = everyone: no cap. */
+  maxVisible: 0,
+  /** Walkers farther than this from the camera, metres, are not drawn. Past any camera the hall allows. */
+  drawDistM: 1e6,
+  /** Past this distance walkers would drop to a body only. Out of reach: nobody is downgraded. */
+  lodDistM: 1e6,
+  /** Inside this distance every walker uses the shared low-poly body (sheet outfit and props). Out of reach too. */
+  nearDistM: 1e6,
+  /** Sheet bodies the renderer holds: as many as the people renderer can carry. */
+  nearCap: 4096,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
 }
@@ -107,6 +139,8 @@ export const HALL_WALKER_PICK = {
   radiusM: 1.6,
   /** Screen-space pick radius, pixels. A click this close to a walker selects them. */
   screenPx: 36,
+  /** Hover tooltip: least milliseconds between picks while the cursor moves. */
+  hoverEveryMs: 60,
 }
 
 /**

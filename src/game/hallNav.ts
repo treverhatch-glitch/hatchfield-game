@@ -21,11 +21,15 @@ import {
   PaxNav,
   PAXNAV_TUNING,
   feedbackReputation,
+  glanceOf,
+  guestName,
   hashId as navHash,
   type CrewRole,
   type FacilityMetrics,
   type GuestCard,
   type GuestFeedback,
+  type GuestGlance,
+  type GuestMood,
   type GuestPurpose,
   type PaxEvent,
   type PaxWait,
@@ -37,7 +41,7 @@ import type { HallNode } from './guests.ts'
 import { facilityBlockers } from '../terminalplay/facilities.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
 import { SERVICE_POINT_TUNING, openPointIds, type HiredPosts, type StaffPoint } from '../servicepoints/index.ts'
-import { HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
+import { HALL_ARRIVAL_TUNING, HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
 type Zones = readonly (readonly (ZoneId | null)[])[]
@@ -958,6 +962,21 @@ export class HallNav {
     return this.live ? (this.navObj?.guest(id) ?? null) : null
   }
 
+  /** Name, mood, top need and current thought for the hover tooltip. Arrivals read as just landed. */
+  glance(id: string): GuestGlance | null {
+    const card = this.guestCard(id)
+    if (card) return glanceOf(card)
+    if (!this.locate(id)) return null
+    return {
+      id,
+      name: guestName(id),
+      satisfaction: null,
+      mood: 'Just landed',
+      topNeed: null,
+      thought: HALL_ARRIVAL_TUNING.glanceThought,
+    }
+  }
+
   /** Mean satisfaction of the departing walkers now. */
   satisfaction(): { avg: number; count: number } {
     return this.navObj?.satisfaction() ?? { avg: 0, count: 0 }
@@ -993,6 +1012,11 @@ export class HallNav {
       return { x: this.poseScratch[i * 4] + ox, z: this.poseScratch[i * 4 + 2] + oz }
     }
     return null
+  }
+
+  /** Thoughts that moved a departing guest's satisfaction since the last call. */
+  drainMood(): GuestMood[] {
+    return this.navObj?.drainMood() ?? []
   }
 
   /** Waits that ended since the last drain (who, at which kit, how long). The sim turns them into mood. */

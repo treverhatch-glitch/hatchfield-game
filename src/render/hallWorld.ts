@@ -276,6 +276,10 @@ export class HallWorld {
   onCaptured: ((url: string) => void) | null = null
   private captureWanted = false
   onHover: ((hover: HallHover | null) => void) | null = null
+  /** Passenger under the cursor (client pixels), or null. Drives the hover tooltip. */
+  onWalkerHover: ((hover: { id: string; sx: number; sy: number } | null) => void) | null = null
+  private walkerHover: { id: string; sx: number; sy: number } | null = null
+  private hoverAt = 0
   private hover: HallHover | null = null
   private queueGroup = new THREE.Group()
   private queueSig = ''
@@ -391,6 +395,7 @@ export class HallWorld {
     canvas.addEventListener('pointermove', this.onMove)
     canvas.addEventListener('pointerup', this.onUp)
     canvas.addEventListener('pointerleave', this.onUp)
+    canvas.addEventListener('pointerleave', this.onLeave)
     canvas.addEventListener('wheel', this.onWheel, { passive: false })
   }
 
@@ -433,8 +438,11 @@ export class HallWorld {
     this.downY = e.clientY
   }
 
+  private onLeave = () => this.setWalkerHover(null)
+
   private onMove = (e: PointerEvent) => {
     if (this.build) this.trackHover(e)
+    else this.trackWalkerHover(e)
     if (this.dragging === 'draw') {
       const t = this.interiorTile(e)
       if (t) this.drawB = t
@@ -517,8 +525,30 @@ export class HallWorld {
     return this.ray.ray.intersectPlane(this.floorPlane, this.zoomScratch)
   }
 
+  /** Passenger under the cursor, for the hover tooltip. Picked at most every `HALL_WALKER_PICK.hoverEveryMs`. */
+  private trackWalkerHover(e: PointerEvent) {
+    if (!this.onWalkerHover) return
+    if (this.dragging || e.buttons !== 0) {
+      this.setWalkerHover(null)
+      return
+    }
+    const now = performance.now()
+    if (now - this.hoverAt < HALL_WALKER_PICK.hoverEveryMs) return
+    this.hoverAt = now
+    const id = this.pickWalker(e.clientX, e.clientY)
+    this.setWalkerHover(id ? { id, sx: e.clientX, sy: e.clientY } : null)
+  }
+
+  private setWalkerHover(next: { id: string; sx: number; sy: number } | null) {
+    const cur = this.walkerHover
+    if (!next && !cur) return
+    if (next && cur && next.id === cur.id && next.sx === cur.sx && next.sy === cur.sy) return
+    this.walkerHover = next
+    this.onWalkerHover?.(next)
+  }
+
   /** Walker nearest the click in screen space, departures and arrivals. Crew are skipped. */
-  private pickWalker(e: PointerEvent): string | null {
+  private pickWalker(clientX: number, clientY: number): string | null {
     const game = this.game
     if (!game?.hallNav.live) return null
     const nav = game.hallNav
@@ -538,7 +568,7 @@ export class HallWorld {
       if (this.proj.z < -1 || this.proj.z > 1) continue
       const sx = (this.proj.x * 0.5 + 0.5) * rect.width + rect.left
       const sy = (-this.proj.y * 0.5 + 0.5) * rect.height + rect.top
-      const d = (sx - e.clientX) ** 2 + (sy - e.clientY) ** 2
+      const d = (sx - clientX) ** 2 + (sy - clientY) ** 2
       if (d > bestD) continue
       const id = nav.idAt(i)
       if (!id) continue
@@ -589,7 +619,7 @@ export class HallWorld {
       else this.game.openAssign(kind, id)
       return
     }
-    const walked = this.pickWalker(e)
+    const walked = this.pickWalker(e.clientX, e.clientY)
     if (walked) {
       this.game.selectGuest(walked)
       return
@@ -2211,6 +2241,7 @@ export class HallWorld {
     canvas.removeEventListener('pointermove', this.onMove)
     canvas.removeEventListener('pointerup', this.onUp)
     canvas.removeEventListener('pointerleave', this.onUp)
+    canvas.removeEventListener('pointerleave', this.onLeave)
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
     syncInteriorEdit(this.interiorEdit, undefined, 'dispose', this.interiorSig)

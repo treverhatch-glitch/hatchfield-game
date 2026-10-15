@@ -835,7 +835,7 @@ export class WorldRenderer {
         return p ? { ...a, x: p.x, z: p.z } : a
       })
     }
-    this.people ??= createCrowd(this.root, { camera, capacity: 480, unitsPerMeter: WORLD_PER_METER })
+    this.people ??= createCrowd(this.root, { camera, capacity: 480, unitsPerMeter: WORLD_PER_METER, full: true })
     this.people.setCamera(camera)
     this.hallCrowd?.sync([], this.time)
     this.people.update(
