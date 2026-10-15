@@ -1067,7 +1067,7 @@ export interface GameSnapshot {
   standSize?: Record<string, 'light' | 'narrow' | 'heavy'>
   /** Stand key → surface rung 0..2. Missing on older saves. */
   standRung?: Record<string, 0 | 1 | 2>
-  /** Host key "stand:c,r" → fittings. Hydrant pits stay on standPits. */
+  /** Host key "stand:c,r" → fittings. A pit is not a fitting. Attachments toggle it with Game.setHydrantPit; fuel still reads standPits. */
   fittings?: Record<string, { id: string; granted?: 'legacy' }[]>
   /** Hangar key → bay size. Missing hangars stay small. */
   hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
