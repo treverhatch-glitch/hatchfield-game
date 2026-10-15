@@ -86,12 +86,12 @@ export const LANDSIDE = {
   decelMps2: 4,
   /** Sideways acceleration drivers accept in a turn, m/s². Sets U-turn and corner speed. */
   turnLatAccelMps2: 2.5,
-  /** Distance a lane change takes at speed, metres. */
-  laneChangeM: 18,
+  /** Distance a lane change takes at speed, metres. Long enough that the S-curve is a steer, not a sideways slide. */
+  laneChangeM: 28,
   /** Shortest lane change, metres. A car stops this far before the end of its lane. */
   laneChangeMinM: 6,
   /** Seconds of travel a lane change takes, between the two lengths above. */
-  laneChangeSec: 3,
+  laneChangeSec: 5,
   /** Start heading for the curb lane this far before the stall or the U-turn, metres. */
   prepM: 50,
   /** Shortest and longest pull into or out of a stall, metres. */

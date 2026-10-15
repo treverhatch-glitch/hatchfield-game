@@ -177,6 +177,30 @@ describe('landside vehicles', () => {
     expect(checked).toBeGreaterThan(100)
   })
 
+  it('steers through a lane change, and turns around on an arc instead of snapping', () => {
+    const sim = new LandsideTraffic()
+    const field = stamped({ departures: 14, paxPerDay: 2400 })
+    const wrapA = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
+    let leaned = 0
+    let maxTurnStep = 0
+    let arcSamples = 0
+    const prev = new Map<string, { heading: number; r: number }>()
+    for (let t = 0; t < 900 * 4; t++) {
+      for (const car of sim.tick(0.25, field).vehicles) {
+        const was = prev.get(car.id)
+        prev.set(car.id, { heading: car.heading, r: car.r })
+        if (car.r > 2 && car.r < 10 && Math.abs(Math.cos(car.heading)) > 0.08 && Math.abs(Math.sin(car.heading)) > 0.9) leaned++
+        if (!was || car.r < 10.5 || was.r < 10.5) continue
+        const step = Math.abs(wrapA(car.heading - was.heading))
+        maxTurnStep = Math.max(maxTurnStep, step)
+        if (step > 0.02) arcSamples++
+      }
+    }
+    expect(leaned, 'lane changes yaw the nose').toBeGreaterThan(20)
+    expect(arcSamples, 'the U-turn is crossed in more than one pose').toBeGreaterThan(20)
+    expect(maxTurnStep, 'no heading snap on the U-turn').toBeLessThan(0.45)
+  })
+
   it('changes lane to pass a held queue and back into the curb lane to stop', () => {
     const sim = new LandsideTraffic()
     const field = stamped({ departures: 14, paxPerDay: 2400 })

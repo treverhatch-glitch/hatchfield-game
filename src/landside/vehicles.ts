@@ -134,6 +134,12 @@ function smoothstep(p: number): number {
   return t * t * (3 - 2 * t)
 }
 
+/** Derivative of {@link smoothstep} with respect to p. Zero at both ends, so a lane change starts and finishes straight. */
+function smoothstepDeriv(p: number): number {
+  const t = clamp(p, 0, 1)
+  return 6 * t * (1 - t)
+}
+
 function wrap(a: number): number {
   return Math.atan2(Math.sin(a), Math.cos(a))
 }
@@ -595,11 +601,17 @@ export class LandsideFleet {
     const after = place(road, car.x, lat)
     const dx = after.x - before.x
     const dy = after.y - before.y
-    if (Math.hypot(dx, dy) > 0.02) {
-      const tangent = headingAt(geo, car.x, lat)
-      const yaw = Math.min(MAX_YAW, MAX_SWEEP_M / car.half)
-      car.heading = tangent + clamp(wrap(Math.atan2(dy, dx) - tangent), -yaw, yaw)
+    const tangent = headingAt(geo, car.x, lat)
+    let steer = 0
+    if (car.mode !== 'lane' && car.moveLen > 0.5) {
+      // Nose follows the S-curve: it yaws into the new lane through the middle and is straight again at the end.
+      const delta = geo.lat[car.lane] - geo.lat[car.from]
+      steer = Math.atan2(delta * smoothstepDeriv(car.p), car.moveLen)
+    } else if (Math.hypot(dx, dy) > 0.02) {
+      steer = wrap(Math.atan2(dy, dx) - tangent)
     }
+    const limit = car.mode === 'lane' ? Math.min(MAX_YAW, MAX_SWEEP_M / car.half) : MAX_YAW
+    car.heading = tangent + clamp(steer, -limit, limit)
   }
 
   /** Sample by which the vehicle must be settled in the curb lane, or Infinity. */
