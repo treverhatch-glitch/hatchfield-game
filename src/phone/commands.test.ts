@@ -24,6 +24,7 @@ function host(): PhoneCommandHost {
     acceptFuelSpot: vi.fn(),
     declineFuelSpot: vi.fn(),
     dropFuelTerm: vi.fn(),
+    orderPipelineSpot: vi.fn(),
     emit: vi.fn(),
   }
 }

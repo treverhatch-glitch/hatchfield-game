@@ -12,6 +12,8 @@ import {
 } from '../game/catalog.ts'
 import type { Game } from '../game/sim.ts'
 import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
+import { PIPELINE } from '../fuel/pipeline.ts'
+import { GAME_MINUTES_PER_SECOND } from '../scale/data.ts'
 import { contractById } from '../scale/logic.ts'
 import { buildPhoneFeed } from './feed.ts'
 import type { PhoneCard } from './types.ts'
@@ -97,6 +99,13 @@ export function readPhoneWorld(game: Game): PhoneWorld {
           secondsLeft: Math.max(0, Math.ceil(game.spotOffer.expiresAt - game.clock)),
         }
       : null,
+    pipelineHold:
+      game.pipelineHoldMinutes > 0
+        ? {
+            secondsLeft: Math.max(0, Math.ceil(game.pipelineHoldMinutes / GAME_MINUTES_PER_SECOND)),
+            body: PIPELINE.card,
+          }
+        : null,
     fuelSigned: (() => {
       const def = contractById(game.contractId)
       if (!def) return null

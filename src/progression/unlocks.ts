@@ -120,6 +120,8 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   hangar_j: 5,
   fuel_rail: 5,
   oil: 5,
+  fuel_pipe: 5,
+  manifold: 5,
   mover: 5,
   hub_skywalk: 5,
 

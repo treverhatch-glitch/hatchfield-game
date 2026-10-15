@@ -31,6 +31,7 @@ const LINES: Record<Exclude<ResearchCategoryId, 'specs'>, readonly LineSeed[]> =
     { name: 'Wide hangar', blurb: 'A bay that can hold a twin-aisle overnight.', unlocks: 'Wide hangar, tank farm II' },
     { name: 'MRO bay', blurb: 'Checks that used to divert now stay on the field.', unlocks: 'MRO' },
     { name: 'Night bank', blurb: 'Fuel by rail and a bank that flies after dark.', unlocks: 'Night hub, fuel rail, night bank' },
+    { name: 'Fuel pipeline', blurb: 'A pipe to the map edge and a receipt manifold at the farm.', unlocks: 'Fuel pipeline, receipt manifold' },
   ],
   landside: [
     { name: 'Curb road', blurb: 'A public road to the hall door.', unlocks: 'More catchment demand' },

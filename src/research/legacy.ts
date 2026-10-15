@@ -17,6 +17,7 @@ export const DESK_TO_NODE: Record<ResearchId, string> = {
   mil_ramp: 'safety-5',
   hydrant_fuel: 'airside-1',
   rail_fuel: 'airside-6',
+  pipeline_fuel: 'airside-7',
   tank_farm_ii: 'airside-4',
   tank_farm_iii: 'airfield-6',
   bag_sorter: 'terminal-2',

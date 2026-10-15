@@ -36,6 +36,7 @@ export {
   placementBlock,
   previewAirframe,
   railHints,
+  pipeLink,
   railLink,
   scaleAdvice,
   securityPerMin,

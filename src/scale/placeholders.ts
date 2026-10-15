@@ -24,6 +24,37 @@ export function addFuelRail(g: THREE.Group) {
   addFuelRailMass(g)
 }
 
+/** One pipe along the cell. Distinct from the twin fuel-rail runs. */
+export function addFuelPipe(g: THREE.Group) {
+  const pad = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.94, 0.06, CELL * 0.28), 4, WORLD_PER_METER), yardMaterial('gravel'))
+  pad.position.y = 0.04
+  pad.receiveShadow = true
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, CELL * 0.92, 10), metal('#e07a3d', 0.4))
+  pipe.rotation.z = Math.PI / 2
+  pipe.position.y = 0.28
+  pipe.castShadow = true
+  g.add(pad, pipe)
+}
+
+/** Receipt manifold. The pipe ends here and the farm takes the batch. */
+export function addManifold(g: THREE.Group) {
+  const pad = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.9, 0.1, CELL * 0.9), 4, WORLD_PER_METER), yardMaterial('gravel'))
+  pad.position.y = 0.05
+  pad.receiveShadow = true
+  const house = new THREE.Mesh(
+    skinBox(CELL * 0.46, 1.6, CELL * 0.4, SKIN_TILE_M.wall, WORLD_PER_METER),
+    skinMaterial('fuel_farm', 'wall'),
+  )
+  house.position.set(0, 0.9, 0)
+  house.castShadow = true
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, CELL * 0.7, 8), metal('#e07a3d', 0.4))
+  pipe.rotation.z = Math.PI / 2
+  pipe.position.set(0, 0.4, CELL * 0.22)
+  mountSign(g, 'PIPE', { w: 0.9, h: 0.24, x: 0, y: 1.5, z: CELL * 0.22 }, '#2a3038', '#f4f7fa')
+  mountDock(g, CELL * 0.4, 0.9, 0, CELL * 0.28)
+  g.add(pad, house, pipe)
+}
+
 export function addOilStation(g: THREE.Group) {
   const pad = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.92, 0.1, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   pad.position.y = 0.05

@@ -35,7 +35,8 @@ describe('research tree', () => {
     }
     for (const category of ['airfield', 'terminal', 'airside', 'landside', 'safety', 'retail'] as const) {
       const nodes = nodesInCategory(category)
-      expect(nodes.map((node) => node.baseCost)).toEqual([...TIER_COSTS])
+      const costs = category === 'airside' ? [...TIER_COSTS] : [...TIER_COSTS].slice(0, 6)
+      expect(nodes.map((node) => node.baseCost)).toEqual(costs)
       expect(nodes[0]?.baseCost).toBe(0)
       expect(nodes[0]?.requires).toEqual([])
       for (let i = 1; i < nodes.length; i++) {

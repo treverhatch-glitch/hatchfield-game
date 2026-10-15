@@ -50,6 +50,8 @@ const EVERY_STAMP = {
   hangar_j: true,
   fuel_rail: true,
   oil: true,
+  fuel_pipe: true,
+  manifold: true,
   travelator: true,
   skywalk: true,
   mover: true,

@@ -1,6 +1,7 @@
 import type { Game } from '../game/sim.ts'
 import type { DeliveryRead } from '../fuel/index.ts'
 import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
+import { PIPELINE } from '../fuel/pipeline.ts'
 import { coverLabel, daysOfCover } from '../info/model.ts'
 import { FUEL } from '../fuel/config.ts'
 import { FUEL_CONTRACTS } from '../scale/data.ts'
@@ -102,6 +103,14 @@ export function FuelPanel({ game, onClose }: { game: Game; onClose: () => void }
       <p className="fuel-meta" data-testid="fuel-standing">
         {standingLine(game)}
       </p>
+      {game.pipelineHoldMinutes > 0 ? (
+        <div className="fuel-actions" data-testid="fuel-pipeline-hold">
+          <p className="fuel-meta">{PIPELINE.card}</p>
+          <button type="button" data-testid="fuel-pipeline-spot" onClick={() => game.orderPipelineSpot()}>
+            Buy one spot truck
+          </button>
+        </div>
+      ) : null}
       {offer ? (
         <div className="fuel-actions" data-testid="fuel-spot-offer">
           <p className="fuel-meta">

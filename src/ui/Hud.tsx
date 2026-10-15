@@ -2216,6 +2216,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       <button type="button" onClick={() => game.setFuelSupply('rail')}>
                         Rail
                       </button>
+                      <button type="button" data-testid="fuel-supply-pipeline" onClick={() => game.setFuelSupply('pipeline')}>
+                        Pipeline
+                      </button>
                       <button
                         type="button"
                         onClick={() => game.upgradeTank()}

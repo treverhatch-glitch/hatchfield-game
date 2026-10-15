@@ -33,8 +33,10 @@ import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
 import {
+  addFuelPipe,
   addFuelRail,
   addHangar,
+  addManifold,
   addOilStation,
   addPeopleMover,
   addSkywalk,
@@ -1026,6 +1028,10 @@ export class World {
       addFuelRail(g)
     } else if (tile === 'oil') {
       addOilStation(g)
+    } else if (tile === 'fuel_pipe') {
+      addFuelPipe(g)
+    } else if (tile === 'manifold') {
+      addManifold(g)
     } else if (tile === 'travelator') {
       addTravelator(g)
     } else if (tile === 'skywalk') {

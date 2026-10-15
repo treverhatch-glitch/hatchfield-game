@@ -34,6 +34,7 @@ export const SOLID_TILES: readonly Tile[] = [
   'mro',
   'nighthub',
   'oil',
+  'manifold',
   'late_hotel',
   'late_rail',
   'saf',

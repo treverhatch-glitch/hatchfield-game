@@ -357,7 +357,9 @@ import {
   personSpeedMult,
   pillarReport,
   pillarUpkeep,
+  pipeLink,
   placementBlock,
+  railLink,
   scaleAdvice,
   contractById,
   seedLitresFromLoads,
@@ -778,6 +780,7 @@ import {
   SUPPLIER_STANDING,
   termPerLitre,
 } from '../fuel/standing.ts'
+import { PIPELINE, pipelineIntervalMinutes, qualityHoldMinutes, supplyCut } from '../fuel/pipeline.ts'
 import {
   astar,
   farmBesidePavement,
@@ -1424,6 +1427,11 @@ export class Game {
   supplierStanding: Record<string, number> = {}
   /** Spot index as a fraction of the rack price. Terms do not use it. */
   fuelIndex = 0
+  /** Game minutes left on a pipeline quality hold. */
+  pipelineHoldMinutes = 0
+  /** Game minutes of open flow before the next hold. */
+  pipelineCoolMinutes = pipelineIntervalMinutes()
+  private lastPipelineFlowing = false
   tankTier: 1 | 2 | 3 = 1
   tankLitres = 0
   fuelSupply: FuelSupply = 'road'
@@ -4737,12 +4745,13 @@ export class Game {
     return Math.max(6, Math.round(units * this.rivalDemandFactor()))
   }
 
-  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean): T {
+  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean, paxMax = 0): T {
     if (cargo || load.pax <= 0) return load
     const factor = this.rivalDemandFactor()
+    const scaled = Math.max(1, Math.round(load.pax * factor))
     return {
       ...load,
-      pax: Math.max(1, Math.round(load.pax * factor)),
+      pax: paxMax > 0 ? Math.min(paxMax, scaled) : scaled,
       bagUnits: load.bagUnits > 0 ? Math.max(1, Math.round(load.bagUnits * factor)) : 0,
     }
   }
@@ -6148,7 +6157,7 @@ export class Game {
     this.fuelChain.observe({
       capacityLitres: cap,
       litres: this.tankLitres,
-      mode: this.fuelSupply === 'rail' ? 'pipeline' : 'tanker',
+      mode: this.fuelSupply === 'road' ? 'tanker' : 'pipeline',
       tankerLitres: contract?.tankerLitres ?? 0,
       leadMinutes: contract?.leadMinutes ?? 0,
       wholesalePerLitre: contract ? this.termUnitPrice(contract.id) : 0,
@@ -6162,7 +6171,10 @@ export class Game {
       flights,
       roadMinutes: this.roadMinutes,
       justDelivered: this.fuelJustDelivered,
-      pipelineFlowing: this.fuelSupply === 'rail' && this.lastRailFlowing,
+      pipelineFlowing:
+        this.fuelSupply === 'rail'
+          ? this.lastRailFlowing
+          : this.fuelSupply === 'pipeline' && this.pipelineManifoldOpen(),
       minutes,
     })
     this.fuelJustDelivered = false
@@ -6622,16 +6634,6 @@ export class Game {
       this.startMission('calm_the_board')
       return
     }
-    if (this.fuelLoads <= 1 && this.fuelBrand && roll < 0.25) {
-      const spike = 3500 + Math.floor(Math.random() * 2500)
-      this.charge(spike, 'fuel_purchase')
-      this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.94) * 100) / 100)
-      this.pushNews(
-        `Jet-A spike hits the tape. Spot buy ${moneyLeft(spike)}. HATCH $${this.sharePrice.toFixed(2)}.`,
-        'bad',
-      )
-      return
-    }
     if (roll < 0.18) {
       // Short rumor — paper cut, no mission
       this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.96) * 100) / 100)
@@ -6714,6 +6716,8 @@ export class Game {
         spotCool: this.spotCool,
         supplierStanding: this.supplierStanding,
         fuelIndex: this.fuelIndex,
+        pipelineHoldMinutes: this.pipelineHoldMinutes,
+        pipelineCoolMinutes: this.pipelineCoolMinutes,
         fleet: this.scaleFleet,
         bagSystem: this.bagSystem,
         desks: this.paxDesks,
@@ -6938,6 +6942,8 @@ export class Game {
       this.spotCool = s.pillar?.spotCool ?? 0
       this.supplierStanding = { ...(s.pillar?.supplierStanding ?? {}) }
       this.fuelIndex = s.pillar?.fuelIndex ?? 0
+      this.pipelineHoldMinutes = s.pillar?.pipelineHoldMinutes ?? 0
+      this.pipelineCoolMinutes = s.pillar?.pipelineCoolMinutes ?? pipelineIntervalMinutes()
       this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
       this.bagSystem = s.pillar?.bagSystem ?? 'carts'
       this.paxDesks = s.pillar?.desks ?? 2
@@ -14275,6 +14281,9 @@ export class Game {
     this.spotCool = 0
     this.supplierStanding = {}
     this.fuelIndex = 0
+    this.pipelineHoldMinutes = 0
+    this.pipelineCoolMinutes = pipelineIntervalMinutes()
+    this.lastPipelineFlowing = false
     this.tankTier = 1
     this.powerPlantTier = 1
     this.tankLitres = 0
@@ -14299,6 +14308,7 @@ export class Game {
       litres: this.tankLitres,
       supply: this.fuelSupply,
       roadMinutes: this.roadMinutes,
+      lineHeld: this.fuelSupply === 'pipeline' && this.pipelineHoldMinutes > 0,
       fleet: { ...this.scaleFleet },
       bagSystem: this.bagSystem,
       desks: this.paxDesks,
@@ -14464,6 +14474,8 @@ export class Game {
       hangars,
       fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
       oil: tilesOf(this.tiles, 'oil').length,
+      fuelPipe: tilesOf(this.tiles, 'fuel_pipe').length,
+      manifold: tilesOf(this.tiles, 'manifold').length,
       travelator: tilesOf(this.tiles, 'travelator').length,
       skywalk: Math.max(0, tilesOf(this.tiles, 'skywalk').length - this.hubStampCount('skywalk', 'skywalk')),
       mover: Math.max(0, tilesOf(this.tiles, 'mover').length - this.hubStampCount('people_mover', 'mover')),
@@ -14490,6 +14502,7 @@ export class Game {
     const minutes = gameMinutes(step)
     if (minutes <= 0 || !this.site) return
     this.tickSpotClock(step)
+    this.tickPipelineClock(minutes)
     const state = this.pillarState()
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
@@ -14508,16 +14521,21 @@ export class Game {
     if (result.railFlowing && !this.lastRailFlowing) {
       this.pushNews('Fuel rail is flowing into the tank farm.', 'good')
     }
+    const pipeFlowing = result.method === 'pipeline' && result.delivered > 0
+    if (pipeFlowing && !this.lastPipelineFlowing) {
+      this.pushNews('Pipeline is flowing into the tank farm.', 'good')
+    }
     if (result.waitingOnCash && Math.random() < 0.02) {
       this.pushNews('Fuel delivery is waiting on cash.', 'bad')
     }
     this.lastRailFlowing = result.railFlowing
+    this.lastPipelineFlowing = pipeFlowing
     this.tickSpotDelivery(minutes)
   }
 
   private clearSpot() {
     this.spotOffer = null
-    this.spotInbound = null
+    if (!this.spotInbound?.outage) this.spotInbound = null
   }
 
   /** Spot card clock. A signed term takes the road, so the card goes away. */
@@ -14569,7 +14587,42 @@ export class Game {
   termUnitPrice(id: string): number {
     const def = contractById(id)
     if (!def) return 0
-    return termPerLitre(def.wholesalePerLitre, this.supplierStanding[id] ?? 0)
+    const base = termPerLitre(def.wholesalePerLitre, this.supplierStanding[id] ?? 0)
+    const cut = supplyCut(this.fuelSupply, this.supplyLineOpen())
+    if (cut === 0) return base
+    return Math.round(Math.max(0.001, base + cut) * 1000) / 1000
+  }
+
+  /** Rail differential while the spur is connected. Pipeline differential while the manifold is open. */
+  private supplyLineOpen(): boolean {
+    if (this.fuelSupply === 'rail') return railLink(this.pillarField(), this.hasResearch('rail_fuel')).flowing
+    if (this.fuelSupply === 'pipeline') return this.pipelineManifoldOpen()
+    return false
+  }
+
+  /** Connected pipe, and the batch is not in a quality hold. */
+  private pipelineManifoldOpen(): boolean {
+    if (this.pipelineHoldMinutes > 0) return false
+    return pipeLink(this.pillarField(), this.hasResearch('pipeline_fuel')).flowing
+  }
+
+  /** Count open flow, then hold the batch. A held batch moves no litres. */
+  private tickPipelineClock(minutes: number) {
+    if (minutes <= 0 || this.fuelSupply !== 'pipeline') return
+    if (this.pipelineHoldMinutes > 0) {
+      this.pipelineHoldMinutes = Math.max(0, this.pipelineHoldMinutes - minutes)
+      if (this.pipelineHoldMinutes === 0) {
+        this.pipelineCoolMinutes = pipelineIntervalMinutes()
+        this.pushNews('Pipeline flow resumed.', 'good')
+      }
+      return
+    }
+    if (!pipeLink(this.pillarField(), this.hasResearch('pipeline_fuel')).flowing) return
+    this.pipelineCoolMinutes = Math.max(0, this.pipelineCoolMinutes - minutes)
+    if (this.pipelineCoolMinutes <= 0) {
+      this.pipelineHoldMinutes = qualityHoldMinutes()
+      this.pushNews(PIPELINE.card, 'bad')
+    }
   }
 
   private noteFuelStanding(id: string, delta: number) {
@@ -14638,7 +14691,8 @@ export class Game {
 
   private tickSpotDelivery(minutes: number) {
     const inbound = this.spotInbound
-    if (!inbound || this.contractId || minutes <= 0) return
+    if (!inbound || minutes <= 0) return
+    if (this.contractId && !inbound.outage) return
     inbound.minutesLeft -= minutes
     if (inbound.minutesLeft > 1e-6) return
     inbound.minutesLeft = 0
@@ -14752,9 +14806,47 @@ export class Game {
       this.emit()
       return
     }
+    if (supply === 'pipeline' && !this.hasResearch('pipeline_fuel')) {
+      this.pushNews('Research the fuel pipeline first. The pipe still needs a line and a manifold.', 'bad')
+      this.emit()
+      return
+    }
     this.fuelSupply = supply
     this.roadMinutes = 0
-    this.pushNews(supply === 'rail' ? 'Fuel supply set to rail.' : 'Fuel supply set to road tankers.', 'ok')
+    const label = supply === 'rail' ? 'Fuel supply set to rail.' : supply === 'pipeline' ? 'Fuel supply set to pipeline.' : 'Fuel supply set to road tankers.'
+    this.pushNews(label, 'ok')
+    this.emit()
+  }
+
+  /** One spot truck during a pipeline hold. A signed term stays signed. */
+  orderPipelineSpot() {
+    if (this.pipelineHoldMinutes <= 0) {
+      this.pushNews('The pipeline is flowing. A spot truck is not on the card.', 'ok')
+      this.emit()
+      return
+    }
+    if (this.spotInbound) return
+    if (tilesOf(this.tiles, 'fuel').length === 0) {
+      this.pushNews('Build a fuel farm first.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.fuelBrand) this.fuelBrand = 'apex'
+    const quote = this.quoteSpot()
+    this.spotOffer = null
+    this.spotInbound = {
+      litres: SPOT_OFFER.tankerLitres,
+      perLitre: quote.perLitre,
+      minutesLeft: SPOT_OFFER.leadMinutes,
+      waitNoted: false,
+      supplier: quote.supplier,
+      outage: true,
+    }
+    const bill = Math.round(SPOT_OFFER.tankerLitres * quote.perLitre)
+    this.pushNews(
+      `Spot truck ordered. ${SPOT_OFFER.tankerLitres.toLocaleString('en-US')} L at $${quote.perLitre.toFixed(3)}/L ($${bill.toLocaleString('en-US')}).`,
+      'ok',
+    )
     this.emit()
   }
 
@@ -19920,6 +20012,22 @@ export class Game {
         return
       }
     }
+    if (this.tool === 'manifold') {
+      const beside = [
+        { c: v.c + 1, r: v.r },
+        { c: v.c - 1, r: v.r },
+        { c: v.c, r: v.r + 1 },
+        { c: v.c, r: v.r - 1 },
+      ].some((p) => {
+        const t = this.tile(p)
+        return t === 'fuel' || t === 'fuel_pipe'
+      })
+      if (!beside) {
+        this.pushNews('Receipt manifold needs the fuel farm or the pipeline beside it.', 'bad')
+        this.emit()
+        return
+      }
+    }
     const isLandside =
       building.tile === 'hotel' ||
       building.tile === 'park_s' ||
@@ -20930,7 +21038,7 @@ export class Game {
       return
     }
     const approach = this.armApproach(route)
-    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo')
+    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo', af.paxMax)
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -23098,7 +23206,7 @@ export class Game {
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
     const inbound = this.armApproach(route)
     const cargoLoad = a.kind === 'cargo' || af.kind === 'freighter'
-    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad)
+    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad, af.paxMax)
     const f: Flight = {
       id: uid('div'),
       airline,

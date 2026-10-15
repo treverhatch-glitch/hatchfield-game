@@ -66,6 +66,10 @@ export type Tile =
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
   | 'oil'
+  /** Fuel pipeline. Flow starts only when this reaches the map edge. */
+  | 'fuel_pipe'
+  /** Receipt manifold. Pipeline flow needs this on the pipe, beside the farm. */
+  | 'manifold'
   /** Late-game airport hotel (transfer and crew nights). */
   | 'late_hotel'
   /** Late-game rail link station. Demand bonus once the build finishes. */
@@ -148,6 +152,8 @@ export type Tool =
   | 'hangar_j'
   | 'fuel_rail'
   | 'oil'
+  | 'fuel_pipe'
+  | 'manifold'
   | 'travelator'
   | 'skywalk'
   | 'mover'
@@ -316,6 +322,7 @@ export type ResearchId =
   | 'mil_ramp'
   | 'hydrant_fuel'
   | 'rail_fuel'
+  | 'pipeline_fuel'
   | 'tank_farm_ii'
   | 'tank_farm_iii'
   | 'bag_sorter'
@@ -975,7 +982,11 @@ export interface GameSnapshot {
     contractId: string | null
     tankTier: 1 | 2 | 3
     litres: number
-    supply: 'road' | 'rail'
+    supply: 'road' | 'rail' | 'pipeline'
+    /** Game minutes left on a pipeline quality hold. Missing on older saves. */
+    pipelineHoldMinutes?: number
+    /** Game minutes of open flow before the next hold. Missing on older saves. */
+    pipelineCoolMinutes?: number
     roadMinutes: number
     spotOffer?: SpotOffer | null
     spotInbound?: SpotInbound | null

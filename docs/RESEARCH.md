@@ -6,7 +6,7 @@ One Growth tree is the only research wallet. A small operations trickle (the fie
 
 Room output uses a geometric diminish. The first desk, board, or bench pays its full rate (0.09, 0.07, and 0.12 points per second). Each extra copy of that same room adds 40% of the previous copy. Fourteen desks pay about 1.67× one desk, not 14×. The same curve applies to boards and benches. Two researchers multiply the room share by 2; they do not open a second trickle, and they do not change the operations trickle (0.01 points per second, plus 0.35 points per flight and 0.1 per 50 passengers).
 
-Tier prices are 0, 26, 38, 54, 76, and 108. The first node of a line is free. Each later tier costs more than the one before it. One careful lab — one desk, one chalkboard, one bench, no researchers — earns about 52 points in a 180-second day from the rooms and the operations trickle. That covers an early paid node inside a day and takes more than a day for a late tier. Buying the cheapest open node whenever it is affordable finishes the tree after day 70 and by day 90.
+Tier prices are 0, 26, 38, 54, 76, and 108. Airside adds a seventh node at 154. The first node of a line is free. Each later tier costs more than the one before it. One careful lab — one desk, one chalkboard, one bench, no researchers — earns about 52 points in a 180-second day from the rooms and the operations trickle. That covers an early paid node inside a day and takes more than a day for a late tier. Buying the cheapest open node whenever it is affordable finishes the tree after day 70 and by day 90.
 
 Unspent points stop at twice the next node's cost. While a node can be bought, the next node is the cheapest one that is open. When every open node is owned, it is the cheapest locked node, so a field can save toward the next milestone and not past two of them. When the tree is finished, the wallet stops at twice the dearest node's cost. A lab of 14 desks, 18 boards, and 16 benches cannot sit on a five-figure balance.
 
@@ -36,6 +36,7 @@ Old saves fold desk points 1:1 and Wave 3 points by the ratio of the tree catalo
 | `airside-4` | Wide hangar | 54 | Wide hangar, tank farm II | stamps hangar_w; projects tank_farm_ii | efficiency.6 |
 | `airside-5` | MRO bay | 76 | MRO | stamps mro; projects mro_hangar | — |
 | `airside-6` | Night bank | 108 | Night hub, fuel rail, night bank | stamps nighthub, fuel_rail, oil; projects night_bank, rail_fuel, cargo_night_hub | cargo.3 |
+| `airside-7` | Fuel pipeline | 154 | Fuel pipeline, receipt manifold | stamps fuel_pipe, manifold; projects pipeline_fuel | — |
 | `landside-1` | Curb road | 0 | More catchment demand | demand ×1.01 | — |
 | `landside-2` | Inn | 26 | Inn | stamps hotel_biz | prestige.5 |
 | `landside-3` | Long-stay park | 38 | Higher retail spend | retail ×1.02 | — |
@@ -81,4 +82,4 @@ Old saves fold desk points 1:1 and Wave 3 points by the ratio of the tree catalo
 | `spec-green-4` | Rail first | 76 | Rail-first policy | cargo +40 t | — |
 | `spec-green-5` | Green report | 108 | Green year report | retail ×1.02 | — |
 
-Tier 1 of each line is free. Later tiers cost 26, 38, 54, 76, and 108 points and require the previous node. Specialisation nodes require the charter, then the previous node on that branch, at that same depth price. A second specialisation branch costs 1.5×.
+Tier 1 of each line is free. Later tiers cost 26, 38, 54, 76, and 108 points and require the previous node. Airside tier 7 costs 154. Specialisation nodes require the charter, then the previous node on that branch, at that same depth price. A second specialisation branch costs 1.5×.

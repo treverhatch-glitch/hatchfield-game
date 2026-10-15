@@ -1,4 +1,5 @@
 import type { ResearchId } from '../game/types'
+import { PIPELINE } from '../fuel/pipeline.ts'
 import type { VehicleType } from '../logistics/types'
 import type { BagSystemId, PaxUnit, SizeTier } from './types'
 
@@ -484,6 +485,20 @@ export const LINK_OFFERS = {
     research: 'rail_fuel' as ResearchId,
     cost: 64_000,
     upkeepPerDay: 480,
+  },
+  fuel_pipe: {
+    name: 'Fuel pipeline',
+    fieldLevel: 5,
+    research: 'pipeline_fuel' as ResearchId,
+    cost: 0,
+    upkeepPerDay: PIPELINE.tileUpkeepPerDay,
+  },
+  manifold: {
+    name: 'Receipt manifold',
+    fieldLevel: 5,
+    research: 'pipeline_fuel' as ResearchId,
+    cost: 0,
+    upkeepPerDay: PIPELINE.manifoldUpkeepPerDay,
   },
   travelator: {
     name: 'Travelator',
