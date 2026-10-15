@@ -109,6 +109,7 @@ describe('massing pass 3 sockets', () => {
         if (building === 'helipad' && id === 'pad') {
           const heli = g.getObjectByName('heli:pad')
           expect(heli).toBeTruthy()
+          expect(heli!.visible).toBe(false)
           expect(heli!.position.x).toBeCloseTo(bay.at[0], 2)
           expect(heli!.position.z).toBeCloseTo(bay.at[2], 2)
         }

@@ -3,7 +3,7 @@
  * Bot modules import this file and nothing from the renderer.
  */
 import type { MoneyCategory } from '../core/bank.ts'
-import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE } from '../game/catalog.ts'
+import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE, HELIPAD_COST } from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
@@ -378,6 +378,7 @@ class GamePlayer implements PlayerCommands {
           kept: row.counts.kept,
           missed: row.counts.missed,
           fines: row.counts.fine,
+          blocked: game.carrierBlockLine(id),
         }
       })
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
@@ -515,6 +516,7 @@ class GamePlayer implements PlayerCommands {
           met: game.letterVerdict(game.offer.airline).met,
           missing: game.letterVerdict(game.offer.airline).missing,
           deadline: game.offer.deadline,
+          needsHelipad: game.carrierNeedsPad(game.offer.airline) && tilesOf(game.tiles, 'helipad').length < 1,
         }
       : null
     return {
@@ -529,6 +531,9 @@ class GamePlayer implements PlayerCommands {
       stands: tilesOf(game.tiles, 'stand').length,
       terminals: tilesOf(game.tiles, 'terminal').length,
       snacks: tilesOf(game.tiles, 'snack').length,
+      helipads: tilesOf(game.tiles, 'helipad').length,
+      helipadBuilding: game.sites.some((site) => site.tile === 'helipad' || site.tool === 'helipad'),
+      helipadCost: HELIPAD_COST,
       rooms,
       shopUnits: (rooms.food ?? 0) + (rooms.souvenir ?? 0) + tilesOf(game.tiles, 'snack').length,
       leasedShops,

@@ -69,8 +69,8 @@ export class Wave3Engine {
     for (const id of airlineIds) this.noteFine(id)
   }
 
-  reviewDay(facts: RelationDayFacts): void {
-    this.state = { ...this.state, relations: reviewRelationDay(this.state.relations, facts) }
+  reviewDay(facts: RelationDayFacts, paused?: ReadonlySet<string>): void {
+    this.state = { ...this.state, relations: reviewRelationDay(this.state.relations, facts, paused) }
   }
 
   /** Extra timetable rows the current tier has not written yet. */

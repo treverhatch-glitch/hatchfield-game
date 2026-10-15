@@ -25,7 +25,11 @@ export interface AirportView {
   leasedShops: number
   openShopBids: number
   signed: string[]
-  offer: { name: string; met: boolean; missing: string[]; deadline: number } | null
+  offer: { name: string; met: boolean; missing: string[]; deadline: number; needsHelipad?: boolean } | null
+  helipads: number
+  /** A helipad is already under construction, so the letter stays open. */
+  helipadBuilding: boolean
+  helipadCost: number
   loanBalance: number
   loans: { id: string; label: string; principal: number }[]
   fieldLevel: number
@@ -287,6 +291,8 @@ export interface RelationRead {
   kept: number
   missed: number
   fines: number
+  /** Why this carrier has not flown, when the player can see it. */
+  blocked: string | null
 }
 
 export interface SystemsBooks {

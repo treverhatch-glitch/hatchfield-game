@@ -65,6 +65,18 @@ function nextLabRoom(view: AirportView): RoomId | null {
   return null
 }
 
+/**
+ * A helicopter letter without a pad: stamp one, hold the letter while it builds,
+ * or decline when the till cannot cover it.
+ */
+function heliBeforeSign(view: AirportView): Intent | 'wait' | null {
+  const offer = view.offer
+  if (!offer?.needsHelipad || view.helipads >= 1) return null
+  if (view.helipadBuilding) return 'wait'
+  if (view.cash >= view.helipadCost) return { do: 'stamp', tool: 'helipad' }
+  return { do: 'walk' }
+}
+
 /** Keeps a cash buffer, signs letters that already pass, and adds one piece a day. */
 export function carefulIntents(view: AirportView, memory: PersonaMemory): PersonaDecision {
   const next = memoryOn(view, memory)
@@ -81,7 +93,18 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
   const fieldAsk = fieldAskIntent(view, CAREFUL_CASH_BUFFER)
   if (fieldAsk) intents.push(fieldAsk)
-  if (view.offer) {
+  const heli = heliBeforeSign(view)
+  if (heli === 'wait') {
+    // The pad is already going up. Leave the letter on the desk.
+  } else if (heli) {
+    intents.push(heli)
+    if (heli.do === 'stamp') {
+      return {
+        intents,
+        memory: { builtOnDay: view.day, stampsToday: next.stampsToday + 1, treeOnDay: next.treeOnDay },
+      }
+    }
+  } else if (view.offer) {
     if (view.offer.met) intents.push({ do: 'accept' })
     else intents.push({ do: 'snooze' })
   }
@@ -160,7 +183,11 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
   if (!view.fuelTerm && view.cash >= view.fuelSignCost) intents.push({ do: 'fuelTerm' })
   const fieldAsk = fieldAskIntent(view, 0)
   if (fieldAsk) intents.push(fieldAsk)
-  if (view.offer) intents.push({ do: 'accept' })
+  const heli = heliBeforeSign(view)
+  if (heli === 'wait') {
+    // The pad is already going up. Leave the letter on the desk.
+  } else if (heli) intents.push(heli)
+  else if (view.offer) intents.push({ do: 'accept' })
   if (view.loanBalance <= 0 && view.loans.length) {
     const richest = [...view.loans].sort((a, b) => b.principal - a.principal)[0]
     if (richest && view.cash < 80_000) intents.push({ do: 'loan', id: richest.id })
@@ -252,8 +279,14 @@ export function chaoticIntents(
   }
   const kind = Math.floor(rng() * 8)
   if (kind === 0 && view.offer) {
-    const pick = rng()
-    intents.push({ do: pick < 0.4 ? 'accept' : pick < 0.7 ? 'walk' : 'snooze' })
+    const heli = heliBeforeSign(view)
+    if (heli === 'wait') {
+      // The pad is already going up. Leave the letter on the desk.
+    } else if (heli) intents.push(heli)
+    else {
+      const pick = rng()
+      intents.push({ do: pick < 0.4 ? 'accept' : pick < 0.7 ? 'walk' : 'snooze' })
+    }
   } else if (kind === 1) {
     const tool = CHAOS_TOOLS[Math.floor(rng() * CHAOS_TOOLS.length)] ?? 'taxi'
     const cell: Vec = {

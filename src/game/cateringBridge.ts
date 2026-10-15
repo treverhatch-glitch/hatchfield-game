@@ -83,6 +83,12 @@ export class CateringBridge {
     return this.engine.takeSku(spec.shopId, spec.sku)
   }
 
+  /** Put one serving back when the guest could not pay. */
+  returnHallUnit(kind: HallCounterKind): void {
+    const spec = HALL_COUNTER[kind]
+    this.engine.setSku(spec.shopId, spec.sku, this.engine.skuCount(spec.shopId, spec.sku) + 1)
+  }
+
   /** Prefab opening: a full shelf and a reorder point, still one runner. */
   openHallShelf(kind: HallCounterKind): number {
     const spec = HALL_COUNTER[kind]

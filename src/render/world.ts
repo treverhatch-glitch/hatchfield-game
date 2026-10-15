@@ -73,6 +73,7 @@ import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, 
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
 import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './world/airsideMass'
 import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass, addHydrantPit, addRailStation } from './world/massPass3'
+import { helipadTurnOnPad } from './world/padHeli'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
 import {
@@ -1825,8 +1826,23 @@ export class World {
     }
   }
 
+  /** The pad model stays hidden until a helicopter turn is actually on that cell. */
+  private syncPadHelicopters(game: Game) {
+    this.tilesGroup.traverse((obj) => {
+      if (obj.name !== 'heli:pad') return
+      const key = obj.parent?.userData.cellKey as string | undefined
+      if (!key) {
+        obj.visible = false
+        return
+      }
+      const [c, r] = key.split(',').map(Number)
+      obj.visible = helipadTurnOnPad(game.flights, { c, r })
+    })
+  }
+
   syncEntities(game: Game, dt = 0) {
     this.syncAircraft(game, dt)
+    this.syncPadHelicopters(game)
 
     this.vehicleFrame.length = 0
     for (const t of game.trucks) {

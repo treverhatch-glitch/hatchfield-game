@@ -158,6 +158,7 @@ function addPadHeli(g: THREE.Group) {
   const at = MASS3_SOCKETS.helipad.pad!.at
   const root = new THREE.Group()
   root.name = 'heli:pad'
+  root.visible = false
   root.position.set(at[0], 0.22, at[2])
   const white = new THREE.MeshStandardMaterial({ color: '#e8eef4', roughness: 0.45 })
   const dark = new THREE.MeshStandardMaterial({ color: '#2c343c', roughness: 0.5 })

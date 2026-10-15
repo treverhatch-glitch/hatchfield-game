@@ -1071,6 +1071,12 @@ const FINANCING_CATEGORIES = new Set([
 const ATC_MAX_GO_AROUNDS = 3
 const ATC_DEPARTURE_STARVE_SEC = 30
 
+/** Letter and contract card when a helicopter carrier has no pad. */
+export const HELIPAD_NEED = 'Needs a helipad (Build > Airfield)'
+
+/** Relations row while a signed helicopter carrier still has no pad. */
+export const HELIPAD_WAIT = 'Waiting on a helipad'
+
 export class Game {
   standingAdvisor: StandingAdvisor = new StandingAdvisor(
     new GameDiplomacyAdapter(
@@ -1515,6 +1521,8 @@ export class Game {
   view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
   heloCool = 22
+  /** Gap between signed helicopter spawns. Does not hold the runway. */
+  contractHeloCool = 0
   flightSeq = 100
   flightsDone = 0
   paxServed = 0
@@ -1913,6 +1921,7 @@ export class Game {
     this.view = 'apron'
     this.spawnCool = 10
     this.heloCool = 22
+    this.contractHeloCool = 0
     this.flightSeq = 100
     this.flightsDone = 0
     this.paxServed = 0
@@ -2306,7 +2315,7 @@ export class Game {
     if (this.clock >= t.deadline) {
       const a = this.airline(t.airline)
       this.charge(FIELD_TASK_FAIL_FINE, 'task_miss')
-      this.wave3.noteMissedAsk(t.airline)
+      this.noteRelationMiss(t.airline)
       this.adjustHeat(t.airline, FIELD_TASK_HEAT_FAIL)
       this.reputation = Math.max(0, this.reputation - 1.5)
       this.pushNews(
@@ -2683,7 +2692,7 @@ export class Game {
       const j = this.cargoVolume
       const a = this.airline(j.airline)
       this.charge(CARGO_VOLUME_FAIL_FINE, 'cargo_miss')
-      this.wave3.noteMissedAsk(j.airline)
+      this.noteRelationMiss(j.airline)
       this.adjustHeat(j.airline, -5)
       this.pushNews(
         `${a.name} volume missed — ${j.delivered}/${j.targetUnits}u. Fine ${moneyLeft(CARGO_VOLUME_FAIL_FINE)} · On-time dips.`,
@@ -3062,14 +3071,13 @@ export class Game {
 
   /**
    * Will this carrier write to us? Roster carriers need their size and
-   * reputation gate (helicopter operators also a helipad); while the roster
-   * is live, catalog carriers no longer send new letters.
+   * reputation gate. A helicopter letter can arrive before the pad; signing
+   * stays blocked until one exists. Catalog carriers no longer send new letters.
    */
   rosterOpen(id: AirlineId): boolean {
     const r = rosterAirline(id)
     if (!r) return !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(id))
     if (!ROSTER_LIVE) return false
-    if (r.type === 'heli' && !this.readiness().helipad) return false
     return isAirlineUnlocked(r, this.rosterAirport())
   }
 
@@ -3577,8 +3585,25 @@ export class Game {
   /** One relationship score. An excused weather cancel does not move it. */
   private noteWave3(key: string, airlineId: string, kind: 'success' | 'delay' | 'cancel' | null) {
     if (!kind || !airlineId || this.wave3Noted.has(key)) return
+    if (kind !== 'success' && this.waitingOnHelipad(airlineId)) return
     this.wave3Noted.add(key)
     this.wave3.noteTurnaround(airlineId, kind)
+  }
+
+  /** Relation nick from a fine. A helicopter waiting on a pad does not move. */
+  private noteRelationFine(airlineId: string) {
+    if (!airlineId || this.waitingOnHelipad(airlineId)) return
+    this.wave3.noteFine(airlineId)
+  }
+
+  private noteRelationFines(airlineIds: readonly string[]) {
+    for (const id of airlineIds) this.noteRelationFine(id)
+  }
+
+  /** Relation nick from a missed ask. A helicopter waiting on a pad does not move. */
+  private noteRelationMiss(airlineId: string) {
+    if (this.waitingOnHelipad(airlineId)) return
+    this.wave3.noteMissedAsk(airlineId)
   }
 
   /**
@@ -4353,7 +4378,7 @@ export class Game {
     this.airlineBanUntil[id] = this.clock + banSecs
     this.airlineHeat[id] = Math.min(this.heatOf(id), this.banThreshold(id) - 2)
     this.charge(fine, 'penalties', this.simMinutes(), 'Carrier ban')
-    this.wave3.noteFine(id)
+    this.noteRelationFine(id)
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
     if (this.hubOffer?.airline === id) this.hubOffer = null
@@ -4495,7 +4520,7 @@ export class Game {
     this.forfeitAirlineDeposit(id)
     this.charge(ABANDON_FINE, 'penalties', this.simMinutes(), 'Carrier walked away')
     this.wave3.noteTurnaround(id, 'cancel')
-    this.wave3.noteFine(id)
+    this.noteRelationFine(id)
     // Reverse persona unlocks — empty lounge / franchise leaves a scar.
     if (lost === 'brand_lounge') {
       const fit = this.activeHall() ?? this.fits[0]
@@ -6489,14 +6514,14 @@ export class Game {
   shockStock(reason: string, mult: number, fine: number) {
     if (!this.public) {
       this.charge(fine, 'security_shock', this.simMinutes(), reason)
-      this.wave3.noteFines(this.signed)
+      this.noteRelationFines(this.signed)
       this.pushNews(reason, 'bad')
       return
     }
     const before = this.sharePrice
     this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
     this.charge(fine, 'security_shock', this.simMinutes(), reason)
-    this.wave3.noteFines(this.signed)
+    this.noteRelationFines(this.signed)
     this.reputation = Math.max(0, this.reputation - 10)
     const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
     const fineBit = fine > 0 ? ` Fine ${moneyLeft(fine)}.` : ''
@@ -10160,17 +10185,18 @@ export class Game {
     g.prefs.shop = Math.max(g.prefs.shop, 0.95)
     let receipt = 'Browsed the shop'
     if (seat.willAmenity >= 0.5) {
+      if (!this.drawShelf('shop')) {
+        this.walkOffEmptyShelf(g, price, 'wish they had a souvenir', open)
+        if (open.has('gate')) this.routeGuest(g, 'gate', open)
+        return
+      }
       const buy = this.tryGuestPay(g, price, 'shop', true)
       if (buy.ok) {
         g.needs.shop = Math.max(0, g.needs.shop - 60)
-        if (!this.drawShelf('shop')) {
-          this.walkOffEmptyShelf(g, price, 'wish they had a souvenir', open)
-          if (open.has('gate')) this.routeGuest(g, 'gate', open)
-          return
-        }
         g.happiness = Math.min(100, g.happiness + 5)
         receipt = `Shop (−$${price})`
       } else {
+        this.returnShelf('shop')
         g.needs.shop = Math.max(0, g.needs.shop - 20)
       }
     } else {
@@ -11996,7 +12022,7 @@ export class Game {
     const count = connectingIndexes(this.hallBodyCount(f), share, f.id).length
     if (count <= 0) return
     this.applyMissedConnections(f.airline, count)
-    this.wave3.noteFine(f.airline)
+    this.noteRelationFine(f.airline)
     for (let i = 0; i < count; i++) recordConnection(this.connectionTally, 'divert')
     this.lastConnectionMiss = {
       reason: 'divert',
@@ -12051,7 +12077,7 @@ export class Game {
       }
       this.applyMissedConnection(link.airlineId)
       if (!fined.has(link.airlineId)) {
-        this.wave3.noteFine(link.airlineId)
+        this.noteRelationFine(link.airlineId)
         fined.add(link.airlineId)
       }
       missed += 1
@@ -12274,6 +12300,13 @@ export class Game {
     const ok = this.ensureCatering().takeHallUnit(kind)
     this.pullShelves()
     return ok
+  }
+
+  /** Put the serving back when the guest could not pay. */
+  private returnShelf(kind: HallCounterKind) {
+    this.pushShelfEdits()
+    this.ensureCatering().returnHallUnit(kind)
+    this.pullShelves()
   }
 
   /** A new counter adds room on the shelf, still capped by the engine. */
@@ -13984,38 +14017,38 @@ export class Game {
       pay = this.dressRetail(g.tag, pay, 'tenant')
       if (this.foodShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
+      } else if (!this.drawShelf('food')) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
       } else {
-      const buy = this.tryGuestPay(g, pay, 'food', g.needs.hunger >= 70)
-      if (!buy.ok) {
-        g.needs.hunger = Math.max(0, g.needs.hunger - 12)
-        g.happiness -= buy.why === 'broke' ? 3 : 1
-        g.thought =
-          buy.why === 'broke'
-            ? 'Hungry but broke'
-            : buy.why === 'too expensive'
-              ? 'Meal too pricey for my wallet'
-              : 'Skipped the counter — not hungry for that'
-      } else {
-        g.needs.hunger = Math.max(0, g.needs.hunger - (outlet?.spec.hunger ?? 50))
-        if (outlet) {
-          g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
-          outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
+        const buy = this.tryGuestPay(g, pay, 'food', g.needs.hunger >= 70)
+        if (!buy.ok) {
+          this.returnShelf('food')
+          g.needs.hunger = Math.max(0, g.needs.hunger - 12)
+          g.happiness -= buy.why === 'broke' ? 3 : 1
+          g.thought =
+            buy.why === 'broke'
+              ? 'Hungry but broke'
+              : buy.why === 'too expensive'
+                ? 'Meal too pricey for my wallet'
+                : 'Skipped the counter — not hungry for that'
+        } else {
+          g.needs.hunger = Math.max(0, g.needs.hunger - (outlet?.spec.hunger ?? 50))
+          if (outlet) {
+            g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
+            outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
+          }
+          this.foodCourtRevenue += pay
+          this.mealSold = true
+          const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
+          if (dine === 'stood' && homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
+          else if (dine !== 'sat') this.giveSnack(g, outlet?.item ?? null)
+          g.happiness += happy
+          g.thought = brand
+            ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
+            : outlet
+              ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
+              : `Ate (−$${pay})`
         }
-        if (!this.drawShelf('food')) {
-          this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
-          return
-        }
-        this.foodCourtRevenue += pay
-        this.mealSold = true
-        const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
-        if (dine === 'stood' && homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
-        else if (dine !== 'sat') this.giveSnack(g, outlet?.item ?? null)
-        g.happiness += happy
-        g.thought = brand
-          ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
-          : outlet
-            ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
-            : `Ate (−$${pay})`      }
       }
     }
     if (n === 'shop' && g.showUp?.amenity === 'lounge' && !g.shopDone && g.showUp.spendAmenity > 0) {
@@ -14024,26 +14057,25 @@ export class Game {
       const pay = this.dressRetail(g.tag, tagPrice(g.tag, 14, 24, 36, 48), 'tenant')
       if (this.shopShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
+      } else if (!this.drawShelf('shop')) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
       } else {
-      const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
-      if (!buy.ok) {
-        g.needs.shop = Math.max(0, g.needs.shop - 20)
-        g.happiness -= buy.why === 'broke' ? 2 : 0
-        g.thought =
-          buy.why === 'broke'
-            ? 'Wanted a gift — wallet empty'
-            : buy.why === 'too expensive'
-              ? 'Souvenir — not blowing the trip fund'
-              : 'Browsed, did not buy'
-      } else {
-        if (!this.drawShelf('shop')) {
-          this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
-          return
+        const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
+        if (!buy.ok) {
+          this.returnShelf('shop')
+          g.needs.shop = Math.max(0, g.needs.shop - 20)
+          g.happiness -= buy.why === 'broke' ? 2 : 0
+          g.thought =
+            buy.why === 'broke'
+              ? 'Wanted a gift — wallet empty'
+              : buy.why === 'too expensive'
+                ? 'Souvenir — not blowing the trip fund'
+                : 'Browsed, did not buy'
+        } else {
+          g.needs.shop = Math.max(0, g.needs.shop - 60)
+          g.happiness += 5
+          g.thought = `Bought a souvenir (−$${pay})`
         }
-        g.needs.shop = Math.max(0, g.needs.shop - 60)
-        g.happiness += 5
-        g.thought = `Bought a souvenir (−$${pay})`
-      }
       }
     }
     if (n === 'lounge' && g.showUp?.amenity === 'lounge' && !g.loungeDone) {
@@ -14364,7 +14396,7 @@ export class Game {
     const pool = resolvedAirframes(fleet).filter((af) => metalAllowed(fleet, af.id))
     if (!pool.length) return { af: null, blocked: null }
     const field = this.fieldFit()
-    const fit = pool.filter((af) => !airframeGap(af, field) && this.scaleReport(af.id).ok)
+    const fit = pool.filter((af) => !airframeGap(af, field) && (isHeloAirframe(af) || this.scaleReport(af.id).ok))
     if (fit.length) {
       const chosen = this.wave3.prefersLargerMetal(airlineId) ? largestInFleet(fit) : fit[Math.floor(Math.random() * fit.length)]!
       return { af: chosen, blocked: null }
@@ -14381,7 +14413,13 @@ export class Game {
   ): { af: Airframe | null; blocked: PillarReport | null } {
     const fleet = this.contractFleet(airlineId)
     const pinned = slot.airframeId ? AIRFRAMES[slot.airframeId] : undefined
-    if (fleet && pinned && fleet.includes(pinned.id) && !airframeGap(pinned, this.fieldFit()) && this.scaleReport(pinned.id).ok) {
+    if (
+      fleet &&
+      pinned &&
+      fleet.includes(pinned.id) &&
+      !airframeGap(pinned, this.fieldFit()) &&
+      (isHeloAirframe(pinned) || this.scaleReport(pinned.id).ok)
+    ) {
       return { af: pinned, blocked: null }
     }
     const picked = this.pickForAirline(airlineId, cargo)
@@ -14878,7 +14916,7 @@ export class Game {
     const miss: string[] = []
     const roster = rosterAirline(id)
     if (roster && this.rosterAirport().size < unlockGate(roster).size) miss.push(`Field Lv${unlockGate(roster).size}+`)
-    if (roster?.type === 'heli' && !this.readiness().helipad) miss.push('helipad')
+    if (this.carrierNeedsPad(id) && !r.helipad) miss.push(HELIPAD_NEED)
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
     if (a.req.heavyRunway && !r.heavyRunway) miss.push('heavy runway')
@@ -14896,7 +14934,7 @@ export class Game {
     if (a.req.road && !r.road) miss.push('access road')
     if (a.req.tower && !r.tower) miss.push('control tower')
     const gap = this.fleetOperateGap(id)
-    if (gap) miss.push(gap)
+    if (gap && !(this.carrierNeedsPad(id) && gap === 'Helipad')) miss.push(gap)
     return miss
   }
 
@@ -14915,6 +14953,7 @@ export class Game {
     })
     const craft = this.contractCraftNeed(id)
     if (craft) rows.push(craft)
+    if (this.carrierNeedsPad(id) && !r.helipad) rows.push({ label: HELIPAD_NEED, met: false })
     if (a.req.fuelContract) rows.push({ label: 'Fuel contract', met: r.fuelContract })
     if (a.req.fuelFarm) rows.push({ label: 'Fuel farm', met: r.fuelFarm })
     if (a.req.fire) rows.push({ label: 'Fire station', met: r.fire })
@@ -14984,11 +15023,62 @@ export class Game {
   /**
    * At least one of the carrier's types can use this field.
    * An empty apron still banks slots — the tower holds them until a stand exists.
-   * A fleet the stands cannot take must not fill the passenger bank.
+   * A helicopter needs a pad. A fleet the stands cannot take must not fill the passenger bank.
    */
   private airlineParkable(id: AirlineId): boolean {
+    if (this.carrierNeedsPad(id)) return tilesOf(this.tiles, 'helipad').length > 0 && this.fleetHasOperable(id)
     if (!tilesOf(this.tiles, 'stand').length && !tilesOf(this.tiles, 'helipad').length) return true
     return this.fleetHasOperable(id)
+  }
+
+  /** Helicopter roster, or a fleet that is only rotary. */
+  carrierNeedsPad(id: AirlineId): boolean {
+    const roster = rosterAirline(id)
+    if (roster?.type === 'heli') return true
+    const frames = this.namedAirframes(id)
+    return frames.length > 0 && frames.every((af) => isHeloAirframe(af))
+  }
+
+  /** Signed rotary carrier with nowhere to land. The score stays put until a pad exists. */
+  waitingOnHelipad(id: string): boolean {
+    return this.signed.includes(id) && this.carrierNeedsPad(id) && !this.readiness().helipad
+  }
+
+  /** Relations row copy while `waitingOnHelipad` is true. */
+  relationWaitLine(id: string): string | null {
+    return this.waitingOnHelipad(id) ? HELIPAD_WAIT : null
+  }
+
+  /**
+   * Why a signed carrier has not turned a flight, when that reason is on the
+   * letter, the relations row, or the slot. Null when nothing is holding them.
+   */
+  carrierBlockLine(id: string): string | null {
+    const wait = this.relationWaitLine(id)
+    if (wait) return wait
+    if (!this.signed.includes(id)) return null
+    const lead = this.commercialLead[id]
+    if (lead && !lead.opened && this.leadGateClock(id) > this.clock) return `First flight in ${lead.leadDays} days`
+    const slot = this.openSchedule().find((s) => s.airline === id && s.delayReason)
+    return slot?.delayReason ?? null
+  }
+
+  /** The only thing keeping this fleet on the ground is a missing pad. */
+  padOnlyGap(id: AirlineId): boolean {
+    if (!this.carrierNeedsPad(id) || this.readiness().helipad) return false
+    const fleet = this.contractFleet(id)
+    if (!fleet) return false
+    const frames = resolvedAirframes(fleet)
+    if (!frames.length) return false
+    const field = { ...this.fieldFit(), helipad: true }
+    return frames.some((af) => !airframeGap(af, field))
+  }
+
+  /** This slot lands on a pad, so it must not take a runway gap or cascade the jet bank. */
+  private slotUsesPad(slot: ScheduleSlot): boolean {
+    if (this.carrierNeedsPad(slot.airline)) return true
+    const af = slot.airframeId ? AIRFRAMES[slot.airframeId] : undefined
+    return Boolean(af && isHeloAirframe(af))
   }
 
   considerOffers() {
@@ -15022,7 +15112,7 @@ export class Game {
       if (!this.rosterOpen(a.id)) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
-      if (!this.fleetHasOperable(a.id)) return false
+      if (!this.fleetHasOperable(a.id) && !this.padOnlyGap(a.id)) return false
       // Start focus biases early letters (never hard-locks the other path).
       if (this.startFocus === 'cargo' && a.kind !== 'cargo' && this.signed.length < 1) {
         return false
@@ -15378,6 +15468,12 @@ export class Game {
       return
     }
     this.checkinBlockNote = ''
+    const miss = this.missingReq(id)
+    if (miss.length) {
+      this.pushNews(`${this.airline(id).name} will not sign yet — still need ${miss.join(', ')}.`, 'bad')
+      this.emit()
+      return
+    }
     const a = this.airline(id)
     this.signed.push(id)
     this.hubTierSince[id] = this.gameDay()
@@ -15451,7 +15547,9 @@ export class Game {
     // Lead-gated flights sit past the opening. A new slot keeps the runway
     // gap from every open ETA, including ones already past the opening, so a
     // later batch cannot land on top of them.
-    const openingLimit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
+    const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
+    const helo = planned ? isHeloAirframe(planned) : this.carrierNeedsPad(airlineId)
+    const openingLimit = a.kind === 'cargo' || helo ? null : openingSlotCap(this.clock)
     const stripGap = runwayArrivalGapSec(Math.max(1, this.runwayStripCount()))
     const physicalGap =
       this.clock < OPENING_SEC ? Math.max(stripGap, OPENING_ARRIVAL_GAP_SEC) : stripGap
@@ -15461,11 +15559,13 @@ export class Game {
     const hub = this.isHub(airlineId)
     const mods = this.specMods()
     const lcc = a.bizModel === 'lcc' || a.persona === 'budget'
-    const spacing = Math.max(
-      physicalGap,
-      bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
-        (inOpeningBank ? openingSpacingBonus(this.clock) : 0),
-    )
+    const spacing = helo
+      ? 22
+      : Math.max(
+          physicalGap,
+          bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
+            (inOpeningBank ? openingSpacingBonus(this.clock) : 0),
+        )
     let n = bankSlotCount(count, {
       hub,
       lcc,
@@ -15477,7 +15577,11 @@ export class Game {
       const openish = (s: { status: string }) =>
         s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound'
       const openPax = this.schedule.filter(
-        (s) => openish(s) && this.airline(s.airline).kind !== 'cargo' && s.eta < OPENING_SEC,
+        (s) =>
+          openish(s) &&
+          this.airline(s.airline).kind !== 'cargo' &&
+          s.eta < OPENING_SEC &&
+          !this.slotUsesPad(s),
       ).length
       const mine = this.schedule.filter((s) => s.airline === airlineId && openish(s)).length
       // A brand-new signature still writes one slot. The cap holds every slot after that.
@@ -15486,10 +15590,9 @@ export class Game {
     }
     if (n <= 0) return
     let eta = t
-    const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
     const plannedId = planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null
     for (let i = 0; i < n; i++) {
-      eta = this.etaClearOfRunway(eta, physicalGap)
+      eta = helo ? this.etaClearOfPad(eta) : this.etaClearOfRunway(eta, physicalGap)
       this.flightSeq += 1
       const slot: ScheduleSlot = {
         id: uid('slot'),
@@ -15502,18 +15605,20 @@ export class Game {
         manual: false,
         flightId: null,
         standPref: null,
-        // Spread auto bank across every stamped strip.
-        runwayPref: this.pickBalancedRunway(),
+        // Spread auto bank across every stamped strip. Pads do not take a strip.
+        runwayPref: helo ? null : this.pickBalancedRunway(),
         claimLane: null,
         airframeId: plannedId,
       }
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
-      if (!planned || !isHeloAirframe(planned)) this.noteSlotBanked(slot)
-      eta += spacing * arrivalSpacingScale(eta, {
-        nightBank: this.hasResearch('night_bank'),
-        holidayPeak: this.holidayPeakHook,
-      })
+      if (!helo) this.noteSlotBanked(slot)
+      eta += helo
+        ? 22
+        : spacing * arrivalSpacingScale(eta, {
+            nightBank: this.hasResearch('night_bank'),
+            holidayPeak: this.holidayPeakHook,
+          })
     }
   }
 
@@ -15521,7 +15626,29 @@ export class Game {
   private etaClearOfRunway(eta: number, gap: number): number {
     let t = eta
     const open = this.schedule.filter(
-      (s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound',
+      (s) =>
+        (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
+        !this.slotUsesPad(s),
+    )
+    for (let guard = 0; guard < 32; guard++) {
+      const blocker = open
+        .map((s) => s.eta)
+        .filter((at) => Math.abs(at - t) < gap - 1e-6)
+        .sort((a, b) => b - a)[0]
+      if (blocker == null) return t
+      t = blocker + gap
+    }
+    return t
+  }
+
+  /** Soonest time at or after `eta` that keeps a short gap from other pad slots. */
+  private etaClearOfPad(eta: number): number {
+    let t = eta
+    const gap = 18
+    const open = this.schedule.filter(
+      (s) =>
+        (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
+        this.slotUsesPad(s),
     )
     for (let guard = 0; guard < 32; guard++) {
       const blocker = open
@@ -15945,7 +16072,8 @@ export class Game {
         (s) =>
           (s.status === 'scheduled' || s.status === 'delayed') &&
           s.eta - this.clock < 45 &&
-          s.delayReason !== 'Storm / dest weather',
+          s.delayReason !== 'Storm / dest weather' &&
+          !this.slotUsesPad(s),
       )
       if (soon) {
         const slip = this.hasResearch('deice') ? 7 + Math.random() * 6 : 12 + Math.random() * 14
@@ -15973,7 +16101,7 @@ export class Game {
         if (s.eta - this.clock > 40) return false
         if (s.status !== 'scheduled' && s.status !== 'delayed') return false
         if (s.delayReason === 'Night curfew') return false
-        return this.airline(s.airline).kind === 'pax'
+        return this.airline(s.airline).kind === 'pax' && !this.slotUsesPad(s)
       })
       if (soon) {
         this.nudgeSlot(soon, 14 + Math.random() * 12, 'Night curfew')
@@ -15994,7 +16122,8 @@ export class Game {
         (s) =>
           s.eta - this.clock < 40 &&
           s.status === 'scheduled' &&
-          s.delayReason !== 'Fog / dest weather',
+          s.delayReason !== 'Fog / dest weather' &&
+          !this.slotUsesPad(s),
       )
       if (soon && soon.status === 'scheduled') {
         this.nudgeSlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
@@ -16018,13 +16147,15 @@ export class Game {
           this.hasResearch('night_bank'),
           this.holidayPeakHook,
         )
-      const fitsField = (s: ScheduleSlot) => this.airlineParkable(s.airline)
+      const fitsField = (s: ScheduleSlot) => this.airlineParkable(s.airline) && !this.slotUsesPad(s)
       const banked =
         opening == null
           ? open.filter(fitsField).length
           : open.filter((s) => s.eta < OPENING_SEC && fitsField(s)).length
       if (banked < want) {
-        const pool = this.signed.filter((id) => !this.isBanned(id) && this.airlineParkable(id))
+        const pool = this.signed.filter(
+          (id) => !this.isBanned(id) && this.airlineParkable(id) && !this.carrierNeedsPad(id),
+        )
         if (pool.length) {
           // Bias toward cargo if freighters are starving vs pax bank.
           const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
@@ -16048,6 +16179,7 @@ export class Game {
         }
       }
     }
+    if (this.scheduleAuto) this.ensureHeloBank()
     // Drop finished noise.
     if (this.schedule.length > 40) {
       this.schedule = this.schedule.filter(
@@ -16061,9 +16193,47 @@ export class Game {
     const due = this.openSchedule().filter(
       (s) =>
         (s.status === 'scheduled' || s.status === 'delayed') &&
-        s.eta <= this.clock + 1.5,
+        s.eta <= this.clock + 1.5 &&
+        !this.slotUsesPad(s),
     )
     return due[0] ?? null
+  }
+
+  /** Pad slots due now. They never sit at the head of the runway queue. */
+  private nextPadSlot(): ScheduleSlot | null {
+    const due = this.openSchedule().filter(
+      (s) =>
+        (s.status === 'scheduled' || s.status === 'delayed') &&
+        s.eta <= this.clock + 1.5 &&
+        this.slotUsesPad(s),
+    )
+    return due[0] ?? null
+  }
+
+  /**
+   * Slip a pad slot without `delaySlot`. That cascade moves later jets and
+   * nicks heat. A busy or missing pad only moves this helicopter.
+   */
+  private holdPadSlot(slot: ScheduleSlot, reason: string) {
+    const add = 12
+    slot.eta = Math.max(slot.eta, this.clock + add)
+    slot.delaySec = Math.min(120, slot.delaySec + add)
+    slot.status = 'delayed'
+    slot.delayReason = reason
+  }
+
+  /** A signed helicopter with a pad and an empty bank gets turns of its own. */
+  private ensureHeloBank() {
+    if (!this.readiness().helipad) return
+    for (const id of this.signed) {
+      if (this.isBanned(id) || !this.carrierNeedsPad(id) || !this.airlineParkable(id)) continue
+      const open = this.schedule.some(
+        (s) =>
+          s.airline === id &&
+          (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound'),
+      )
+      if (!open) this.seedScheduleForAirline(id, 2)
+    }
   }
 
   /** Set the contract aside — no Standing hit, they write again soon. */
@@ -17740,7 +17910,8 @@ export class Game {
    * unlocked. Route rows and the hub letter do not change fee or fine amounts.
    */
   private reviewAirlineRelations(completedDay: number) {
-    this.wave3.reviewDay(this.relationDayFacts(completedDay))
+    const paused = new Set(this.signed.filter((id) => this.waitingOnHelipad(id)))
+    this.wave3.reviewDay(this.relationDayFacts(completedDay), paused)
     for (const id of this.signed) {
       const due = this.wave3.routesDue(id)
       if (due > 0) {
@@ -18068,7 +18239,7 @@ export class Game {
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.min(CRASH_FINE_CAP, Math.round(baseFine * (1.4 - mitigate * 0.5)))
     this.charge(fine, 'crash_fine', this.simMinutes(), 'Crash write-off')
-    this.wave3.noteFine(f.airline)
+    this.noteRelationFine(f.airline)
     this.crashes += 1
     f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
     this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
@@ -19214,6 +19385,7 @@ export class Game {
         'good',
       )
     }
+    if (site.kind === 'single' && site.tile === 'helipad') this.ensureHeloBank()
     this.bumpMap()
     this.ensureGround()
     this.emit()
@@ -20552,6 +20724,7 @@ export class Game {
   trySpawn(depth = 0) {
     if (depth > 4) return
     if (!this.signed.length) return
+    this.trySpawnContractHelo()
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     if (!tilesOf(this.tiles, 'stand').length) return
 
@@ -20575,9 +20748,9 @@ export class Game {
     }
     if (!slot) {
       if (!this.scheduleAuto) return
-      const open = this.openSchedule().filter((s) => s.status !== 'inbound')
+      const open = this.openSchedule().filter((s) => s.status !== 'inbound' && !this.slotUsesPad(s))
       if (open.length > 0) return // wait for ETA
-      const active = this.signed.filter((id) => !this.isBanned(id))
+      const active = this.signed.filter((id) => !this.isBanned(id) && !this.carrierNeedsPad(id))
       if (active.length) this.seedScheduleForAirline(pick(active), 2)
       return
     }
@@ -20776,13 +20949,36 @@ export class Game {
     )
   }
 
+  /** Due pad slots. A busy runway or a full apron does not hold them. */
+  private trySpawnContractHelo() {
+    const padBusy = this.flights.some(
+      (flight) => flight.craft === 'helo' && Boolean(flight.scheduleId) && flight.phase !== 'gone' && flight.phase !== 'takeoff',
+    )
+    if (this.contractHeloCool > 0 && padBusy) return
+    const slot = this.nextPadSlot()
+    if (!slot) return
+    if (this.isBanned(slot.airline)) {
+      slot.status = 'cancelled'
+      this.pushNews(`${slot.flightNo} scrubbed — airline banned.`, 'bad')
+      return
+    }
+    if (this.holdLead(slot)) return
+    const def = this.airline(slot.airline)
+    const picked = this.airframeForSlot(slot, slot.airline, false)
+    const af = picked.af
+    if (!af || !isHeloAirframe(af)) {
+      this.holdPadSlot(slot, 'Helipad')
+      return
+    }
+    this.spawnContractHelo(slot, def, af)
+  }
+
   /** A signed helicopter operator uses a pad and its own metal, not a generic jet. */
   private spawnContractHelo(slot: ScheduleSlot, def: Airline, af: Airframe) {
     const pad = this.freePads()[0]
     if (!pad) {
-      this.delaySlot(slot, 20, 'Helipad')
-      this.pushNews(`${slot.flightNo} delayed — no helipad for ${af.name}.`, 'bad')
-      this.spawnCool = 8
+      const reason = tilesOf(this.tiles, 'helipad').length ? 'Helipad busy' : 'Helipad'
+      this.holdPadSlot(slot, reason)
       return
     }
     const load = this.flightLoad(af, def.persona, false)
@@ -20818,7 +21014,8 @@ export class Game {
     slot.status = 'inbound'
     slot.flightId = f.id
     slot.airframeId = af.id
-    this.spawnCool = 12
+    if (this.commercialLead[slot.airline]) this.commercialLead[slot.airline].opened = true
+    this.contractHeloCool = 8
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(`${def.name} ${f.flightNo} · ${af.name} → pad ${pad.c},${pad.r}.`, 'ok')
   }
@@ -20923,6 +21120,8 @@ export class Game {
     }
     if (f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board') {
       f.phase = 'servicing'
+      // A pad turn does not wait on a jet bowser. Fuel on the farm is enough to lift.
+      if (!f.posted.fuel && this.departureNeedsFuel(f) && this.fuelOnHand()) f.posted.fuel = true
       if (this.fuelOutage(f)) {
         f.fuelHeld = true
         if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
@@ -23836,6 +24035,7 @@ export class Game {
     this.tickShowUp()
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
+    this.contractHeloCool = Math.max(0, this.contractHeloCool - step)
     this.milCool = Math.max(0, this.milCool - step)
     this.ambuCool = Math.max(0, this.ambuCool - step)
     this.trySpawnHelo()

@@ -220,7 +220,7 @@ describe('roster fleets', () => {
       game.considerOffers()
       const offered = game.offer as { airline: string } | null
       if (!offered) continue
-      expect(game.fleetHasOperable(offered.airline)).toBe(true)
+      expect(game.fleetHasOperable(offered.airline) || game.padOnlyGap(offered.airline)).toBe(true)
       expect(offered.airline).not.toBe('air_flag_1')
     }
   })

@@ -228,11 +228,16 @@ export function noteFine(state: RelationsState, airlineId: string): RelationsSta
  * End-of-day review. Kept contracts, spare stands, lounges and gates add.
  * A strained ramp subtracts. The same day does not apply twice.
  */
-export function reviewRelationDay(state: RelationsState, facts: RelationDayFacts): RelationsState {
+export function reviewRelationDay(
+  state: RelationsState,
+  facts: RelationDayFacts,
+  paused?: ReadonlySet<string>,
+): RelationsState {
   let next = state
   const carriers = Math.max(1, facts.signed.length)
   const headroom = Math.max(0, facts.stands) / carriers
   for (const airlineId of facts.signed) {
+    if (paused?.has(airlineId)) continue
     const prev = readRelation(next, airlineId)
     if (prev.reviewedDay >= facts.day) continue
     const turns = prev.counts.onTime + prev.counts.delay

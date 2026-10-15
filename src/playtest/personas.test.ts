@@ -58,6 +58,9 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     fuelTerm: 'apex_local',
     fuelSignCost: 3_500,
     fieldAsk: null,
+    helipads: 0,
+    helipadBuilding: false,
+    helipadCost: 9000,
     ...partial,
   }
 }
@@ -245,6 +248,53 @@ describe('playtest personas', () => {
       freshMemory(),
     )
     expect(greedy.intents).toContainEqual({ do: 'fieldBuild' })
+  })
+
+  it('builds a helipad before signing a helicopter carrier, or declines', () => {
+    const letter = {
+      name: 'Harbor Heli',
+      met: false,
+      missing: ['Needs a helipad (Build > Airfield)'],
+      deadline: 90,
+      needsHelipad: true,
+    }
+    const careful = carefulIntents(board({ offer: letter, cash: 40_000, helipads: 0 }), freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'stamp', tool: 'helipad' })
+    expect(careful.intents.some((intent) => intent.do === 'accept')).toBe(false)
+
+    const broke = carefulIntents(board({ offer: letter, cash: 1_000, helipads: 0 }), freshMemory())
+    expect(broke.intents).toContainEqual({ do: 'walk' })
+    expect(broke.intents.some((intent) => intent.do === 'accept')).toBe(false)
+
+    const building = carefulIntents(
+      board({ offer: letter, cash: 40_000, helipads: 0, helipadBuilding: true }),
+      freshMemory(),
+    )
+    expect(building.intents.some((intent) => intent.do === 'accept' || intent.do === 'walk')).toBe(false)
+    expect(building.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'helipad')).toBe(false)
+
+    const greedy = greedyIntents(board({ offer: letter, cash: 40_000, helipads: 0 }), freshMemory())
+    expect(greedy.intents).toContainEqual({ do: 'stamp', tool: 'helipad' })
+    expect(greedy.intents.some((intent) => intent.do === 'accept')).toBe(false)
+
+    const greedyBroke = greedyIntents(board({ offer: letter, cash: 1_000, helipads: 0 }), freshMemory())
+    expect(greedyBroke.intents).toContainEqual({ do: 'walk' })
+
+    const greedyBuilding = greedyIntents(
+      board({ offer: letter, cash: 40_000, helipads: 0, helipadBuilding: true }),
+      freshMemory(),
+    )
+    expect(greedyBuilding.intents.some((intent) => intent.do === 'accept' || intent.do === 'walk')).toBe(false)
+
+    const chaos = chaoticIntents(board({ offer: letter, cash: 40_000, helipads: 0 }), freshMemory(), () => 0.01)
+    expect(chaos.intents).toContainEqual({ do: 'stamp', tool: 'helipad' })
+    expect(chaos.intents.some((intent) => intent.do === 'accept')).toBe(false)
+
+    const ready = carefulIntents(
+      board({ offer: { ...letter, met: true, needsHelipad: false }, helipads: 1, cash: 40_000 }),
+      freshMemory(),
+    )
+    expect(ready.intents).toContainEqual({ do: 'accept' })
   })
 
   it('chaotic clicks are stable for a seed', () => {

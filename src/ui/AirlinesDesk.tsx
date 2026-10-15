@@ -88,6 +88,9 @@ export function AirlinesDesk({ game }: { game: Game }) {
                       <span className="dip-band">
                         T{rel.tier} {rel.label}
                       </span>
+                      {game.relationWaitLine(id) ? (
+                        <span data-testid="relation-wait">{game.relationWaitLine(id)}</span>
+                      ) : null}
                       <span className="dip-trend">{rel.score > 0 ? `+${rel.score.toFixed(1)}` : rel.score.toFixed(1)}</span>
                     </button>
                     {open ? (
