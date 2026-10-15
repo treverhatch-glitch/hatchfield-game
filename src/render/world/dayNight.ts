@@ -29,6 +29,11 @@ export const DAY_NIGHT = {
   daySeconds: DAY_SECONDS,
   /** Hours used by the dawn / noon / dusk / night screenshots. */
   shots: { dawn: 6.6, noon: 12, dusk: 19, night: 23 },
+  /**
+   * Late morning. The cycle-off switch holds the sun here:
+   * noon sky, lights out, no golden-hour cast.
+   */
+  hold: 11,
 } as const
 
 /** Rig values a full-night override blends toward. Matches the midnight key. */
@@ -186,6 +191,16 @@ export function resolveHour(
   if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
   if (!cycle) return FIXED_DAY_HOUR
   return simClockToHour(clock)
+}
+
+/** Same precedence as `resolveHour`. Kept so older call sites stay on one resolver. */
+export function resolvePlayHour(
+  clock: number,
+  hourOverride: number | null,
+  control: DayNightControl | null,
+  cycleOn = true,
+): number {
+  return resolveHour(clock, hourOverride, control, cycleOn)
 }
 
 export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night'

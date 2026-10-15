@@ -353,6 +353,36 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
+  it('holds late morning when the cycle is off, and a photo hour still wins', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const cam = camAt(0, 0, 80)
+    const night = blankView([], { clock: clockForHour(2, 23), weather: 'clear' })
+    sharedSettings().update((s) => ({ ...s, dayNightCycle: false }))
+    try {
+      wr.update(night, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(FIXED_DAY_HOUR)
+      expect(wr.dayNightSample.lights).toBe(0)
+      expect(wr.dayNightSample.runwayEdge).toBe(0)
+      expect(sun.intensity).toBeGreaterThan(2)
+      wr.setTimeOfDay(19)
+      wr.update(night, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(19)
+      expect(wr.dayNightSample.lights).toBeGreaterThan(0.2)
+      wr.setTimeOfDay(null)
+      wr.update(night, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(FIXED_DAY_HOUR)
+      wr.setDayNight({ hour: 23 })
+      wr.update(night, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(23)
+      expect(wr.dayNightSample.lights).toBe(1)
+    } finally {
+      sharedSettings().update((s) => ({ ...s, dayNightCycle: true }))
+      wr.setDayNight(null)
+      wr.dispose()
+    }
+  })
+
   it('5x fast-forward goes lite without a rebuild', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })

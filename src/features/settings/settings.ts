@@ -210,3 +210,7 @@ export class SettingsStore {
     return () => { this.listeners = this.listeners.filter((l) => l !== fn) }
   }
 }
+
+export function readDayNightCycle(store: SettingsStore = sharedSettings()): boolean {
+  return store.get().dayNightCycle
+}

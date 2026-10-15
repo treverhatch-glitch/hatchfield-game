@@ -1092,6 +1092,8 @@ export interface GameSnapshot {
   coachDismissed?: boolean
   /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
   hintPrefs?: { allEnabled: boolean; muted: string[] }
+  /** Sun cycle recorded at save time. Load ignores it and keeps the settings switch. */
+  dayNightCycle?: boolean
   /** Tip chips (stuck-state notes, once each). Missing on older saves — chips start on. */
   tipChips?: { enabled: boolean; spent: string[]; open: string[] }
   /** First-session "open the build tray" step. Missing on older saves. */

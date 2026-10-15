@@ -51,6 +51,43 @@ describe('start menu', () => {
     expect(html).toContain('data-testid="hints-off-toggle" checked=""')
     expect(html).not.toContain('data-testid="enable-hints-toggle" checked=""')
   })
+
+  it('offers the day and night cycle on the settings stage', () => {
+    const game = new Game()
+    game.setDayNightCycle(true)
+    const on = renderToStaticMarkup(
+      <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
+        sandbox={false}
+        onSandboxChange={() => {}}
+        enableHints
+        onEnableHintsChange={() => {}}
+        onNewGame={() => {}}
+        onContinue={() => {}}
+      />,
+    )
+    expect(on).toContain('data-testid="settings-day-night" checked=""')
+    expect(on).toContain('Day/night cycle: On')
+    game.setDayNightCycle(false)
+    const off = renderToStaticMarkup(
+      <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
+        sandbox={false}
+        onSandboxChange={() => {}}
+        enableHints
+        onEnableHintsChange={() => {}}
+        onNewGame={() => {}}
+        onContinue={() => {}}
+      />,
+    )
+    expect(off).toContain('Day/night cycle: Off')
+    expect(off).not.toContain('data-testid="settings-day-night" checked=""')
+    game.setDayNightCycle(true)
+  })
 })
 
 describe('new-game sheet', () => {
