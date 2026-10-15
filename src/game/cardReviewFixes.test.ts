@@ -33,4 +33,22 @@ describe('building card review fixes', () => {
     expect(game.cash).toBe(cash - jetBridgeCost('narrow'))
     expect(game.fittings[host]).toEqual([{ id: 'jet_bridge' }])
   })
+
+  it('books no negotiated deal when the check-in desks refuse the carrier', () => {
+    const game = field()
+    game.offer = { airline: 'northline', age: 0, deadline: 36 }
+    game.acceptOffer()
+    expect(game.signed).toEqual(['northline'])
+    ;(game as unknown as { missingReq(id: string): string[] }).missingReq = () => []
+    game.presentNegotiation('harbor')
+    expect(game.checkinSignReport('harbor').ok).toBe(false)
+    const cash = game.cash
+    game.acceptNegotiation()
+    game.acceptNegotiation()
+    expect(game.signed).not.toContain('harbor')
+    expect(game.offer?.airline).toBe('harbor')
+    const desk = (game as unknown as { negotiationBridge?: { desk: { dealFor(id: string): unknown } } }).negotiationBridge
+    expect(desk?.desk.dealFor('harbor')).toBeUndefined()
+    expect(game.cash).toBe(cash)
+  })
 })

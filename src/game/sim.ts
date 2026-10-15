@@ -16334,6 +16334,7 @@ export class Game {
       this.emit()
       return
     }
+    if (this.signRefused(id)) return
     const bridge = this.negotiationDesk()
     const session = bridge.desk.session
     if (!session || session.status !== 'open' || session.airlineId !== id) {
@@ -16356,6 +16357,7 @@ export class Game {
   counterNegotiation() {
     const session = this.negotiationBridge?.desk.session
     if (!session || session.status !== 'open') return
+    if (this.offer && this.signRefused(this.offer.airline)) return
     const result = this.negotiationDesk().counter()
     if (result.outcome === 'signed') this.acceptOffer()
     else if (result.outcome === 'walked') this.clearWalkedOffer()
@@ -16422,14 +16424,8 @@ export class Game {
     if (!profile.id) return
   }
 
-  acceptOffer() {
-    if (!this.offer) return
-    const id = this.offer.airline
-    if (this.rivalRefuses(id)) {
-      this.pushNews(`${this.airline(id).name} refused. The last hub angered them.`, 'bad')
-      this.emit()
-      return
-    }
+  /** Desk and pad refusals. Runs before the negotiation desk books anything. */
+  private signRefused(id: string): boolean {
     const gate = this.checkinSignReport(id)
     if (!gate.ok) {
       const note = `${id}|${gate.line}`
@@ -16438,7 +16434,7 @@ export class Game {
         this.pushNews(gate.line, 'bad')
       }
       this.emit()
-      return
+      return true
     }
     this.checkinBlockNote = ''
     // Soft asks (police, a snack bar) still sign — the tower holds the slot.
@@ -16446,8 +16442,20 @@ export class Game {
     if (this.carrierNeedsPad(id) && !this.readiness().helipad) {
       this.pushNews(`${this.airline(id).name} will not sign yet — still need ${HELIPAD_NEED}.`, 'bad')
       this.emit()
+      return true
+    }
+    return false
+  }
+
+  acceptOffer() {
+    if (!this.offer) return
+    const id = this.offer.airline
+    if (this.rivalRefuses(id)) {
+      this.pushNews(`${this.airline(id).name} refused. The last hub angered them.`, 'bad')
+      this.emit()
       return
     }
+    if (this.signRefused(id)) return
     if (this.signed.includes(id)) {
       this.offer = null
       this.offerCool = coolAfterSign(this.signed.length)
