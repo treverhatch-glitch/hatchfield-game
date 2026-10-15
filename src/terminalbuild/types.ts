@@ -26,11 +26,13 @@ export type EquipKind =
 /**
  * A tile edge. `E` is the east side of (x, y), `S` the south side.
  * West and north map borders are written with x = -1 / y = -1.
+ * `floor` is the story. Omitted means floor 0 so older layouts stay valid.
  */
 export interface Edge {
   x: number
   y: number
   dir: 'E' | 'S'
+  floor?: number
 }
 
 /**
@@ -56,6 +58,8 @@ export interface Rect {
 export interface Room extends Rect {
   id: string
   kind: RoomKind
+  /** Story this room sits on. Omitted means floor 0. */
+  floor?: number
 }
 
 export interface Equip {
@@ -65,22 +69,48 @@ export interface Equip {
   y: number
   /** 0–100. Rises with use; worn kit serves slower. */
   wear: number
+  /** Story this piece sits on. Omitted means floor 0. */
+  floor?: number
+}
+
+/** A tile that joins two stories. Not offered in the editor while only floor 0 is enabled. */
+export type VerticalKind = 'stairs' | 'escalator' | 'lift'
+
+export interface Vertical {
+  kind: VerticalKind
+  x: number
+  y: number
+  /** Story the tile is walked from. Omitted means floor 0. */
+  floor?: number
+  /** The other story. Ignored until that story is enabled. */
+  toFloor: number
 }
 
 export interface BuildLayout {
   w: number
   h: number
+  /**
+   * How many stories this layout is allowed to hold.
+   * Shipped halls are 1. Floor 1 (departures up, arrivals down) is a later upgrade.
+   * Omitted means 1.
+   */
+  stories?: number
+  /** Ground-floor slab. Upper stories are not stored here while only floor 0 ships. */
   floor: boolean[][]
   zones: (BuildZone | null)[][]
   walls: Edge[]
   doors: Door[]
   rooms: Room[]
   equipment: Equip[]
+  /** Stairs, escalators, and lifts. Empty on a 1-story hall. */
+  verticals?: Vertical[]
 }
 
 export interface Tile {
   x: number
   y: number
+  /** Story. Omitted means floor 0. */
+  floor?: number
 }
 
 export type FindingSeverity = 'blocker' | 'warning' | 'tip'

@@ -25,7 +25,7 @@ export function autoWalls(p: TerminalPlan, f: number): void {
     const c = L.cells[y][x]; if (!c.floor) continue;
     const e = x + 1 < p.w ? L.cells[y][x + 1] : null;
     const s = y + 1 < p.h ? L.cells[y + 1][x] : null;
-    if (e && e.floor && e.room !== c.room && c.room !== 'corridor' && e.room !== 'corridor') L.walls.push({ x, y, dir: 'E' });
-    if (s && s.floor && s.room !== c.room && c.room !== 'corridor' && s.room !== 'corridor') L.walls.push({ x, y, dir: 'S' });
+    if (e && e.floor && e.room !== c.room && c.room !== 'corridor' && e.room !== 'corridor') L.walls.push({ x, y, dir: 'E', floor: f });
+    if (s && s.floor && s.room !== c.room && c.room !== 'corridor' && s.room !== 'corridor') L.walls.push({ x, y, dir: 'S', floor: f });
   }
 }

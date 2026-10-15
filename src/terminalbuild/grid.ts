@@ -1,11 +1,17 @@
 /** Grid helpers shared by the validator and the flow model. */
 import { EQUIP_SPEC, ZONE_SIDE } from './config.ts'
+import { floorOf } from './floors.ts'
 import type { BuildLayout, Door, Edge, Equip, Room, Tile, ZoneSide } from './types.ts'
 
 export type Mover = 'depart' | 'arrive' | 'staff'
 
-export const tileKey = (x: number, y: number) => `${x},${y}`
-export const edgeKey = (e: Edge) => `${e.x},${e.y},${e.dir}`
+/** Floor 0 keeps the historical key. Upper stories are prefixed so they cannot collide. */
+export const tileKey = (x: number, y: number, floor = 0) => (floor === 0 ? `${x},${y}` : `${floor}|${x},${y}`)
+export const edgeKey = (e: Edge) => {
+  const body = `${e.x},${e.y},${e.dir}`
+  const floor = floorOf(e)
+  return floor === 0 ? body : `${floor}|${body}`
+}
 
 export function inBounds(l: BuildLayout, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < l.w && y < l.h
@@ -15,19 +21,26 @@ export function isFloor(l: BuildLayout, x: number, y: number): boolean {
   return inBounds(l, x, y) && l.floor[y][x]
 }
 
-/** The edge shared by two 4-neighbour tiles (either may be off-grid). */
-export function edgeBetween(a: Tile, b: Tile): Edge {
-  if (b.x === a.x + 1) return { x: a.x, y: a.y, dir: 'E' }
-  if (b.x === a.x - 1) return { x: b.x, y: b.y, dir: 'E' }
-  if (b.y === a.y + 1) return { x: a.x, y: a.y, dir: 'S' }
-  return { x: b.x, y: b.y, dir: 'S' }
+/** Story stamp copied onto a derived edge or tile. Omitted on the ground story so old keys stay. */
+function storyOf(t: { floor?: number }): { floor: number } | Record<string, never> {
+  return t.floor == null ? {} : { floor: floorOf(t) }
 }
 
-/** The two tiles an edge separates. */
+/** The edge shared by two 4-neighbour tiles (either may be off-grid). */
+export function edgeBetween(a: Tile, b: Tile): Edge {
+  const story = a.floor != null ? storyOf(a) : storyOf(b)
+  if (b.x === a.x + 1) return { x: a.x, y: a.y, dir: 'E', ...story }
+  if (b.x === a.x - 1) return { x: b.x, y: b.y, dir: 'E', ...story }
+  if (b.y === a.y + 1) return { x: a.x, y: a.y, dir: 'S', ...story }
+  return { x: b.x, y: b.y, dir: 'S', ...story }
+}
+
+/** The two tiles an edge separates. Both keep the edge's story. */
 export function edgeTiles(e: Edge): [Tile, Tile] {
+  const story = storyOf(e)
   return e.dir === 'E'
-    ? [{ x: e.x, y: e.y }, { x: e.x + 1, y: e.y }]
-    : [{ x: e.x, y: e.y }, { x: e.x, y: e.y + 1 }]
+    ? [{ x: e.x, y: e.y, ...story }, { x: e.x + 1, y: e.y, ...story }]
+    : [{ x: e.x, y: e.y, ...story }, { x: e.x, y: e.y + 1, ...story }]
 }
 
 export const STEPS: readonly [number, number][] = [
@@ -38,7 +51,8 @@ export const STEPS: readonly [number, number][] = [
 ]
 
 export function around(t: Tile): Tile[] {
-  return STEPS.map(([dx, dy]) => ({ x: t.x + dx, y: t.y + dy }))
+  const story = storyOf(t)
+  return STEPS.map(([dx, dy]) => ({ x: t.x + dx, y: t.y + dy, ...story }))
 }
 
 export interface GridIndex {
@@ -51,10 +65,10 @@ export interface GridIndex {
 export function indexLayout(l: BuildLayout): GridIndex {
   const walls = new Set(l.walls.map(edgeKey))
   const doors = new Map(l.doors.map((d) => [edgeKey(d), d] as const))
-  const equipAt = new Map(l.equipment.map((e) => [tileKey(e.x, e.y), e] as const))
+  const equipAt = new Map(l.equipment.map((e) => [tileKey(e.x, e.y, floorOf(e)), e] as const))
   const roomAt = new Map<string, Room>()
   for (const r of l.rooms) {
-    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) roomAt.set(tileKey(x, y), r)
+    for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) roomAt.set(tileKey(x, y, floorOf(r)), r)
   }
   return { walls, doors, equipAt, roomAt }
 }
@@ -69,7 +83,7 @@ export function standable(l: BuildLayout, ix: GridIndex, t: Tile, who: Mover): b
   if (!isFloor(l, t.x, t.y)) return false
   const zone = l.zones[t.y][t.x]
   if (who !== 'staff' && (!zone || zone === 'baggage')) return false
-  const eq = ix.equipAt.get(tileKey(t.x, t.y))
+  const eq = ix.equipAt.get(tileKey(t.x, t.y, floorOf(t)))
   return !eq || EQUIP_SPEC[eq.kind].walkThrough
 }
 

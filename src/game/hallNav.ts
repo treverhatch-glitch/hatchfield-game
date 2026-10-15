@@ -294,12 +294,14 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   return {
     w,
     h,
+    stories: 1,
     floor,
     zones: zoneGrid,
     walls,
     doors,
     rooms,
     equipment,
+    verticals: [],
   }
 }
 

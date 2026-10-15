@@ -19,6 +19,9 @@ else; it does not touch the build tools, the view, or the UI.
   walkable. A one-tile margin holds the curb pavement outside each curb door,
   which is where people spawn, on the road edge. Exit, staff and apron doors
   are closed to departures (apron is the boarding goal).
+  `links` lists stairs, escalators, and lifts whose both ends are inside
+  `ENABLED_STORIES`. That list is empty while only floor 0 ships. The schema
+  is in [INTERIOR_EDITOR.md](design/INTERIOR_EDITOR.md).
 - **Two layers.** PRE cells are walkable before security, AIR cells after.
   Only a security lane is on both, and a passenger only switches layer when a
   lane has served them. Other lanes cost `laneCorridorCost` to walk through.

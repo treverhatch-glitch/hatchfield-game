@@ -4,6 +4,7 @@
  * Removals refund `refundShare` of the build price (negative cost).
  */
 import { BUILD_TUNING, DOOR_COST, EQUIP_SPEC, FLOOR_COST, ROOM_SPEC, WALL_COST, ZONE_COST } from './config.ts'
+import { STARTER_STORIES, floorOf } from './floors.ts'
 import { edgeKey, edgeTiles, inBounds, isFloor, tileKey } from './grid.ts'
 import type { BuildLayout, BuildZone, Door, Edge, EditResult, Equip, Rect, Room } from './types.ts'
 
@@ -11,12 +12,14 @@ export function blankLayout(w: number, h: number): BuildLayout {
   return {
     w,
     h,
+    stories: STARTER_STORIES,
     floor: Array.from({ length: h }, () => Array.from({ length: w }, () => false)),
     zones: Array.from({ length: h }, () => Array.from({ length: w }, () => null)),
     walls: [],
     doors: [],
     rooms: [],
     equipment: [],
+    verticals: [],
   }
 }
 
@@ -29,6 +32,7 @@ function clone(l: BuildLayout): BuildLayout {
     doors: l.doors.slice(),
     rooms: l.rooms.slice(),
     equipment: l.equipment.slice(),
+    verticals: l.verticals?.slice(),
   }
 }
 
@@ -82,7 +86,7 @@ export function placeWall(l: BuildLayout, e: Edge): EditResult {
   if (l.walls.some((w) => edgeKey(w) === k)) return reject(l, 'Already a wall.')
   const next = clone(l)
   next.doors = next.doors.filter((d) => edgeKey(d) !== k)
-  next.walls.push({ x: e.x, y: e.y, dir: e.dir })
+  next.walls.push({ x: e.x, y: e.y, dir: e.dir, floor: floorOf(e) })
   return { layout: next, cost: WALL_COST.build }
 }
 
@@ -101,7 +105,7 @@ export function placeDoor(l: BuildLayout, d: Door): EditResult {
   const next = clone(l)
   next.walls = next.walls.filter((w) => edgeKey(w) !== k)
   next.doors = next.doors.filter((o) => edgeKey(o) !== k)
-  next.doors.push({ x: d.x, y: d.y, dir: d.dir, kind: d.kind })
+  next.doors.push({ x: d.x, y: d.y, dir: d.dir, kind: d.kind, floor: floorOf(d) })
   return { layout: next, cost: DOOR_COST[d.kind].build }
 }
 
@@ -186,10 +190,12 @@ export function paintZone(l: BuildLayout, r: Rect, zone: BuildZone | null): Edit
 export function placeRoom(l: BuildLayout, room: Room): EditResult {
   if (!rectInBounds(l, room)) return reject(l, 'Off the plot.')
   if (l.rooms.some((o) => o.id === room.id)) return reject(l, 'Room id in use.')
-  const taken = new Set(l.rooms.flatMap((o) => [...tilesIn(o)].map((t) => tileKey(t.x, t.y))))
-  if ([...tilesIn(room)].some((t) => taken.has(tileKey(t.x, t.y)))) return reject(l, 'Overlaps another room.')
+  const taken = new Set(
+    l.rooms.filter((o) => floorOf(o) === floorOf(room)).flatMap((o) => [...tilesIn(o)].map((t) => tileKey(t.x, t.y, floorOf(o)))),
+  )
+  if ([...tilesIn(room)].some((t) => taken.has(tileKey(t.x, t.y, floorOf(room))))) return reject(l, 'Overlaps another room.')
   const next = clone(l)
-  next.rooms.push({ ...room })
+  next.rooms.push({ ...room, floor: floorOf(room) })
   return { layout: next, cost: ROOM_SPEC[room.kind].build }
 }
 
@@ -204,9 +210,9 @@ export function removeRoom(l: BuildLayout, id: string): EditResult {
 export function placeEquipment(l: BuildLayout, e: Omit<Equip, 'wear'> & { wear?: number }): EditResult {
   if (!isFloor(l, e.x, e.y)) return reject(l, 'Equipment needs a floor tile.')
   if (l.equipment.some((o) => o.id === e.id)) return reject(l, 'Equipment id in use.')
-  if (l.equipment.some((o) => o.x === e.x && o.y === e.y)) return reject(l, 'Tile already has equipment.')
+  if (l.equipment.some((o) => o.x === e.x && o.y === e.y && floorOf(o) === floorOf(e))) return reject(l, 'Tile already has equipment.')
   const next = clone(l)
-  next.equipment.push({ id: e.id, kind: e.kind, x: e.x, y: e.y, wear: e.wear ?? 0 })
+  next.equipment.push({ id: e.id, kind: e.kind, x: e.x, y: e.y, wear: e.wear ?? 0, floor: floorOf(e) })
   return { layout: next, cost: EQUIP_SPEC[e.kind].build }
 }
 
@@ -234,7 +240,7 @@ export function encloseFloor(l: BuildLayout): EditResult {
         const k = edgeKey(e)
         if (closed.has(k)) continue
         closed.add(k)
-        next.walls.push(e)
+        next.walls.push({ ...e, floor: floorOf(e) })
       }
     }
   }

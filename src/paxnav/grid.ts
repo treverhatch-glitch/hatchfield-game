@@ -9,6 +9,7 @@
  * security, AIR cells after it. Only a security lane joins them.
  */
 import { EQUIP_SPEC, ZONE_SIDE } from '../terminalbuild/config.ts'
+import { floorLinks, type FloorLink } from '../terminalbuild/floors.ts'
 import { edgeKey, edgeBetween, edgeTiles, indexLayout, isFloor, outsideDoors, tileKey, type GridIndex } from '../terminalbuild/grid.ts'
 import type { BuildLayout, Tile } from '../terminalbuild/types.ts'
 import { PAXNAV_TUNING } from './config.ts'
@@ -41,6 +42,11 @@ export interface NavGrid {
   laneOf: Int16Array
   /** Road-edge curb cells passengers spawn on. */
   spawns: number[]
+  /**
+   * Stairs, escalators, and lifts between enabled stories.
+   * Empty while only floor 0 ships. The cells stay on this floor's grid.
+   */
+  links: FloorLink[]
 }
 
 const OPEN_E = 1
@@ -106,6 +112,7 @@ export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
   const lo = Math.floor((k - T.doorCells) / 2)
   const hi = lo + T.doorCells
   const open = new Uint8Array(gw * gh)
+  const links = floorLinks(layout)
   const crossing = (a: Tile, b: Tile, along: number): boolean => {
     const key = edgeKey(edgeBetween(a, b))
     const door = ix.doors.get(key)
@@ -145,7 +152,7 @@ export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
     }
   }
 
-  return { layout, ix, k, margin, cellM: tileM / k, tileM, gw, gh, mask, open, laneOf, spawns }
+  return { layout, ix, k, margin, cellM: tileM / k, tileM, gw, gh, mask, open, laneOf, spawns, links }
 }
 
 /** Can a mover step from cell `a` to its 4-neighbour `b`? Layer bits are checked by the caller. */
