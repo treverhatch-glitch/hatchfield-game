@@ -3,6 +3,7 @@ import { ARRIVAL_OCCUPANCY_SEC, DEPARTURE_OCCUPANCY_SEC } from './capacity.ts'
 import { MIN_RUNWAY } from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
+import { mulberry32 } from '../playtest/personas.ts'
 
 function field(): Game {
   const game = new Game()
@@ -22,6 +23,8 @@ function field(): Game {
 
 describe('measured strip occupancy', () => {
   it('keeps the starter arrival and departure locks inside the occupancy constants', () => {
+    const random = Math.random
+    Math.random = mulberry32(0x5171)
     const game = field()
     const strips = runwayStrips(game.tiles, MIN_RUNWAY)
     expect(strips.length).toBe(1)
@@ -70,5 +73,6 @@ describe('measured strip occupancy', () => {
     expect(departure).toBeGreaterThanOrEqual(10)
     expect(departure).toBeLessThanOrEqual(DEPARTURE_OCCUPANCY_SEC + 1)
     expect(game.flightsDone).toBeGreaterThan(0)
+    Math.random = random
   }, 20_000)
 })

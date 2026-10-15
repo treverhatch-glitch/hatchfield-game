@@ -23,7 +23,7 @@ Spawn-to-lock lead on the approach: 7.05 seconds. The aircraft is airborne for t
 
 `runwayArrivalGapSec` is 14 + 14 + 4 = **32 seconds on every strip**. A second strip does not shrink that gap. It runs its own bank. The seeder picks the quieter linked strip first, then pushes an ETA only when that strip already has a slot inside the gap.
 
-A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap finished 426 flights, heap growth 13.7%, jumps 0.
+A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap, after the belt-cart gate landed on main, finished 312 flights, heap growth 14.3%, jumps 0. The same soak on that main tip with the 48-second shared headway finished 289. Neither reaches the 330 flights measured before the cart gate, because the passenger starter no longer meets Harbor's police requirement and the two starter carts hold the bank.
 
 ## Opening
 
@@ -51,13 +51,15 @@ On seed `0x5171`, speed 5, 0.25-second steps, eight days:
 
 | Field | Completed flights | Diverts |
 | --- | ---: | ---: |
-| One strip, starter plus two grass stands (four stands), Harbor | more than 15 | 0 |
-| One strip, six stands four cells apart, Harbor and Northline | 17 | 0 |
-| Two linked strips, same six stands and airlines | 25 | 1 |
+| One strip, starter plus two grass stands (four stands), Harbor, six cart depots | 20 | 0 |
+| One strip, six stands four cells apart, Harbor and Northline, eight cart depots | 18 | 0 |
+| Two linked strips, same six stands, airlines, and depots | 26 | 1 |
 
-The farm is stocked in that harness. The starter tank is one load, and the spot offer expires, so an unstocked field grounds the bank for lack of fuel rather than lack of runway. The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. The stocked four-stand field finishes more than that. It does not finish 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints.
+The farm is stocked in that harness. The starter tank is one load, and the spot offer expires, so an unstocked field grounds the bank for lack of fuel rather than lack of runway. Pushback also waits until a bag cart has docked at the belt. The starter fleet is two carts, and that fleet finishes fewer flights than the old 150-second bank. Depots are the player's cart bay, so the harness stamps them the way it stocks the farm. The count is then the strip's.
 
-The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field completed 16 and the one-strip field completed 10 (`src/game/runwayCapacity.test.ts`).
+The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. The stocked four-stand field finishes 20. It does not finish 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints.
+
+The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field completed 17 and the one-strip field completed 12 (`src/game/runwayCapacity.test.ts`). That is about 1.4×. It is not 1.6×. With the carts stocked, one strip finishes the flights its 32-second gap booked (one slot was still overdue at the end). A second strip does not copy that bank. The next flight uses the other strip at the airline's own spacing, about 18–28 seconds, so the extra flights are the ones that spacing can place beside the gap. Booked movements are still two strips to one.
 
 ## Special flights
 
