@@ -1,6 +1,6 @@
 # Starter kit interior audit
 
-Audited against `main` through `b46bd88`, then rebased onto `40bfb98`. That range does not touch the starter hall, the prefab scheme, or the apron plan. Passenger and hybrid share one prefab hall. Cargo has no hall. The three prefab schemes (`schemeItems` in `src/game/terminal.ts`) are the pre-designed terminals: I Linear, II Pier, III Satellites. The apron shell (`planTerminal`) dresses every hall, including the 3×3 starter. High and Ultra also drop the concept dressing from `1649715` (`buildInteriorDressing`): arrivals sign and claim carousel in check-in, a lounge cluster in the concourse, cubicles in the staff office, and the jet-bridge interior when the hall camera is close.
+Audited against `main` at `c17f68a`, after the hub dedicate picker and the concrete-stand merge. The hall scheme is unchanged from the furnishing pass. Passenger and hybrid share one prefab hall. Cargo has no hall. The three prefab schemes (`schemeItems` in `src/game/terminal.ts`) are the pre-designed terminals: I Linear, II Pier, III Satellites. The apron shell (`planTerminal`) dresses every hall, including the 3×3 starter. High and Ultra also drop the concept dressing from `1649715` (`buildInteriorDressing`): arrivals sign and claim carousel in check-in, a lounge cluster in the concourse, cubicles in the staff office, and the jet-bridge interior when the hall camera is close.
 
 Ceilings stay the published Prefab I numbers (`STARTER_CAPACITY`): 46 passengers, two security servers, 37.5 per minute, 88 bag units, one staffed desk plus one kiosk. Bundle furniture does not add upkeep or raise those ceilings. The opening window is still 600 sim seconds. Lines are meant to show after that, not on the first bank.
 
@@ -14,7 +14,7 @@ Ceilings stay the published Prefab I numbers (`STARTER_CAPACITY`): 46 passengers
 | Baggage claim belt | Hall `claim_carousel` and `bag_system`, plus a claim bench. High detail adds a carousel in the check-in room |
 | Lounge | `rooms.lounge` is 1 on the starter fit, so a carrier can lease it. High detail draws `lounge_cluster` in the airside room. No lounge furniture item exists |
 | Staff office | Apron shell splits one shop cell into office and lab. High detail draws `staff_office` cubicles |
-| Jet bridge | Both passenger stands are jetway. The apron draws the bridges. The hall draws `jet_bridge` with interior carpet when the camera is close |
+| Jet bridge | Passenger and hybrid stands start as narrow concrete, rung 1, remote, with no bridge fitted. The player buys the bridge on the stand card. The hall still draws `jet_bridge` once a bridge is attached. Cargo is a heavy remote stand, rung 2 |
 | Check-in with wayfinding | Hall `entrance`, `checkin_belt`, `kiosk`, `queue_rail`, `wayfinding`. Apron counters, belt, board, and stanchions. High detail adds `arrivals_sign` |
 | Staffed general desk | One `checkin_belt`. It stays general until an airline's window opens, then the allocator brands it |
 | Common-use desk | The same belt. `allocate` brands it to the airline whose window is open and shares it across that airline's flights |
@@ -95,21 +95,17 @@ Also not in the stamp:
 - `departures_wall` (field level 2)
 - A kitchen or a vehicle depot. Stand catering covers the opening. A depot would bill a building the first bank does not need
 
-## Still on other agents
+## After the hub and stand merges
 
-Checked before the kit edit, and again after main moved.
+Checked at 15:00 ICT on `c17f68a`.
 
-| Agent | State | Terminal-interior work |
-| --- | --- | --- |
-| J28 `bc-cf261cfd` | Idle. No branch, no PR | Check-in theming (`fca5141`) and the desk-demand refusal (`1a4f120`) are on main. Nothing left to wait for |
-| J25 `bc-15909a7a` | Idle. Branch `cursor/interior-concepts-22ca` | Dressing commit `1649715` is on main. The branch tip matches that work |
-| G5 `bc-f69c9aa4` | Running. Branch `cursor/hub-offers-db11`, draft PR 62 | Pushed tip `38a6a70` is behind main and adds no check-in, hall, or interior files. Lounge, gate, and hangar leases are already on main (`457b4d1`). Desk locks stay on the check-in allocator, which is also on main |
+The stand merge (`d88a6f6`) already set passenger and hybrid kits to two narrow concrete stands with no jet bridge, and the cargo kit to a heavy remote stand. The dedicate picker (`81e2a28`) leases desks, stands, lounges, and trucks. Spare check-in cells stay empty so the opening is still one staffed desk and one kiosk; the player places a desk before a lease can name it. Spare security cells and the pier-end lounge cells are unchanged. Ceilings stay 46 / 37.5 / 88.
 
-No other open branch ahead of main touches `src/checkin`, `src/game/terminal.ts`, or the interior props. Older interior branches (`hall-room-interior-7584`, `living-interior-8c70`) have no merge base with main.
+J28 check-in theming and J25 interior dressing were already on main. No further hall furnishing went in with these merges.
 
 ## Checks
 
 - `src/game/starterInterior.test.ts` — shipped pieces are in the scheme, the open cells stay empty, ceilings stay 46 / 37.5 / 88, the lounge and both gates are lease targets, and the three stamps keep their bays
-- Opening soak — no nav bottleneck inside 600 sim seconds
+- Opening soak, re-run on `c17f68a` — no nav bottleneck inside 600 sim seconds. Spare cells stay empty and the passenger stands stay remote concrete
 - 30-day soak (`SOAK_STARTER=1`) — letters the desks can clear are signed; the rest are declined, because a refused letter stays on the desk and blocks the next one. The two placed desks plus the kiosk clear 22 passengers a minute, which is the smallest regional and not the next carrier (28). One carrier stays on the bank. No nav bottleneck inside the opening. Across the 30 days the first bottleneck was either absent or at 5399s (day 30)
 - Browser stills in `docs/devlog/media/starter_kits/`
