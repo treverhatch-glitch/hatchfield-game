@@ -219,3 +219,36 @@ Stills are from the local dev server of this tree, graphics preset high:
 ## Main
 
 Rebased onto `79712692`. The fast-forward push is the commit that records this ledger. If that push is rejected, the branch still holds the green gate and these stills.
+
+---
+
+# P1 fuel farm depot
+
+## Depot and HUD
+
+Branch `cursor/fuel-farm-depot-9acb`. Trever's fuel-farm notes, after the Gemini farm from PR #92 was already on main.
+
+- Tanks sit inside grass earth berms. Two tankers park under a steel loading canopy with black hoses. A ground decal carries tire tracks and stains.
+- The flat yellow fuel-tile ring is gone. The pad uses painted lane markings (edge lines, a dashed center, stop bars) on a dark asphalt rectangle.
+- Trucks drive one way. `farm_entry` and `farm_exit` are opposite ends of the loading lane. The delivery path enters on one road cell and leaves on another, and the docked tanker faces entry toward exit. Test: `drives the tanker in one gate and out the other`.
+- Climate and season goals are a collapsible chip under the clock, labeled `Climate: Temperate` (the region name). The open list sits below the info strip. The phone stays bottom-left. Hints are a top-left collapsible badge. First Hour stays expanded only while the starter kit is offered, then collapses to a chip.
+
+## Gate
+
+Quick PASS on `14ae7aaf4d32cb79a60d2204cec12fe1a0569bbc` (720.8s, Node v22.14.0). 2977 tests passed, 0 failed, 9 skipped (461 files). 30-day soak reached day 30, end cash $4,601,749, stuck 0, 19 recoveries. Draw-call budgets passed. Careful bots, 15 days, passed. Report: `docs/devlog/gate/14ae7aaf4d32cb79a60d2204cec12fe1a0569bbc.md`.
+
+`main` moved to `d1051d84` (fitting honesty) while that gate ran. The four depot commits rebased cleanly onto it. Tip after the rebase is `9d01bf49`. The captain classification above is unchanged.
+
+## Stills
+
+Local dev server, graphics preset high:
+
+- `docs/devlog/media/fuel-farm/before-hud.png`
+- `docs/devlog/media/fuel-farm/before-fuel.png`
+- `docs/devlog/media/fuel-farm/after-hud.png`
+- `docs/devlog/media/fuel-farm/after-hud-clear.png`
+- `docs/devlog/media/fuel-farm/after-fuel.png`
+
+## Preview
+
+`npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset in this environment. `--branch main` was not used. The previous progress deployment stays up.
