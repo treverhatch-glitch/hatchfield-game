@@ -4,7 +4,9 @@ import { SIZE } from '../../game/types'
 import { PROP_LOOK, SKY_LOOK } from '../look'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { propTexture } from './propArt'
+import { discardDark, landingTexture, spritePlane, SPRITE_GRID } from './landingArt'
 import { SKY_PHOTOS, type SkyPhotoBlend, type SkyPhotoId } from './dayNight'
+import { loadNoonHint } from './noonHint'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
 import { CELL, tileAt, worldToCell, type WorldView } from './view'
@@ -60,18 +62,23 @@ export class SkyDome {
         uniform float photoAmount;
         varying vec3 vDir;
         float h(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
-        // Panoramas are not 360° wide: mirror them once around the dome so there is no seam.
-        vec2 photoUv(vec3 d, float hz) {
+        // Panoramas are not 360° wide. Mirror once, then blend the fold so the join does not read as a seam.
+        vec3 sampleSky(sampler2D tex, vec3 d, float hz) {
           float az = (atan(d.z, d.x) + 3.14159265) / 3.14159265;
+          float u = 1.0 - abs(1.0 - az);
           float e = clamp(asin(clamp(d.y, -1.0, 1.0)) / 1.5707963, 0.0, 1.0);
-          return vec2(1.0 - abs(1.0 - az), hz + (1.0 - hz) * e);
+          float v = hz + (1.0 - hz) * e;
+          vec3 col = texture2D(tex, vec2(u, v)).rgb;
+          float seam = smoothstep(0.14, 0.0, u);
+          vec3 side = texture2D(tex, vec2(0.2, v)).rgb;
+          return mix(col, side, seam * 0.85);
         }
         void main() {
           vec3 d = normalize(vDir);
           float t = clamp(vDir.y * 1.6, 0.0, 1.0);
           vec3 c = mix(horizon, top, pow(t, 0.7));
           if (photoAmount > 0.0) {
-            vec3 p = mix(texture2D(photoA, photoUv(d, horizonA)).rgb, texture2D(photoB, photoUv(d, horizonB)).rgb, photoMix);
+            vec3 p = mix(sampleSky(photoA, d, horizonA), sampleSky(photoB, d, horizonB), photoMix);
             // Below the horizon the procedural haze takes over; the ground and fog cover it anyway.
             c = mix(c, p, photoAmount * smoothstep(-0.02, 0.05, d.y));
           }
@@ -110,7 +117,9 @@ export class SkyDome {
   /** Medium and High turn the panoramas on; the first call loads them. Low never fetches the JPEGs. */
   setPhotos(on: boolean) {
     this.photosOn = on
-    if (!on || this.photos.size || typeof document === 'undefined') return
+    if (!on || typeof document === 'undefined') return
+    loadNoonHint()
+    if (this.photos.size) return
     const loader = new THREE.TextureLoader()
     for (const id of Object.keys(SKY_PHOTOS) as SkyPhotoId[]) {
       loader.load(SKY_PHOTOS[id].url, (tex) => {
@@ -197,11 +206,67 @@ const FARMLAND_GROUND = 0xb8c8a8
 const FARMLAND_FIELDS = [0x8a9a4a, 0xa89a58, 0x5d7f3a, 0x7a8f4c, 0x9a8a5a]
 const FARMLAND_TREES = [0x2f6a2e, 0x3d7a34, 0x4a8a3a, 0x2a5a30]
 
+function addSprites(
+  group: THREE.Group,
+  geos: THREE.BufferGeometry[],
+  mats: THREE.Material[],
+  map: THREE.Texture,
+  count: number,
+  height: number,
+  seed: number,
+) {
+  const mat = new THREE.MeshLambertMaterial({ map, color: 0xffffff, side: THREE.DoubleSide })
+  discardDark(mat, 0.055)
+  mats.push(mat)
+  const folder = new THREE.Group()
+  folder.name = seed === 99 ? 'world-trees' : 'world-bushes'
+  const planes: THREE.PlaneGeometry[] = []
+  for (let row = 0; row < SPRITE_GRID.rows; row++) {
+    for (let col = 0; col < SPRITE_GRID.cols; col++) {
+      const geo = spritePlane(col, row)
+      planes.push(geo)
+      geos.push(geo)
+    }
+  }
+  const buckets: THREE.Matrix4[][] = planes.map(() => [])
+  const rand = rng(seed)
+  let guard = 0
+  let n = 0
+  while (n < count && guard++ < count * 20) {
+    const a = rand() * Math.PI * 2
+    const r = PLOT_HALF + 8 + Math.pow(rand(), 0.65) * 220
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (Math.abs(x) < PLOT_HALF + 6 && Math.abs(z) < PLOT_HALF + 6) continue
+    const s = height * (0.75 + rand() * 0.55)
+    const yaw = rand() * Math.PI
+    const cell = Math.floor(rand() * planes.length)
+    buckets[cell].push(trs(x, 0, z, yaw, s * 0.72, s, 1))
+    buckets[cell].push(trs(x, 0, z, yaw + Math.PI / 2, s * 0.72, s, 1))
+    n++
+  }
+  planes.forEach((geo, i) => {
+    if (!buckets[i].length) return
+    const mesh = instanced(geo, mat, buckets[i])
+    mesh.castShadow = true
+    folder.add(mesh)
+  })
+  group.add(folder)
+}
+
+export interface LandscapeArt {
+  farmland?: THREE.Texture | null
+  water?: THREE.Texture | null
+  trees?: THREE.Texture | null
+  bushes?: THREE.Texture | null
+}
+
 /** Patchwork farmland + trees around the plot, and a perimeter fence. */
 export function buildLandscape(
   grass: THREE.Texture,
   trees: number,
   tint?: LandscapeTint | null,
+  art?: LandscapeArt | null,
 ): { group: THREE.Group; dispose: () => void } {
   const group = new THREE.Group()
   group.name = 'world-landscape'
@@ -209,7 +274,8 @@ export function buildLandscape(
   const mats: THREE.Material[] = []
 
   const groundGeo = frameGeometry(PLOT_HALF, 450, 1 / 6.4)
-  const groundMat = new THREE.MeshLambertMaterial({ map: grass, color: tint?.ground ?? FARMLAND_GROUND })
+  const groundMap = art?.farmland ?? grass
+  const groundMat = new THREE.MeshLambertMaterial({ map: groundMap, color: art?.farmland ? 0xffffff : (tint?.ground ?? FARMLAND_GROUND) })
   const ground = new THREE.Mesh(groundGeo, groundMat)
   ground.name = 'world-farmland'
   ground.position.y = -0.06
@@ -253,7 +319,7 @@ export function buildLandscape(
   fieldGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
   fieldGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
   fieldGeo.computeVertexNormals()
-  const fieldMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: grass, polygonOffset: true, polygonOffsetFactor: -1 })
+  const fieldMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: groundMap, polygonOffset: true, polygonOffsetFactor: -1 })
   const fields = new THREE.Mesh(fieldGeo, fieldMat)
   fields.name = 'world-fields'
   fields.receiveShadow = true
@@ -284,12 +350,28 @@ export function buildLandscape(
     tm.push(trs(x, 0, z, rand() * 6.28, s, s * (0.9 + rand() * 0.4), s))
     tc.push(greens[Math.floor(rand() * greens.length)])
   }
-  if (tm.length) {
+  if (tm.length && !art?.trees) {
     const tr = instanced(trunk, trunkM, tm)
     const cr = instanced(crown, crownM, tm, tc)
     tr.castShadow = true
     cr.castShadow = true
     group.add(tr, cr)
+  }
+  if (art?.trees) addSprites(group, geos, mats, art.trees, trees, 6.5, 99)
+  if (art?.bushes) addSprites(group, geos, mats, art.bushes, Math.max(8, Math.round(trees * 0.45)), 2.4, 41)
+  if (art?.water) {
+    const riverGeo = new THREE.PlaneGeometry(240, 18, 1, 1)
+    riverGeo.rotateX(-Math.PI / 2)
+    const uv = riverGeo.getAttribute('uv')
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 8, uv.getY(i) * 1.5)
+    const riverMat = new THREE.MeshLambertMaterial({ map: art.water, color: 0xffffff })
+    const river = new THREE.Mesh(riverGeo, riverMat)
+    river.name = 'world-river'
+    river.position.set(0, -0.03, PLOT_HALF + 38)
+    river.receiveShadow = true
+    group.add(river)
+    geos.push(riverGeo)
+    mats.push(riverMat)
   }
 
   // Perimeter fence: posts, chain-link, and three barbed strands.
@@ -297,17 +379,17 @@ export function buildLandscape(
   const post = new THREE.BoxGeometry(0.08, 1.85, 0.08)
   post.translate(0, 0.925, 0)
   const postM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
-  const link = propTexture('chainlink')
+  const link = landingTexture('chainlink') ?? propTexture('chainlink')
   if (link) link.repeat.set(Math.max(1, Math.round((e * 2) / (3 * WORLD_PER_METER))), 1)
   const meshM = new THREE.MeshLambertMaterial({
-    color: PROP_LOOK.chainlink,
+    color: link ? 0xffffff : PROP_LOOK.chainlink,
     ...(link ? { map: link } : {}),
-    transparent: true,
-    alphaTest: link ? 0.4 : 0,
+    transparent: !link,
     opacity: link ? 1 : 0.22,
     side: THREE.DoubleSide,
     depthWrite: Boolean(link),
   })
+  if (link) discardDark(meshM, 0.12)
   geos.push(post)
   mats.push(postM, meshM)
   const pm: THREE.Matrix4[] = []

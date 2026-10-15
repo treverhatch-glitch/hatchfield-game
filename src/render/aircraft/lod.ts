@@ -301,6 +301,15 @@ export class CrossfadeLOD extends THREE.LOD {
       const base = (lamp.userData.baseScale as number) || 1
       lamp.scale.setScalar(base * nightScale * (0.8 + beacon * 0.3))
     }
+    const glow = Math.max(0, (lamp_ - 0.2) / 0.8) * 0.95
+    for (const lamp of buckets.lamps) {
+      for (const child of lamp.children) {
+        if (!child.userData.glow) continue
+        const mat = (child as THREE.Sprite).material as THREE.SpriteMaterial
+        mat.opacity = glow
+        child.visible = glow > 0
+      }
+    }
 
     const ail = Math.sin(now * 0.7) * 0.18
     const elev = Math.sin(now * 0.5) * 0.12

@@ -4,6 +4,7 @@ import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
 import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
 import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
@@ -1264,13 +1265,21 @@ function glowTexture(): THREE.DataTexture {
   return glowTex
 }
 
+/** Nav sheet billboard. False in Node, where the plate is not decoded. */
+function hangNav(mesh: THREE.Object3D, cell: 'navRed' | 'navGreen' | 'navWhite' | 'beacon'): boolean {
+  const sprite = navLightSprite(cell)
+  if (!sprite) return false
+  mesh.add(sprite)
+  return true
+}
+
 /** Landing lamps are built in the rig. Give them the same night halo as the nav lights. */
 function attachLandingGlow(frame: Frame) {
   if (frame.tier !== 'mid') return
   for (const lamp of frame.lamps) {
     if (lamp.name !== 'landing-light') continue
     if (lamp.children.some((child) => child.userData.glow)) continue
-    lamp.add(lampGlow('#f5f8ff'))
+    if (!hangNav(lamp, 'navWhite')) lamp.add(lampGlow('#f5f8ff'))
   }
 }
 
@@ -1335,7 +1344,8 @@ function addLights(frame: Frame) {
     mesh.name = name
     mesh.userData.baseScale = mesh.scale.x
     const painted = addMesh(frame, mesh, slot, kind === 'light' ? 'light' : kind)
-    if (kind === 'light' && frame.tier === 'mid') painted.add(lampGlow(slotColor(slot, frame.livery)))
+    const hung = hangNav(painted, slot === 'beacon' ? 'beacon' : slot === 'navRed' ? 'navRed' : slot === 'navGreen' ? 'navGreen' : 'navWhite')
+    if (!hung && kind === 'light' && frame.tier === 'mid') painted.add(lampGlow(slotColor(slot, frame.livery)))
     frame.lamps.push(painted)
     if (kind === 'strobe') frame.strobes.push(painted)
     if (kind === 'beacon') frame.beacons.push(painted)
@@ -1369,6 +1379,7 @@ function addHeloLights(frame: Frame) {
     mesh.name = 'beacon'
     mesh.userData.baseScale = mesh.scale.x
     const painted = addMesh(frame, mesh, 'beacon', 'beacon')
+    hangNav(painted, 'beacon')
     frame.beacons.push(painted)
     frame.lamps.push(painted)
     return
@@ -1379,28 +1390,29 @@ function addHeloLights(frame: Frame) {
   port.position.set(spec.lengthM * 0.05, centerY, -spec.rx * 0.95)
   port.name = 'nav-port'
   port.userData.baseScale = radius
-  const portLamp = addMesh(frame, port, 'navRed', 'light')
-  frame.lamps.push(portLamp)
+  const portPainted = addMesh(frame, port, 'navRed', 'light')
+  if (!hangNav(portPainted, 'navRed')) portPainted.add(lampGlow(slotColor('navRed', frame.livery)))
+  frame.lamps.push(portPainted)
   const star = port.clone()
   star.position.z *= -1
   star.name = 'nav-starboard'
-  const starLamp = addMesh(frame, star, 'navGreen', 'light')
-  frame.lamps.push(starLamp)
+  const starPainted = addMesh(frame, star, 'navGreen', 'light')
+  if (!hangNav(starPainted, 'navGreen')) starPainted.add(lampGlow(slotColor('navGreen', frame.livery)))
+  frame.lamps.push(starPainted)
   const tail = port.clone()
   const tailSt = loftStation('helo', 0.99)
   tail.position.set(tailX + spec.lengthM * 0.01, centerY + spec.ry * tailSt.dy, 0)
   tail.name = 'nav-tail'
-  const tailLamp = addMesh(frame, tail, 'navWhite', 'light')
-  frame.lamps.push(tailLamp)
-  portLamp.add(lampGlow(slotColor('navRed', frame.livery)))
-  starLamp.add(lampGlow(slotColor('navGreen', frame.livery)))
-  tailLamp.add(lampGlow(slotColor('navWhite', frame.livery)))
+  const tailPainted = addMesh(frame, tail, 'navWhite', 'light')
+  if (!hangNav(tailPainted, 'navWhite')) tailPainted.add(lampGlow(slotColor('navWhite', frame.livery)))
+  frame.lamps.push(tailPainted)
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
   beacon.position.set(0, centerY + spec.ry * 0.97, 0)
   beacon.name = 'beacon'
   beacon.userData.baseScale = beacon.scale.x
   const paintedBeacon = addMesh(frame, beacon, 'beacon', 'beacon')
+  hangNav(paintedBeacon, 'beacon')
   frame.beacons.push(paintedBeacon)
   frame.lamps.push(paintedBeacon)
   const strobe = port.clone()
@@ -1408,6 +1420,7 @@ function addHeloLights(frame: Frame) {
   strobe.name = 'strobe'
   strobe.userData.baseScale = strobe.scale.x
   const paintedStrobe = addMesh(frame, strobe, 'navWhite', 'strobe')
+  hangNav(paintedStrobe, 'navWhite')
   frame.strobes.push(paintedStrobe)
   frame.lamps.push(paintedStrobe)
 }

@@ -4,6 +4,8 @@ Merge-captain pass against `origin/main` at `4bd73e2` (15 Oct 2026). Inventory: 
 
 `docs/LANDING_LEDGER.md` is a separate producer queue (play audio, then the building-port P1). This file is the captain's classification of everything still off main.
 
+Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs") went idle with no branch of its own: PR #86 and #83 through #87 are already on main (hub `8acaaded`, Tower III `6dc29b60`, Spotters `b67c52b4`, Council `0f006656`, carbon `b6de09c9`). They were not landed again. PR #98 is in flight with `bc-c2f61850` and was left alone.
+
 ## Landed on main this pass
 
 | Item | Feature SHA | Gate record on main | Notes |
@@ -13,6 +15,7 @@ Merge-captain pass against `origin/main` at `4bd73e2` (15 Oct 2026). Inventory: 
 | Spotters deck | `b67c52b4` | `6779e61c` | Added beside landmarks and cargo hub II. Stamp is on Landside > Landmarks. |
 | Airport Council | `0f006656` | `c17f68ab` | Airlines > Council. Civic spend is `civic_programs` (`331c757d`). |
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
+| Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
@@ -56,10 +59,9 @@ Valuable ideas that are too far behind, or that would fight a landed system. Not
 
 | Branch | Why |
 | --- | --- |
-| `cursor/j36-daynight-cycle-4799` (PR #98) | Still open. It keeps editing `GameSettings.tsx` and `graphicsPrefs.ts` (a noon hold in graphics settings) after the sunrise switch landed. A second store would fight the settings switch. Left for that PR. |
+| `cursor/j36-daynight-cycle-4799` (PR #98) | Noon hold in graphics settings, plus edits to `GameSettings.tsx`. `bc-c2f61850` is landing it. Left alone. |
 | `claude/finance-screen-18359518024439908719`, `tmp/pr265` | `FinanceScreen` from an older economy panel. Main's wallet and finance card are newer. 404 commits behind. |
 | `claude/issue-228-20261014-1515` | Connections, hotels, and stranded passengers as a 3k-line branch. Hub connections on main overlap it. 340 behind. |
-| `design/vision-expansion` | Design doc only, 334 behind. |
 | `claude/issue-195-*` | Guest traits and terminal pathing from before the hall-nav rewrite. |
 | `cursor/art-wire-c08d`, `cursor/art-landing-p1-9acb` | Art-agent work (night glow, art wiring). Not rebased by this captain. |
 | `grok/lategame`, `cursor/connectivity-hub-0588`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `head-sim-suite-562d-*`, `cursor/audit-playtest-562d-scripted150-*` | Old trunks and prototypes. The playtest trunk's useful tests are already on main. |
@@ -117,5 +119,55 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 | 340 | 1 | 2026-10-14 | `9e5034db` | `claude/issue-228-20261014-1515` | NEEDS-WORK. |
 | 396–418 | 1–47 | 2026-10-14 | various | `building-visuals`, `bv`, `tmp/pr252`, issue 229/231/232 stacks, `p6`, `art/pack6-refs` | SUPERSEDED copies. |
 | 404 | 2 | 2026-10-14 | `e3f619ea` | `claude/finance-screen-*`, `tmp/pr265` | NEEDS-WORK. |
-| 334 | 1 | 2026-10-14 | `a3325450` | `design/vision-expansion` | NEEDS-WORK. Docs only. |
+| 334 | 1 | 2026-10-14 | `a3325450` | `design/vision-expansion` | LANDED as `docs/design/VISION_EXPANSION.md`. |
 | 689–880 | 1–439 | 2026-10-13/14 | various | `grok/*`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `preview-dist`, `trunk-snapshot`, media clips | NEEDS-PORT was declined. Prototypes, not a replay. |
+
+---
+
+# P1 art landing record
+
+## P1 art landing
+
+Branch `cursor/art-landing-p1-9acb`. Lands after the P0 sound fix (#94) and beside the building port (#92). Those branches' files were not edited.
+
+Pack is stored at full resolution under `public/art/textures/landing/` (textures, terrain, sky). Nothing in the loader resamples those JPEGs.
+
+Wired:
+
+- Runway paint, wet asphalt, and the threshold plate on the runway and apron. Dirt shoulders along the runway edges.
+- Seasonal ground: spring and summer use spring grass, autumn uses autumn grass, winter or deep snow uses snow grass. Apron and paved surfaces swap to snow or wet asphalt. Farmland and the river use their own plates.
+- Tree and bush sprite sheets as crossed cards. Chainlink on the perimeter fence, with the black holes discarded.
+- Dawn, noon, dusk, night, overcast, and storm skies on the dome. The mirror fold is feathered so a non-wrapping panorama does not show a hard seam. Rain and fog use the overcast plate while the sun is up. A storm uses the storm plate. Overnight rain and fog stay on the night plate.
+- The noon HDRI hint (`lighting/hdri_hint_noon.jpeg`) is a sun and hemisphere colour reference only. It is not a skybox.
+- Night: `window_glow` is the emissive mask on terminal glass and building walls (one copy per face, not a repeating tile). `apron_flood_glow` is the pool under the flood masts, faded at the edges. `nav_light_sprites` are additive billboards on the red, green, white, and beacon lamps. All three stay at 2048.
+- Terminal glass and the airport-hotel tower use the elevation plates once per face.
+- Queue tape on the belt barriers. Carousel belt on the claim carousel.
+
+Interiors: PR #74 is already on main (starter newsagent, second toilet, claim bench). Every terminal prop type is placed in the hall dressing, and that dressing stays visible at every camera distance. Roof cutaway is still distance-only.
+
+Quality: every graphics tier keeps the photo set (skies, foliage, props, colour grade, bloom, contact shadows). Shadow maps still step 1024 / 2048 / 4096 / 8192 so a software GL view can open. People draw-call budget was left as it was.
+
+Gaps still flat: `docs/playtest/ART_GAPS.md`.
+
+## Gate
+
+Quick PASS on `296990215af6` (781s, Node v22.14.0). 2953 tests passed, 0 failed, 9 skipped (453 files). 30-day soak reached day 30, end cash $4,602,889, stuck 0, 22 recoveries. Draw-call budgets passed. Careful bots, 15 days, passed. Report: `docs/devlog/gate/296990215af65c3fa3bfb8db0fe8e3aa1a2bda1e.md`.
+
+`main` moved twice while that gate ran: first to `4bd73e2f` (carbon tracking), then to `79712692` (captain ledger, shell floors, Tower III copy). The art renderer and `public/art` rebased cleanly both times. The captain's classification above is unchanged.
+
+## Preview
+
+`npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset in this environment. `--branch main` was not used.
+
+Stills are from the local dev server of this tree, graphics preset high:
+
+- `docs/devlog/media/landing/runway-close.png`
+- `docs/devlog/media/landing/terrain-wide.png`
+- `docs/devlog/media/landing/sky-dawn.png`
+- `docs/devlog/media/landing/sky-night.png`
+- `docs/devlog/media/landing/terminal-exterior.png`
+- `docs/devlog/media/landing/interior-props.png`
+
+## Main
+
+Rebased onto `79712692`. The fast-forward push is the commit that records this ledger. If that push is rejected, the branch still holds the green gate and these stills.

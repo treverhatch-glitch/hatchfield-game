@@ -12,6 +12,7 @@
 import type { Weather } from '../../game/types'
 import { faceHour } from '../../core/faceClock'
 import { DAY_SECONDS, lerpHex, smoothstep, type SkyState } from './daylight'
+import { landingSkyUrl } from './landingArt'
 
 export const DAY_NIGHT_CYCLE = {
   /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
@@ -205,17 +206,20 @@ export function resolvePlayHour(
   return resolveHour(clock, hourOverride, control, cycleOn)
 }
 
-export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night'
+export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night' | 'overcast' | 'storm'
 
 /**
- * Pack 6 sky panoramas on the dome. `horizon` is the image row (0 bottom, 1 top)
+ * Sky panoramas on the dome. `horizon` is the image row (0 bottom, 1 top)
  * that sits on the horizon; everything above it stretches up to the zenith.
+ * The noon HDRI hint is a light colour, not one of these plates.
  */
 export const SKY_PHOTOS: Record<SkyPhotoId, { url: string; horizon: number }> = {
-  dawn: { url: '/textures/sky/sky_dawn.jpg', horizon: 0.2 },
-  noon: { url: '/textures/sky/sky_noon.jpg', horizon: 0.3 },
-  dusk: { url: '/textures/sky/sky_dusk.jpg', horizon: 0.08 },
-  night: { url: '/textures/sky/sky_night.jpg', horizon: 0.05 },
+  dawn: { url: landingSkyUrl('sky_dawn'), horizon: 0.34 },
+  noon: { url: landingSkyUrl('sky_noon'), horizon: 0.32 },
+  dusk: { url: landingSkyUrl('sky_dusk'), horizon: 0.3 },
+  night: { url: landingSkyUrl('sky_night'), horizon: 0.25 },
+  overcast: { url: landingSkyUrl('sky_overcast'), horizon: 0.32 },
+  storm: { url: landingSkyUrl('sky_storm'), horizon: 0.3 },
 }
 
 /** Crossfade windows in sim hours, in clock order. Outside a window the last photo holds. */
@@ -226,12 +230,15 @@ export const SKY_PHOTO_FADES: readonly { from: SkyPhotoId; to: SkyPhotoId; start
   { from: 'dusk', to: 'night', start: 19.6, end: 21.0 },
 ]
 
-/** How much of the photo shows over the procedural sky. Grey weather keeps mostly the painted gradient. */
+/**
+ * How much of the photo shows over the procedural sky.
+ * Rain and fog carry the overcast plate. Storm carries its own. Clear keeps the clock photos.
+ */
 export const SKY_PHOTO_WEATHER: Record<Weather, number> = {
   clear: 1,
-  rain: 0.35,
-  fog: 0.25,
-  storm: 0.15,
+  rain: 1,
+  fog: 1,
+  storm: 1,
 }
 
 /** Two photos and the mix between them: `t` 0 shows `a`, 1 shows `b`. */
@@ -241,11 +248,7 @@ export interface SkyPhotoBlend {
   t: number
 }
 
-/**
- * Which panoramas the dome shows at `hour`. A `daylight` override below 1 pulls
- * the dominant photo toward night, the same way `applyDayNight` dims the rig.
- */
-export function skyPhotoBlend(hour: number, daylight?: number | null): SkyPhotoBlend {
+function hourPhotoBlend(hour: number, daylight?: number | null): SkyPhotoBlend {
   const h = wrapHour(hour)
   let blend: SkyPhotoBlend | null = null
   let hold = SKY_PHOTO_FADES[SKY_PHOTO_FADES.length - 1].to
@@ -262,6 +265,25 @@ export function skyPhotoBlend(hour: number, daylight?: number | null): SkyPhotoB
     return { a: lead, b: 'night', t: 1 - clamp01(daylight) }
   }
   return blend
+}
+
+function blendLead(blend: SkyPhotoBlend): SkyPhotoId {
+  return blend.t < 0.5 ? blend.a : blend.b
+}
+
+/**
+ * Which panoramas the dome shows at `hour`. A `daylight` override below 1 pulls
+ * the dominant photo toward night, the same way `applyDayNight` dims the rig.
+ * Rain and fog replace a daytime plate with overcast. Storm always uses the storm plate.
+ * Overnight rain and fog keep the night plate so a grey day panorama does not light the field.
+ */
+export function skyPhotoBlend(hour: number, daylight?: number | null, weather?: Weather | null): SkyPhotoBlend {
+  const time = hourPhotoBlend(hour, daylight)
+  if (weather === 'storm') return { a: 'storm', b: 'storm', t: 0 }
+  if ((weather === 'rain' || weather === 'fog') && blendLead(time) !== 'night') {
+    return { a: 'overcast', b: 'overcast', t: 0 }
+  }
+  return time
 }
 
 export function airfieldLevels(sample: Pick<DayNightSample, 'runwayEdge' | 'taxiEdge' | 'apron'>): AirfieldLevels {
