@@ -99,7 +99,7 @@ export type PaintSlot =
 
 /** Cache key for everything a livery paints: body, cheatline, fin and scheme. */
 export function liveryKey(livery: Livery): string {
-  return `${livery.body}|${livery.stripe}|${livery.tail ?? ''}|${livery.scheme ?? 'twotone'}|${livery.airline ?? ''}`
+  return `${livery.body}|${livery.stripe}|${livery.tail ?? ''}|${livery.scheme ?? 'twotone'}|${livery.airline ?? ''}|${livery.wing ?? ''}|${livery.crown ?? ''}`
 }
 
 function shade(hex: string, factor: number): string {
@@ -113,7 +113,7 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     case 'body':
       return livery.body
     case 'wing':
-      return livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.wing
+      return livery.wing ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.wing)
     case 'stripe':
       return livery.stripe
     case 'tail':

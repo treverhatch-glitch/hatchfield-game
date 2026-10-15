@@ -141,6 +141,10 @@ export interface Livery {
    * `solid`: the whole airframe in `body` (military, medevac, freighters).
    */
   scheme?: 'twotone' | 'solid'
+  /** Roof colour for the fuselage loft. The isometric camera sees this band. */
+  crown?: string
+  /** Wing colour. The isometric camera looks down on this. */
+  wing?: string
   /**
    * Catalog airline id (`bushline`, `crown`, …). When set, the shell looks up
    * `public/textures/liveries/manifest.json` and samples that airline's

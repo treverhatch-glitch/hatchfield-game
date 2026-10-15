@@ -1,10 +1,13 @@
 # Airline livery plates
 
-Full-resolution originals live in `assets/liveries/<id>/` and are not served.
-`scripts/build-liveries.py` writes the browser copies here. High-res is the
-default file. `med/` and `low/` are the only smaller copies. The game picks
-one with `localStorage['hatchfield-texture-quality']` (`low`, `med`, or
-`high`). Anything else, including a missing key, stays on high.
+`assets/liveries/<id>/{fuselage,tail}.jpg` are the uncropped source photos
+(1280×720 fuselage, 960×960 tail). They are not a UV layout, so the game does
+not sample them directly. `scripts/build-liveries.py` crops each one onto the
+fuselage and tail plates and writes the browser copies here. High-res is the
+default file and keeps the crop's own pixels, up to 4096 on the long side.
+`med/` and `low/` are the only smaller copies. The game picks one with
+`localStorage['hatchfield-texture-quality']` (`low`, `med`, or `high`).
+Anything else, including a missing key, stays on high.
 
 ```
 public/textures/liveries/<id>/fuselage.jpg
@@ -26,7 +29,20 @@ engine colour. Engines are not a texture file.
 
 Roster carriers with a Gemini ref are added by `scripts/build-roster-liveries.py`.
 Each row's `types` are the airframes that carrier flies. `preload: false` keeps
-those plates off the boot fetch. The five base carriers have a logo only.
+those plates off the boot fetch.
+
+`bushline_local` paints Bushline (`bn2`, `dhc6`). `crown_pacific` paints Crown
+(`a380`, `b77w`). `zoomjet` paints Zoomjet when the airframe is `a320neo`,
+`b738`, or `b38m`. Zoomjet is a negotiation carrier listed by
+`game.allAirlines()` and can be signed. Its contract does not name metal, so
+other types in the 180-seat band stay procedural.
+`siam_breeze` and `northstar_cargo` resolve to plates, and no airline in the
+catalog, the roster, or the negotiation book uses those ids, so no flight
+wears them.
+
+The five base roster carriers (Puddle Jumper, SkyCheap, Prestige Air, National
+Airways, HeavyLift) stay on procedural paint. Their colours and tail decals
+come from `docs/art/livery-concepts/`. See `docs/art/LIVERIES.md`.
 
 Three.js flips Y, so the **top row of the JPEG is V = 1**. The plates are
 opaque. Nose is on the left of `fuselage.jpg` and the crown is the top.

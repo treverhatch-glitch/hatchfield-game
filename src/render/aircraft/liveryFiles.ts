@@ -33,13 +33,41 @@ export function parseTextureQuality(value: unknown): TextureQuality {
 
 interface ManifestRow {
   id: string
+  engine?: string
   airlines?: string[]
   types?: string[]
   /** False for roster plates. Those load with the first aircraft, not at boot. */
   preload?: boolean
 }
 
+export interface ResolvedLivery {
+  /** Folder id under public/textures/liveries. */
+  id: string
+  engine: string
+  airlines: string[]
+  types: string[]
+  fuselage: string
+  tail: string
+}
+
 const LIVERY_ROWS = (manifest as { liveries?: ManifestRow[] }).liveries ?? []
+
+/**
+ * The photographed plate for a folder id or an airline that wears it.
+ * Null when this id has no JPEG livery.
+ */
+export function resolveLivery(id: string): ResolvedLivery | null {
+  const row = LIVERY_ROWS.find((entry) => entry.id === id || entry.airlines?.includes(id))
+  if (!row) return null
+  return {
+    id: row.id,
+    engine: row.engine ?? '#888888',
+    airlines: row.airlines?.length ? row.airlines : [row.id],
+    types: row.types ?? [],
+    fuselage: liveryFile(row.id, 'fuselage'),
+    tail: liveryFile(row.id, 'tail'),
+  }
+}
 
 /** True when the manifest has a photographed plate for this airline id. */
 export function listedLivery(airline: string): boolean {
