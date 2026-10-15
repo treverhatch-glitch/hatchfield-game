@@ -10,7 +10,9 @@ describe('hall kit detailed models', () => {
       expect(ids.has(id), id).toBe(true)
       expect(TERMINAL_PROP_TYPES).toContain(t)
     }
-    for (const id of ['departures_wall', 'gate_pylon', 'kiosk']) expect(ids.has(id)).toBe(true)
+    for (const id of ['departures_wall', 'gate_pylon', 'kiosk', 'bag_drop', 'claim_carousel', 'passport_booth']) {
+      expect(ids.has(id)).toBe(true)
+    }
   })
   it('splits mapped items from low-poly ones', () => {
     const it = (def: string, id: string): PlacedItem => ({ id, def, c: 0, r: 0, wear: 0, rot: 1 }) as PlacedItem

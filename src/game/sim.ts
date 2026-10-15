@@ -265,6 +265,7 @@ import {
   openingSlotCap,
   openingSpacingBonus,
   STARTER_CAPACITY,
+  STARTER_CHECKIN_PACE,
 } from './openingData.ts'
 import {
   dismissTip as dismissTipId,
@@ -431,6 +432,9 @@ import {
   NEUTRAL_DESK_BRAND,
   allocate,
   carrierPeakPaxPerMin,
+  carrierPlant,
+  carrierRoomPhrase,
+  checkinCapacityPerMin,
   checkinSignGate,
   type Allocation,
   type CheckinDesk,
@@ -472,6 +476,7 @@ import {
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
+  PREFAB_TIERS,
   prefabZones,
   schemeItems,
   schemeLabel,
@@ -736,8 +741,9 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import type { BridgeCraft } from '../render/world/view.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
-import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { BRIDGE_RETRACT_SEC, SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
 import { rosterAirline } from '../airlines/roster.ts'
 import { RIVAL_NAME } from '../rival/config.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
@@ -1173,6 +1179,9 @@ function defaultBranding(): BrandingSave {
     presetId: preset.id,
   }
 }
+
+/** Phases where the aircraft sits on the stand and a bought bridge may reach it. */
+const BRIDGE_PHASES: ReadonlySet<Phase> = new Set<Phase>(['deboard', 'servicing', 'parked', 'board'])
 
 const FINANCING_CATEGORIES = new Set([
   'loan_proceeds',
@@ -1708,6 +1717,8 @@ export class Game {
   readonly hallNav = new HallNav()
   private secSeq = 1
   view: 'apron' | 'hall' = 'apron'
+  /** Player asked to change view. The renderer plays the beat, then calls setView. */
+  viewCue: 'apron' | 'hall' | null = null
   spawnCool = 8
   heloCool = 22
   /** Gap between signed helicopter spawns. Does not hold the runway. */
@@ -3196,13 +3207,88 @@ export class Game {
     }
     peak += this.carrierCheckinPeak(id)
     const cap = this.checkinCapacityFor(id)
+    const hall = this.hallRung()
     return checkinSignGate({
       kind: 'pax',
       peakPaxPerMin: peak,
       openDesks: cap.desks,
       kiosks: cap.kiosks,
       label: airline.name,
+      openLanes: this.securityServers(),
+      bundleLanes: hall.bundleLanes,
+      hallTier: hall.tier,
+      premade: hall.premade,
     })
+  }
+
+  /** Premade rung the carrier cap reads. A custom hall has no rung bonus. */
+  private hallRung(): { tier: 1 | 2 | 3; premade: boolean; bundleLanes: number } {
+    const fit = this.activeHall()
+    const tier: 1 | 2 | 3 = fit?.tier === 2 || fit?.tier === 3 ? fit.tier : 1
+    const premade = Boolean(fit?.premade && !fit.redesigned)
+    return { tier, premade, bundleLanes: premade ? PREFAB_TIERS[tier].servers : this.securityServers(fit) }
+  }
+
+  /** Desks, extra lanes, and the hall rung, for a carrier that owns no dedicated desk. */
+  hallCarrierPlant(airlineId = '__headroom__') {
+    const cap = this.checkinCapacityFor(airlineId)
+    const hall = this.hallRung()
+    return carrierPlant({
+      checkinPerMin: checkinCapacityPerMin(cap.desks, cap.kiosks),
+      openLanes: this.securityServers(),
+      bundleLanes: hall.bundleLanes,
+      hallTier: hall.tier,
+      premade: hall.premade,
+    })
+  }
+
+  /** What the next hall rung would clear, using today's desks and any lanes the rung itself adds. */
+  private hallAtTier(tier: 2 | 3) {
+    const now = this.hallCarrierPlant()
+    return carrierPlant({
+      checkinPerMin: now.checkinPerMin,
+      openLanes: Math.max(this.securityServers(), PREFAB_TIERS[tier].servers),
+      bundleLanes: PREFAB_TIERS[tier].servers,
+      hallTier: tier,
+      premade: true,
+    })
+  }
+
+  /** Stand and build copy: how many carriers fit, and what the next hall opens. */
+  hallHeadroomLine(): string {
+    const fit = this.activeHall()
+    const now = this.hallCarrierPlant()
+    if (!fit) return 'Stamp a terminal first.'
+    if (!fit.premade || fit.redesigned) return `${carrierRoomPhrase(now.slots)}. Place bigger items to raise a custom hall.`
+    const tier: 1 | 2 | 3 = fit.tier === 2 || fit.tier === 3 ? fit.tier : 1
+    if (tier >= 3) return `${carrierRoomPhrase(now.slots)}.`
+    const next = (tier + 1) as 2 | 3
+    const name = next === 2 ? 'Prefab II' : 'Prefab III'
+    return `${carrierRoomPhrase(now.slots)}. ${name} opens ${this.hallAtTier(next).slots}.`
+  }
+
+  /** Build-menu capacity line for a hall rung. Empty for every other stamp. */
+  hallBuyLine(id: string): string {
+    if (id !== 'prefab_ii' && id !== 'satellite') return ''
+    const target: 2 | 3 = id === 'satellite' ? 3 : 2
+    const now = this.hallCarrierPlant()
+    return `${this.hallAtTier(target).slots} carriers · now ${now.slots}`
+  }
+
+  /** The bigger-hall buy, when this shell still has a rung above it. */
+  hallExpandOffer(): { id: 'prefab_ii' | 'satellite'; label: string; cost: number; line: string } | null {
+    const fit = this.activeHall()
+    if (!fit?.premade || fit.redesigned) return null
+    const tier: 1 | 2 | 3 = fit.tier === 2 || fit.tier === 3 ? fit.tier : 1
+    if (tier >= 3) return null
+    const next = (tier + 1) as 2 | 3
+    const row = PREFAB_TIERS[next]
+    return {
+      id: next === 2 ? 'prefab_ii' : 'satellite',
+      label: row.label,
+      cost: row.upgradeCost,
+      line: this.hallHeadroomLine(),
+    }
   }
 
   private carrierCheckinPeak(id: AirlineId): number {
@@ -8224,8 +8310,8 @@ export class Game {
   }
 
   /**
-   * Old callers asked the Ops wallet to spend its own points. The same id now
-   * buys the Growth node that replaced it, out of the one research wallet.
+   * Old callers spent a separate operations research balance. The same id now
+   * buys the Growth node that replaced it, out of the one research balance.
    */
   buyOpsTech(id: string): boolean {
     const nodeId = growthNodeForOpsTech(id)
@@ -8705,6 +8791,7 @@ export class Game {
       tool !== 'premade' &&
       tool !== 'terminal'
     ) {
+      this.viewCue = null
       this.view = 'apron'
     }
     this.tool = tool
@@ -8733,7 +8820,24 @@ export class Game {
     return this.speed < 5
   }
 
+  /** Ask for the roof beat. setView still switches at once for tests and saves. */
+  askView(view: 'apron' | 'hall') {
+    if (view === 'hall' && !this.fits.length) {
+      this.pushNews('Stamp a Premade hall or empty Shell outside first.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.viewCue) {
+      this.setView(view)
+      return
+    }
+    if (view === this.view) return
+    this.viewCue = view
+    this.emit()
+  }
+
   setView(view: 'apron' | 'hall') {
+    this.viewCue = null
     if (view === 'hall' && !this.fits.length) {
       this.pushNews('Stamp a Premade hall or empty Shell outside first.', 'bad')
       this.emit()
@@ -8765,11 +8869,11 @@ export class Game {
       this.emit()
       return
     }
-    this.setView('hall')
+    this.askView('hall')
   }
 
   exitHall() {
-    if (this.view === 'hall') this.setView('apron')
+    if (this.view === 'hall') this.askView('apron')
   }
 
   /**
@@ -9714,7 +9818,7 @@ export class Game {
   /** Focus a campus hall (from HUD chips or pan-click). */
   selectHall(fit: TerminalFit) {
     this.selectedTile = { ...fit.origin }
-    this.setView('hall')
+    this.askView('hall')
   }
 
   /** Hall bodies one flight seeds. Jetway turns are quick — more bodies linger and spend. Walkers are rushed. */
@@ -10689,6 +10793,8 @@ export class Game {
       fit.items ?? [],
     )
     this.hallNav.setDeskPlan(this.checkinRows(this.checkinAllocation()))
+    const starterHall = Boolean(fit.premade && !fit.redesigned && (fit.tier ?? 1) === 1)
+    this.hallNav.setCheckinPace(starterHall && this.clock >= OPENING_SEC ? STARTER_CHECKIN_PACE : 1)
     this.hallNav.setShopStock(this.foodShelf, this.shopShelf)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
@@ -12362,13 +12468,71 @@ export class Game {
     return services
   }
 
-  /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
+  /**
+   * Jet bridge reach, 0 retracted and 1 docked. It stays docked through the
+   * whole board and pulls back only once the push is cleared.
+   */
   bridgeExtend(flightId: string): number {
     const flight = this.flights.find((item) => item.id === flightId)
     if (!flight?.stand || flight.cargo || this.standPaxMode(flight.stand) !== 'jetway') return 0
     if (flight.phase === 'servicing' || flight.phase === 'parked') return bridgeHold()
-    if (flight.phase !== 'deboard' && flight.phase !== 'board') return 0
+    if (flight.phase === 'board') {
+      if (flight.bridgeShutAt == null) return bridgeHold()
+      const left = 1 - (flight.phaseTime - flight.bridgeShutAt) / BRIDGE_RETRACT_SEC
+      return Math.min(1, Math.max(0, left))
+    }
+    if (flight.phase !== 'deboard') return 0
     return samplePax(this.paxClock(flight)).extend
+  }
+
+  /** The aircraft a stand's bridge docks on, posed where the renderer draws it. */
+  bridgeAircraftAt(stand: Vec | null): BridgeCraft | null {
+    if (!stand || this.boughtBridges(stand) < 1) return null
+    let best: Flight | null = null
+    let bestReach = -1
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.stand.c !== stand.c || flight.stand.r !== stand.r) continue
+      if (flight.cargo || (flight.craft ?? 'jet') !== 'jet') continue
+      if (!BRIDGE_PHASES.has(flight.phase)) continue
+      const reach = this.bridgeExtend(flight.id)
+      if (reach > bestReach) {
+        bestReach = reach
+        best = flight
+      }
+    }
+    if (!best) return null
+    const shove = this.pushbackRollMetres(best) / METERS_PER_CELL
+    return {
+      airframeId: best.airframeId || 'b738',
+      x: best.x - Math.cos(best.heading) * shove,
+      y: best.y - Math.sin(best.heading) * shove,
+      heading: best.heading,
+    }
+  }
+
+  /**
+   * True once a bought bridge is off the door. The first call after the push
+   * is cleared starts the retract; pushback waits for it.
+   */
+  private bridgeClear(f: Flight): boolean {
+    if (!f.stand || f.cargo || this.boughtBridges(f.stand) < 1 || this.standPaxMode(f.stand) !== 'jetway') return true
+    if (f.bridgeShutAt == null) f.bridgeShutAt = f.phaseTime
+    return f.phaseTime - f.bridgeShutAt >= BRIDGE_RETRACT_SEC
+  }
+
+  /**
+   * How far this stand's bridge has reached. 0 parks it on the terminal.
+   * 1 docks the cab on the aircraft. A stand with no bought bridge stays at 0.
+   */
+  bridgeExtendAt(stand: Vec | null): number {
+    if (!stand || this.boughtBridges(stand) < 1) return 0
+    let best = 0
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.stand.c !== stand.c || flight.stand.r !== stand.r) continue
+      const reach = this.bridgeExtend(flight.id)
+      if (reach > best) best = reach
+    }
+    return best
   }
 
   /** Apron capsules stand down while the boarding picture draws these passengers. */
@@ -14902,7 +15066,18 @@ export class Game {
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
     fit.zones = schemeZones(next)
-    fit.items = schemeItems(next)
+    const kept = ((fit.items ?? []) as PlacedItem[]).filter((it) => !it.bundle)
+    const bundled = schemeItems(next)
+    const taken = new Set(bundled.map((it) => `${it.c},${it.r}`))
+    for (const extra of kept) {
+      const def = itemDef(extra.def)
+      const zone = fit.zones[extra.r]?.[extra.c] as ZoneId | undefined
+      const key = `${extra.c},${extra.r}`
+      if (!def || !zone || !def.zones.includes(zone) || taken.has(key)) continue
+      bundled.push({ ...extra })
+      taken.add(key)
+    }
+    fit.items = bundled
     fit.signs = schemeSigns(next)
     if (next === 2) {
       fit.rooms.security = Math.max(fit.rooms.security, 3)
@@ -14923,7 +15098,7 @@ export class Game {
     this.hallRev++
     this.refreshAdvice()
     this.pushNews(
-      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
+      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher. ${this.hallHeadroomLine()}`,
       'good',
     )
     this.emit()
@@ -25644,6 +25819,7 @@ export class Game {
   }
 
   beginBoarding(f: Flight) {
+    f.bridgeShutAt = null
     if (!f.stand || f.cargo) return
     const fit = this.roomsAt(f.stand)
     const planned = Boolean(
@@ -27260,13 +27436,13 @@ export class Game {
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
           const ramp = this.rampCall(f, f.phaseTime > boardLimit + 80)
-          if (
+          const cleared =
             deiceOk &&
             ramp !== 'hold' &&
             (this.departureMayEnterStrip(f) ||
               (this.runwayOverbooked() && f.phaseTime > boardLimit + 4)) &&
             (!this.groundBusy() || f.phaseTime > boardLimit + 4)
-          ) {
+          if (cleared && this.bridgeClear(f)) {
             if (ramp === 'short') {
               this.adjustHeat(f.airline, -1.2)
               this.pushNews(
@@ -27285,6 +27461,7 @@ export class Game {
             this.settleOutboundBags(f, true)
             f.phase = 'pushback'
             f.phaseTime = 0
+            f.bridgeShutAt = null
             if (f.stand) {
               f.path = this.pushbackPath(f.stand, f.heading)
               f.seg = 0
@@ -27293,7 +27470,7 @@ export class Game {
             if (Math.random() < 0.35) {
               this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
             }
-          } else if (f.phaseTime > boardLimit + 6 && deiceOk && this.runwayOverbooked()) {
+          } else if (!cleared && f.phaseTime > boardLimit + 6 && deiceOk && this.runwayOverbooked()) {
             const next = this.openSchedule()[0]
             if (next && Math.random() < step * 0.35) {
               this.delaySlot(next, 8, 'Departure blocked')

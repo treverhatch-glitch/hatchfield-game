@@ -15,6 +15,7 @@ import {
   setProcLiveryCanvasFactory,
 } from './procLivery'
 import { LIVERY_ART } from './liveryUv'
+import { slotColor } from './pool'
 import { MODEL_SPECS } from './specs'
 
 /** A 2D context that records calls instead of drawing. */
@@ -59,6 +60,33 @@ describe('procedural livery spec', () => {
         expect(p.helicopter).toBe(MODEL_SPECS[model].family === 'helo')
       }
     }
+  })
+
+  it('paints the five base carriers from their concept palette, including the isometric wing', () => {
+    const puddle = procLiverySpec('air_regional_1', 'crj700')!
+    expect(puddle.tail).toBe('#0f8f88')
+    expect(puddle.cheatline).toBe('#149e96')
+    expect(puddle.crown).toBe('#f7faf8')
+    expect(puddle.motif).toBe('none')
+    const paint = rosterLivery('air_regional_1', 'crj700')!
+    expect(paint.wing).toBe('#2eb4b0')
+    expect(slotColor('wing', paint)).toBe('#2eb4b0')
+    const cheap = procLiverySpec('air_lowcost_1', 'b738')!
+    expect(cheap.tail).toBe('#f25c00')
+    expect(cheap.crown).toBe('#f7f6f4')
+    expect(slotColor('wing', rosterLivery('air_lowcost_1', 'b738')!)).toBe('#a3a7ae')
+    const prestige = procLiverySpec('air_fullservice_1', 'b789')!
+    expect(prestige.fuselage).toBe('#192749')
+    expect(prestige.belly).toBe('#f2f4f6')
+    expect(prestige.cheatline).toBe('#c6a35a')
+    const national = rosterLivery('air_flag_1', 'a359')!
+    expect(national.wing).toBeUndefined()
+    expect(slotColor('wing', national)).not.toBe('#003060')
+    const lift = procLiverySpec('air_cargo_1', 'b752f')!
+    expect(lift.scheme).toBe('solid')
+    expect(lift.fuselage).toBe('#5e686e')
+    expect(lift.tail).toBe('#e6c800')
+    expect(slotColor('wing', rosterLivery('air_cargo_1', 'b752f')!)).toBe('#5e686e')
   })
 
   it('paints freighters and helicopters solid, passenger jets white over a belly', () => {
@@ -151,6 +179,10 @@ describe('plate drawing', () => {
       const p = procLiverySpec(a.id, a.fleet[0])!
       const tail = recorder()
       drawTailPlate(tail.ctx, 256, 256, p, a.accent, a.secondary)
+      if (motif === 'none') {
+        expect(tail.calls, motif).toContain('fillRect')
+        continue
+      }
       expect(tail.calls.length, motif).toBeGreaterThan(2)
     }
   })

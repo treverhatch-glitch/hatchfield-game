@@ -1,27 +1,28 @@
 import * as THREE from 'three'
+import { FULL_DETAIL_DIST } from '../viewBudget'
 import { easeMotion, MOTION_RUNNING, type AircraftMotion } from './motion'
 import type { PaintedMesh } from './pool'
 import { poseRig, rigValue, type RigSet } from './rig'
 
 /**
  * Camera-to-aircraft distance in world units.
- * The apron camera orbits between 22 and 150 (default 54), so the default
- * view sits on the close band and pulling back crosses into the mid mesh.
+ * The apron orbit runs out to APRON_MAX_DIST. High detail stays on across that
+ * whole range. The cheap silhouette only replaces the body past FULL_DETAIL_DIST,
+ * which play never reaches. Zoom does not step the mesh down.
  *
  * High detail is additive (windows, doors, fans, bogies) on top of the mid
- * mesh, so the close transition cannot pop the silhouette. The cheap mesh
- * only replaces the mid mesh once the aircraft is small on screen, and the
- * two crossfade across `mid` → `low`.
+ * mesh. The two crossfade only once the aircraft is far past the airfield.
  */
+
 export const LOD_DIST = {
-  /** Windows, doors, fans, and gear detail are fully in closer than this. */
-  high: 46,
+  /** Windows, doors, fans, and gear stay fully in closer than this. */
+  high: FULL_DETAIL_DIST,
   /** High detail has finished fading out. Mid body stays fully visible. */
-  highBlend: 68,
+  highBlend: FULL_DETAIL_DIST + 400,
   /** Cheap silhouette starts to replace the mid mesh. */
-  mid: 102,
+  mid: FULL_DETAIL_DIST + 800,
   /** Only the cheap silhouette remains beyond this. */
-  low: 128,
+  low: FULL_DETAIL_DIST + 1200,
 } as const
 
 /** How fast displayed weights chase the distance target, per second. */

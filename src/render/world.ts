@@ -11,10 +11,7 @@ import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
 import {
   createAircraft,
-  createBridges,
   disposeAircraftLibrary,
-  bridgeMirror,
-  bridgeYawToward,
   liveryKey,
   ParkedFleet,
   releaseAircraft,
@@ -33,7 +30,8 @@ import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { zoomToCursorShift } from '../camera/zoom.ts'
-import { previewAirframe } from '../scale/logic'
+import { APRON_MAX_DIST, noteMaxZoomFrame } from './viewBudget'
+import { TRANSITION_SEC, beginCue, clearCue, cueCanSkip, sectionWeights } from './viewCue'
 import {
   addBerth,
   addFuelPipe,
@@ -120,7 +118,7 @@ export { CELL }
 
 /** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
-const MAX_DIST = 280
+const MAX_DIST = APRON_MAX_DIST
 const MIN_PITCH = 0.28
 const MAX_PITCH = 1.35
 
@@ -237,44 +235,6 @@ function wu(meters: number): number {
   return meters * WORLD_PER_METER
 }
 
-/** Grow or fold a jet bridge. The cab stays on the door; the tunnel reaches the terminal. */
-function applyBridge(root: THREE.Object3D, extend: number) {
-  const u = Math.min(1, Math.max(0, extend))
-  root.traverse((obj) => {
-    if (obj.name !== 'bridge-tunnel' && obj.name !== 'bridge-column') return
-    const rest = obj.userData.restScaleZ
-    const anchor = obj.userData.anchor
-    const side = obj.userData.side === -1 ? -1 : 1
-    if (typeof rest !== 'number' || typeof anchor !== 'number') return
-    obj.visible = u > 0.04
-    if (obj.name === 'bridge-tunnel') {
-      obj.scale.z = rest * Math.max(0.02, u)
-      obj.position.z = anchor + side * (obj.scale.z / 2)
-    } else {
-      obj.position.z = anchor + side * rest * u
-    }
-  })
-}
-
-/** Nearest terminal cell, or null when the stand is too far for a bridge. */
-function nearestTerminal(game: Game, stand: Vec): Vec | null {
-  let best: Vec | null = null
-  let bestD = Infinity
-  for (let r = 0; r < SIZE; r++) {
-    const row = game.tiles[r]
-    if (!row) continue
-    for (let c = 0; c < row.length; c++) {
-      if (row[c] !== 'terminal') continue
-      const d = Math.abs(c - stand.c) + Math.abs(r - stand.r)
-      if (d < bestD) {
-        bestD = d
-        best = { c, r }
-      }
-    }
-  }
-  return best && bestD <= 8 ? best : null
-}
-
 /** Length, height, width in meters. Aircraft are the only meshes with a visual exaggeration. */
 function vehicleMeters(kind: string): [number, number, number] {
   if (kind === 'citycargo' || kind === 'catering_truck') return [8.5, 3.2, 2.5]
@@ -308,6 +268,13 @@ export class World {
   yaw = 0.72
   pitch = 0.68
   dist = 88
+  private cueKind: 'apron' | 'hall' | '' = ''
+  private cueT = 0
+  private cueFromDist = 88
+  private cueFromPivot = new THREE.Vector3()
+  private savedApronDist = 88
+  private savedPivot = new THREE.Vector3()
+  private liveGame: Game | null = null
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -323,11 +290,10 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
-  /** Empty-gate jet bridges. Kept off tilesGroup so releaseTiles cannot dispose shared bridge geometry. */
+  /** Kept so a rebuild can drop an old aircraft-parented bridge without touching the apron layer. */
   gateGroup = new THREE.Group()
   parkedFleet = new ParkedFleet()
   tileHash = ''
-  private gateHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
   /** Visual takeoff roll. Continues after the sim drops the flight. */
@@ -546,6 +512,11 @@ export class World {
   bind(canvas: HTMLCanvasElement) {
     this.onContextMenu = (e) => e.preventDefault()
     this.onPointerDown = (e: PointerEvent) => {
+      const live = this.liveGame
+      if (live?.viewCue && cueCanSkip()) {
+        live.setView(live.viewCue)
+        return
+      }
       // The player grabbed the camera: stop easing toward a "Show me" target.
       this.goalTo = null
       const tool = this.getTool()
@@ -865,9 +836,7 @@ export class World {
           this.tilesGroup.add(built)
         }
       }
-      this.gateHash = ''
     }
-    this.syncGateBridges(game)
   }
 
   /**
@@ -941,84 +910,6 @@ export class World {
     })
     marks.push(...this.vehicleBadges)
     syncLeaseMarks(this.leaseGroup, marks)
-  }
-
-  /** Stand class and jetway links can change without a map revision. */
-  private gateSig(game: Game): string {
-    const cls = Object.entries(game.standClass)
-      .map(([k, v]) => `${k}=${v}`)
-      .sort()
-      .join(',')
-    const acc = Object.entries(game.standAccess)
-      .map(([k, v]) => `${k}=${v}`)
-      .sort()
-      .join(',')
-    const scale = Object.entries(game.standScale)
-      .map(([k, v]) => `${k}=${v}`)
-      .sort()
-      .join(',')
-    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}|${scale}`
-  }
-
-  private syncGateBridges(game: Game) {
-    const sig = this.gateSig(game)
-    if (sig !== this.gateHash) {
-      this.gateHash = sig
-      this.rebuildGateBridges(game)
-    }
-    const parked = new Set<string>()
-    for (const f of game.flights) {
-      if (f.phase !== 'parked' || !f.stand) continue
-      parked.add(`${f.stand.c},${f.stand.r}`)
-    }
-    for (const child of this.gateGroup.children) {
-      const key = child.userData.standKey as string
-      child.visible = !parked.has(key)
-    }
-  }
-
-  /**
-   * Preview bridges on empty jetway stands. Local +Z aims at the nearest terminal.
-   * Shared bridge materials stay alive — this group is not released with the tiles.
-   */
-  private rebuildGateBridges(game: Game) {
-    this.gateGroup.clear()
-    const terminals: Vec[] = []
-    for (let r = 0; r < SIZE; r++) {
-      const row = game.tiles[r]
-      if (!row) continue
-      for (let c = 0; c < SIZE; c++) {
-        if (row[c] === 'terminal') terminals.push({ c, r })
-      }
-    }
-    if (!terminals.length) return
-    for (let r = 0; r < SIZE; r++) {
-      const row = game.tiles[r]
-      if (!row) continue
-      for (let c = 0; c < SIZE; c++) {
-        if (row[c] !== 'stand') continue
-        const stand = { c, r }
-        if (game.standAccessAt(stand) !== 'jetway') continue
-        let best = terminals[0]
-        let bestD = Infinity
-        for (const t of terminals) {
-          const d = Math.abs(t.c - c) + Math.abs(t.r - r)
-          if (d < bestD) {
-            best = t
-            bestD = d
-          }
-        }
-        if (bestD > 8) continue
-        const marked = game.standScale[`${c},${r}`]
-        const tier: SizeTier = marked ?? (game.standClassAt(stand) === 'L' ? 'jumbo' : 'small')
-        const doors = Math.max(1, game.boughtBridges(stand))
-        const preview = createBridges(previewAirframe(tier), 1, doors)
-        preview.position.copy(toWorld(c, r, 0.04))
-        preview.rotation.y = bridgeYawToward(stand, best)
-        preview.userData.standKey = `${c},${r}`
-        this.gateGroup.add(preview)
-      }
-    }
   }
 
   building(
@@ -1711,7 +1602,7 @@ export class World {
 
   /**
    * Aircraft use meters × WORLD_PER_METER × AIRCRAFT_VISUAL_SCALE.
-   * Jetway bridges parent on the aircraft root while parked.
+   * The jet bridge lives on the terminal socket, not on this mesh.
    * Remote duplicates share a parked batch.
    */
   private syncAircraft(game: Game, dt: number) {
@@ -1781,25 +1672,8 @@ export class World {
         orientAircraft(mesh, pose.heading, pose.pitch)
         updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }))
       }
-      const cell = { c: Math.round(f.x), r: Math.round(f.y) }
-      const jetway =
-        f.craft !== 'helo' &&
-        (f.phase === 'deboard' || f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') &&
-        game.standAccessAt(cell) === 'jetway'
-      const bridges = mesh.getObjectByName('bridges')
-      if (jetway) {
-        const term = nearestTerminal(game, cell)
-        const side = term ? bridgeMirror(f.heading, cell, term) : 1
-        const doors = Math.max(1, game.boughtBridges(cell))
-        if (!bridges || bridges.userData.side !== side || bridges.userData.doors !== doors) {
-          if (bridges) mesh.remove(bridges)
-          mesh.add(createBridges(f.airframeId || 'b738', side, doors))
-        }
-      } else if (bridges) {
-        mesh.remove(bridges)
-      }
-      const docked = mesh.getObjectByName('bridges')
-      if (docked) applyBridge(docked, game.bridgeExtend(f.id))
+      const stuck = mesh.getObjectByName('bridges')
+      if (stuck) mesh.remove(stuck)
       mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
     }
     this.stepClimbGhosts(
@@ -2433,7 +2307,10 @@ export class World {
     perfFrame()
     let t = perfStart()
     this.resize()
+    this.liveGame = game
     this.easeToGoal(game, dt)
+    this.applyViewCue(game, Math.min(0.05, dt))
+    noteMaxZoomFrame(Math.min(0.05, dt), this.dist >= MAX_DIST - 0.5)
     this.applyCelebrationBeat()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
@@ -2469,6 +2346,51 @@ export class World {
     }
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('world.gl', t)
+  }
+
+  /**
+   * Roof and wall beat. The sim view changes when the beat finishes.
+   * A click or key after a short grace calls setView and this snaps.
+   */
+  private applyViewCue(game: Game, dt: number) {
+    const cue = game.viewCue
+    if (!cue) {
+      if (this.cueKind) {
+        this.wr.setShellCue(null)
+        if (this.cueKind === 'apron') {
+          this.dist = clamp(this.savedApronDist, MIN_DIST, MAX_DIST)
+          this.pivot.copy(this.savedPivot)
+          this.placeCam()
+        }
+        this.cueKind = ''
+        this.cueT = 0
+        clearCue()
+      }
+      return
+    }
+    if (this.cueKind !== cue) {
+      this.cueKind = cue
+      this.cueT = 0
+      this.cueFromDist = this.dist
+      this.cueFromPivot.copy(this.pivot)
+      if (cue === 'hall') {
+        this.savedApronDist = this.dist
+        this.savedPivot.copy(this.pivot)
+      }
+      beginCue(cue)
+    }
+    this.cueT = Math.min(1, this.cueT + dt / TRANSITION_SEC)
+    const u = this.cueT * this.cueT * (3 - 2 * this.cueT)
+    const aim = this.wr.terminalAim()
+    const toDist = cue === 'hall' ? 48 : this.savedApronDist
+    const toX = cue === 'hall' && aim ? aim.x : this.savedPivot.x
+    const toZ = cue === 'hall' && aim ? aim.z : this.savedPivot.z
+    this.dist = clamp(this.cueFromDist + (toDist - this.cueFromDist) * u, MIN_DIST, MAX_DIST)
+    this.pivot.x = this.cueFromPivot.x + (toX - this.cueFromPivot.x) * u
+    this.pivot.z = this.cueFromPivot.z + (toZ - this.cueFromPivot.z) * u
+    this.placeCam()
+    this.wr.setShellCue(sectionWeights(cue === 'hall' ? 'enter' : 'leave', this.cueT))
+    if (this.cueT >= 1) game.setView(cue)
   }
 
   private beatSeen = ''

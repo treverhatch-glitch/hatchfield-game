@@ -80,7 +80,7 @@ import {
 } from './hallRooms'
 import { facadeOpenings, outwardYaw } from './world/facade'
 import { terminals } from './world/layout'
-import { baseLevel } from './world/quality'
+import { QUALITY, baseLevel } from './world/quality'
 import { boardSnapshot, isFidsSource } from '../fids/project'
 import { setFidsOpen } from '../fids/open'
 import { objectIsFidsBoard } from '../fids/stage'
@@ -309,15 +309,19 @@ export class HallWorld {
   private offGfx: () => void = () => {}
 
   constructor(canvas: HTMLCanvasElement) {
+    const preset = QUALITY[graphicsQuality()]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: false,
+      antialias: preset.msaa,
       alpha: false,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: true,
     })
     this.renderer.setClearColor('#c5d0d8', 1)
-    this.renderer.setPixelRatio(1)
+    const pixelCap = preset.level === 'low' || preset.level === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
+    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
+    this.renderer.shadowMap.type = preset.shadowType
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.applyHallGrade(graphicsQuality())
@@ -336,6 +340,14 @@ export class HallWorld {
     this.scene.add(new THREE.HemisphereLight(HALL_LIGHT.hemiSky, HALL_LIGHT.hemiGround, HALL_LIGHT.hemi))
     const sun = new THREE.DirectionalLight(HALL_LIGHT.sun, HALL_LIGHT.sunI)
     sun.position.set(18, 42, 14)
+    sun.castShadow = preset.shadowMapSize > 0
+    sun.shadow.mapSize.set(preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024, preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024)
+    sun.shadow.camera.near = 1
+    sun.shadow.camera.far = 90
+    sun.shadow.camera.left = -40
+    sun.shadow.camera.right = 40
+    sun.shadow.camera.top = 30
+    sun.shadow.camera.bottom = -30
     this.scene.add(sun)
     this.scene.add(new THREE.AmbientLight(HALL_LIGHT.ambient, HALL_LIGHT.ambientI))
 
@@ -350,6 +362,7 @@ export class HallWorld {
     )
     this.floor.rotation.x = -Math.PI / 2
     this.floor.position.y = 0
+    this.floor.receiveShadow = true
     this.scene.add(this.floor)
 
     const before = this.makeLabel('BEFORE SECURITY', '#8ee0a8')

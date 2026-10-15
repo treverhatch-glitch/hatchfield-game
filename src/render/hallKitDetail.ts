@@ -22,6 +22,8 @@ export const HALL_ITEM_PROP: Readonly<Record<string, TerminalPropType>> = {
   bench: 'seat_row',
   boarding_desk: 'gate_podium',
   claim_carousel: 'baggage_carousel',
+  bag_drop: 'bag_drop_kiosk',
+  passport_booth: 'passport_booth',
   toilet: 'restroom_block',
   toilet_plus: 'restroom_block',
   cafe: 'shop_coffee',

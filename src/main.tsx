@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
 import './ui/hud-chrome.css'
+import './ui/layout/regions.css'
 import './ui/menu/menu.css'
 
 createRoot(document.getElementById('root')!).render(

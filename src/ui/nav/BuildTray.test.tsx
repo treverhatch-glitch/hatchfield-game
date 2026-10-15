@@ -47,6 +47,10 @@ describe('BuildTray lock badges', () => {
     expect(terminal).not.toContain('data-testid="tray-checkin"')
     expect(terminal).not.toContain('data-testid="tray-security"')
     expect(terminal).not.toContain('data-testid="build-group-gates"')
+    expect(terminal).toContain('data-testid="tray-prefab_ii"')
+    expect(terminal).toContain('data-kind="hall"')
+    expect(terminal).toContain('data-testid="tray-note-prefab_ii"')
+    expect(terminal).toContain('carriers · now')
     const retail = renderToStaticMarkup(
       <BuildTray game={game} menu={BUILD_MENUS.find((row) => row.id === 'retail')!} onOpen={() => {}} />,
     )

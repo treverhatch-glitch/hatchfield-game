@@ -11,9 +11,8 @@ import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { MenuFlyover } from './ui/MenuFlyover'
 import { TerminalView } from './ui/TerminalView'
+import { shownWorld } from './render/viewCue'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
-import { OfferPanel } from './negotiation/OfferPanel'
-import { PriceWarCard } from './rival/PriceWarCard'
 import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
 import { PlayInput } from './ui/PlayInput'
@@ -289,10 +288,11 @@ function CanvasLayers() {
   // on each HUD tick. The hall chrome subscribes only while that view is open.
   useSyncExternalStore(
     subscribeChrome,
-    () => (game.view === 'hall' ? chromeSnapshot() : game.view),
+    () => `${shownWorld(game.view, game.viewCue)}|${game.view === 'hall' ? chromeSnapshot() : game.view}`,
     () => 'apron',
   )
   const view = game.view
+  const shown = shownWorld(view, game.viewCue)
   // The hall is a second WebGL context. On SwiftShader that context switch
   // shows up in the compositor even while the canvas is hidden, so it stays
   // unmounted until the player opens Terminal, then it stays warm.
@@ -300,11 +300,11 @@ function CanvasLayers() {
   if (view === 'hall' && !hallLive) setHallLive(true)
   return (
     <>
-      <div className={`view-layer ${view === 'apron' ? 'live' : 'dim'}`}>
+      <div className={`view-layer ${shown === 'apron' ? 'live' : 'dim'}`}>
         <Field game={game} />
       </div>
       {hallLive ? (
-        <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
+        <div className={`view-layer ${shown === 'hall' ? 'live' : 'dim'}`}>
           <TerminalView game={game} />
         </div>
       ) : null}
@@ -318,7 +318,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
     <>
       <Hud game={game} onNewGame={onNewGame} />
       <InfoViews game={game} />
-      <OfferPanel game={game} />
+      {/* Offer and counter live on the phone. The sheet no longer covers the apron. */}
       <OwnerChrome game={game} />
       <FeedbackChrome />
       <PlaytestYearMount game={game} />
@@ -465,7 +465,7 @@ export default function App() {
           setScreen('title')
         }}
       />
-      <PriceWarCard game={game} />
+      {/* Price war, master contracts, and the year report arrive as phone messages. */}
     </div>
   )
 }

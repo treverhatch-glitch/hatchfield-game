@@ -49,6 +49,14 @@ function stubRenderer(): RendererLike & { ratio: number } {
   }
 }
 
+function namedPrefix(root: THREE.Object3D, prefix: string): THREE.Object3D[] {
+  const found: THREE.Object3D[] = []
+  root.traverse((obj) => {
+    if (obj.name.startsWith(prefix)) found.push(obj)
+  })
+  return found
+}
+
 /** True when the object and every ancestor will be submitted. */
 function drawn(obj: THREE.Object3D | undefined | null): boolean {
   let node = obj ?? null
@@ -134,12 +142,15 @@ describe('initWorldRender', () => {
     expect(t0.interior).toBe(false)
     expect(scene.getObjectByName('room-walls')).toBeTruthy()
     expect(scene.getObjectByName('room-glass')).toBeTruthy()
-    expect(scene.getObjectByName('terminal-curtain')).toBeTruthy()
+    const curtains = namedPrefix(scene, 'terminal-curtain-')
+    const roofs = namedPrefix(scene, 'terminal-roof-')
+    expect(curtains.length).toBeGreaterThan(0)
+    expect(roofs.length).toBeGreaterThan(0)
     // The merged walls exist, but the closed shell does not draw them.
     expect(drawn(scene.getObjectByName('room-walls-static'))).toBe(false)
     expect(drawn(scene.getObjectByName('room-glass-static'))).toBe(false)
-    expect(drawn(scene.getObjectByName('terminal-curtain'))).toBe(true)
-    expect(drawn(scene.getObjectByName('terminal-roof'))).toBe(true)
+    expect(curtains.some((obj) => drawn(obj))).toBe(true)
+    expect(roofs.some((obj) => drawn(obj))).toBe(true)
     const near = camAt(hall.x, hall.z, 20)
     game.view = 'hall'
     for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)

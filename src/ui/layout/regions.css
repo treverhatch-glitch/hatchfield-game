@@ -1,0 +1,486 @@
+/*
+ * Fixed HUD regions. Sizes match REGION in regions.ts.
+ * Left dock, bottom build bar, right inspector, top-right alerts.
+ * One panel occupies a region. The rest wait on a tab or the queue chip.
+ */
+
+:root {
+  --region-top: 52px;
+  --region-info: 36px;
+  --region-build: 152px;
+  --region-dock: 300px;
+  --region-inspector: 340px;
+  --region-chips: 36px;
+  --region-alerts: 148px;
+  --region-queue: 28px;
+  --region-gap: 8px;
+  /* Top-right column: chips row, then alerts, then the queue chip, then the inspector. */
+  --region-alerts-top: calc(var(--hud-top) + var(--region-chips) + var(--region-gap));
+  --region-queue-top: calc(var(--region-alerts-top) + var(--region-alerts) + var(--region-gap));
+  --region-inspector-top: calc(var(--region-queue-top) + var(--region-queue) + var(--region-gap));
+}
+
+.left-dock {
+  position: absolute;
+  left: var(--region-gap);
+  top: calc(var(--hud-top) + 44px);
+  bottom: var(--region-gap);
+  width: var(--region-dock);
+  z-index: 34;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  min-height: 0;
+}
+
+.left-dock > * {
+  pointer-events: auto;
+}
+
+.shell:has(.hud .coach:not(.is-chip)) .left-dock {
+  top: calc(var(--hud-top) + 212px);
+}
+
+.shell:has([data-testid='hint-panel']) .hud .coach.is-chip {
+  left: calc(var(--region-gap) + 120px);
+}
+
+.shell:has([data-testid='hint-panel'][data-open='1']) .hud .coach.is-chip {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+}
+
+.shell:has([data-testid='hint-panel'][data-open='1']) .hud .coach:not(.is-chip) {
+  display: none;
+}
+
+.left-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Empty dock space stays click-through to the field. */
+  pointer-events: none;
+}
+
+.left-dock-body > * {
+  pointer-events: auto;
+}
+
+.left-dock-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.left-dock-pane[hidden] {
+  display: none;
+}
+
+.left-dock-goals {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.left-dock-goals .feedback-stack {
+  position: static;
+  width: auto;
+}
+
+/* Closed phone: a bar at the bottom of the dock, goals above it. Open phone: the whole dock. */
+.left-dock-phone:has(.phone-dock.embedded:not([data-state='open'])) {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.left-dock:has(.phone-dock.embedded[data-state='open']) .left-dock-goals {
+  display: none;
+}
+
+.hud .phone-dock.embedded:not([data-state='open']) .phone-device {
+  height: auto;
+}
+
+.hud .phone-dock.embedded .phone-peek {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-left: 2px solid #3d4650;
+  border-radius: 14px;
+}
+
+.hud .phone-dock.embedded .phone-peek-copy,
+.hud .phone-dock.embedded .phone-device.is-flash .phone-peek-copy {
+  width: auto;
+  min-height: 28px;
+  padding: 0;
+  gap: 10px;
+  align-items: center;
+}
+
+.hud .phone-dock.embedded .phone-peek-copy:not(:has(.phone-preview))::after {
+  content: 'Phone';
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #e8eef4;
+}
+
+.feedback-toasts {
+  top: calc(var(--hud-top) + 44px);
+}
+
+.feedback-banner {
+  top: calc(var(--hud-top) + 88px);
+}
+
+.left-dock-note {
+  margin: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.left-dock-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.left-dock-tabs button {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(15 23 42 / 0.92);
+  color: #e2e8f0;
+  padding: 6px 4px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.left-dock-tabs button.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #7dd3fc;
+}
+
+.hud .coach {
+  left: var(--region-gap);
+  top: calc(var(--hud-top) + 44px);
+  width: var(--region-dock);
+  max-height: 160px;
+  z-index: 35;
+}
+
+.hud .coach.is-chip {
+  top: calc(var(--hud-top) + 8px);
+  width: auto;
+  max-height: none;
+}
+
+.owner-chrome [data-testid='hint-panel'] {
+  left: var(--region-gap) !important;
+  top: calc(var(--hud-top) + 8px) !important;
+  width: auto !important;
+  max-width: var(--region-dock);
+  max-height: 200px;
+  overflow: auto;
+  z-index: 36 !important;
+}
+
+.shell:has([data-testid='hint-panel'][data-open='1']) .left-dock {
+  top: calc(var(--hud-top) + 212px);
+}
+
+.hud .chrome {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  bottom: var(--region-gap);
+  width: auto;
+  z-index: 35;
+}
+
+.hud .dock {
+  width: 100%;
+  max-width: none;
+}
+
+.hud .build-tray {
+  left: 0;
+  right: 0;
+  width: auto;
+  transform: none;
+  max-height: calc(100vh - var(--hud-top) - var(--region-build) - 96px);
+  overflow: auto;
+}
+
+/* overflow-x: auto here clipped the Economy submenu, so its clicks fell through to the canvas. */
+.hud .bottom-bar {
+  overflow: visible;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.hud .bottom-bar,
+.hud .view-cluster,
+.hud .info-menus {
+  position: relative;
+  z-index: 6;
+}
+
+.hud .info-sub {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  flex-direction: column;
+  min-width: 148px;
+  background: rgb(15 23 42 / 0.96);
+}
+
+.hud .tt-root,
+.hud .tt-root[data-open='1'] {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  bottom: calc(var(--region-build) + var(--region-gap));
+  width: auto;
+  z-index: 28;
+}
+
+.hud .alert-dock {
+  top: var(--region-alerts-top);
+  right: var(--region-gap);
+  bottom: auto;
+  width: var(--region-inspector);
+  max-height: var(--region-alerts);
+  overflow: auto;
+  z-index: 32;
+}
+
+.hud .flight-card,
+.hud .assign-panel,
+.hud .panel-rollout,
+.hud .chrome.has-panel .panel-rollout,
+.hud .chrome.pinned .panel-rollout,
+.hud .panel-rollout:focus-within {
+  top: var(--region-inspector-top) !important;
+  right: var(--region-gap) !important;
+  left: auto !important;
+  bottom: calc(var(--region-build) + var(--region-gap)) !important;
+  width: var(--region-inspector) !important;
+  max-height: none !important;
+}
+
+.hud:has(.chrome.has-panel) .flight-card,
+.hud:has(.chrome.has-panel) .assign-panel,
+.hud:has(.chrome.has-panel) .info-panel,
+.hud:has(.assign-panel) .flight-card,
+.hud:has(.tt-root[data-open='1']) .info-panel {
+  display: none;
+}
+
+.inspector-queue {
+  position: absolute;
+  top: var(--region-queue-top);
+  right: var(--region-gap);
+  height: var(--region-queue);
+  z-index: 33;
+  pointer-events: auto;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(15 23 42 / 0.92);
+  color: #e2e8f0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.hud .phone-dock.embedded,
+.hud:has(.tt-root[data-open='1']) .left-dock .phone-dock.embedded {
+  position: relative;
+  inset: auto;
+  left: auto;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  transform: none;
+  z-index: 1;
+}
+
+.hud .phone-dock.embedded .phone-device,
+.hud .phone-dock.embedded .phone-device.is-open,
+.hud .phone-dock.embedded .phone-device.is-flash,
+.hud .phone-dock.embedded .phone-device.is-peek {
+  transform: none;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.hud .phone-dock.embedded .phone-bezel,
+.hud .phone-dock.embedded .phone-screen {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.phone-actions {
+  position: relative;
+  z-index: 2;
+}
+
+.phone-actions button {
+  position: relative;
+  z-index: 2;
+}
+
+.hall-wrap .interior-bar {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  top: calc(var(--hud-top) + 48px);
+  z-index: 30;
+  width: max-content;
+  max-width: min(760px, calc(100vw - var(--region-dock) - var(--region-inspector) - 64px));
+  align-items: center;
+}
+
+.interior-bar .kit-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.interior-bar .tray-ico {
+  width: 16px;
+  height: 16px;
+}
+
+.relations-tab {
+  padding: 8px;
+  color: #e7eee9;
+  font-size: 13px;
+}
+
+.relations-tab button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  margin-bottom: 4px;
+  background: rgb(15 23 42 / 0.9);
+  color: #e2e8f0;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.hud .building-panel {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  top: auto;
+  width: 100%;
+  max-height: none;
+  z-index: 1;
+}
+
+.hud .info-views {
+  max-width: calc(100vw - var(--region-dock) - var(--region-inspector) - 48px);
+}
+
+.info-panel {
+  max-height: min(240px, 28vh);
+  overflow: auto;
+}
+
+/* Terminal view uses the same regions: caption and build menu in the centre column, cards in the inspector. */
+.hall-chrome {
+  top: calc(var(--hud-top) + var(--region-gap));
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  max-width: none;
+  display: flex;
+  justify-content: center;
+}
+
+.hall-chrome .muted {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud .hall-peeks {
+  top: calc(var(--hud-top) + 4px);
+  right: var(--region-gap);
+  max-width: 80px;
+}
+
+.kit-bar {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  bottom: calc(var(--region-build) + var(--region-gap) * 2);
+  width: auto;
+  max-width: none;
+  align-items: center;
+}
+
+.guest-card,
+.facility-card,
+.hall-build {
+  top: var(--region-inspector-top);
+  right: var(--region-gap);
+  left: auto;
+  bottom: auto;
+  width: var(--region-inspector);
+  max-height: calc(100vh - var(--region-inspector-top) - var(--region-build) - var(--region-gap) * 2);
+  overflow: auto;
+}
+
+body:has(.guest-card) .hall-build,
+body:has(.facility-card) .hall-build,
+body:has(.hud .chrome.has-panel) .hall-build,
+body:has(.hud .chrome.has-panel) .guest-card,
+body:has(.hud .chrome.has-panel) .facility-card {
+  display: none;
+}
+
+.hud .debug-hud {
+  left: auto;
+  right: var(--region-gap);
+  bottom: var(--region-gap);
+  max-width: var(--region-inspector);
+}
+
+/* Camera chips (Follow, P) share the top-right chips row with Boards and First hour. */
+[data-camera-ui] > div:not([data-testid='photo-bar']) {
+  left: auto !important;
+  right: calc(var(--region-gap) + 166px) !important;
+  top: calc(var(--hud-top) + 4px) !important;
+}
+
+[data-camera-ui] [data-testid='follow-cam'] {
+  max-width: 150px !important;
+}
+
+.interior-bar .kit-tabs {
+  justify-content: center;
+}

@@ -29,7 +29,16 @@ export interface TerminalPlan {
   equipment: Equipment[];
 }
 
-export interface RoomDef { id: RoomId; label: string; side: Side | 'either'; flow: Flow; color: string; needs: EquipmentId[] }
+export interface RoomDef {
+  id: RoomId
+  label: string
+  side: Side | 'either'
+  flow: Flow
+  color: string
+  needs: EquipmentId[]
+  /** Service-plate id. The same JPEG is the booth or carousel decal. */
+  plate?: 'bag_drop_kiosk' | 'baggage_claim' | 'passport_control'
+}
 
 export interface Hint {
   id: string;

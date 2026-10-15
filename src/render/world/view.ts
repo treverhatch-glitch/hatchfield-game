@@ -21,6 +21,14 @@ export function worldToCell(x: number, z: number): Vec {
   }
 }
 
+/** A parked aircraft as drawn: cell position and sim heading (atan2(dRow, dCol)). */
+export interface BridgeCraft {
+  airframeId: string
+  x: number
+  y: number
+  heading: number
+}
+
 /**
  * The slice of Game the world layer reads. `Game` satisfies this structurally, and
  * tests can pass a plain object.
@@ -43,10 +51,16 @@ export interface WorldView {
   standFlagColor?: (v: Vec) => string | null
   /** Jet bridges bought on this stand. */
   boughtBridges?: (v: Vec) => number
+  /** 0 parks the jet bridge on the terminal. 1 docks the cab on the aircraft. */
+  bridgeExtendAt?: (stand: Vec) => number
+  /** The aircraft on this stand the bridge docks on. Null leaves the bridge parked. */
+  bridgeAircraftAt?: (stand: Vec) => BridgeCraft | null
   fits?: { origin: Vec; rooms?: Partial<Record<string, number>>; tier?: 1 | 2 | 3; premade?: boolean; redesigned?: boolean }[]
   deskStaff?: number
   /** Airport view keeps the terminal roof on. Hall view may cut it away. */
   view?: 'apron' | 'hall'
+  /** Set while the roof beat plays. The apron shell stays closed for the whole beat. */
+  viewCue?: 'apron' | 'hall' | null
 }
 
 export function tileAt(view: WorldView, c: number, r: number): Tile | null {

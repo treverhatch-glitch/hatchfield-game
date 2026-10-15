@@ -19,11 +19,15 @@ export function GameTimetable({
   menuOpen,
   plannerOpen = false,
   onFuel,
+  forceOpen = false,
+  onForceClose,
 }: {
   game: Game
   menuOpen: boolean
   plannerOpen?: boolean
   onFuel?: () => void
+  forceOpen?: boolean
+  onForceClose?: () => void
 }) {
   const adapter = useMemo(() => gameScheduleAdapter(game), [game])
   const open = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('timetable') === '1'
@@ -42,6 +46,9 @@ export function GameTimetable({
       fuelLine={fuel.text}
       fuelShort={fuel.short}
       onFuel={onFuel}
+      forceOpen={forceOpen}
+      docked
+      onForceClose={onForceClose}
     />
   )
 }

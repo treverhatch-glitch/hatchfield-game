@@ -11,8 +11,8 @@ function mat(color: string): THREE.Material {
 
 /**
  * Jet bridges in aircraft space (nose +X, port +Z), scaled into the world.
- * Cab floor sits on the doorway sill from the pack door station.
- * The terminal agent should add this group only while the aircraft is parked at a jetway.
+ * The rotunda and the column sit at the terminal end of the tunnel.
+ * The cab meets the doorway only when the bridge is fully extended.
  * `side` is +1 on the port doors and -1 when the terminal sits to starboard.
  * `doors` limits how many stops are built. Omit it to draw every door the airframe has.
  */
@@ -30,31 +30,71 @@ export function createBridges(airframeId: string, side: 1 | -1 = 1, doors?: numb
   const steel = mat('#5c6b78')
   for (const stop of shown) {
     const skin = spec.rx + 0.2
+    const doorZ = side * (skin + 0.8)
+    const pivotZ = side * (skin + 1.6 + stop.tunnelM)
     const cab = new THREE.Mesh(unitBox(), glass)
     cab.name = stop.upper ? 'bridge-upper' : 'bridge'
     cab.scale.set(stop.cabW, stop.cabH, 1.6)
-    cab.position.set(stop.x, stop.cabY, side * (skin + 0.8))
+    cab.position.set(stop.x, stop.cabY, doorZ)
+    cab.userData.pivotZ = pivotZ
+    cab.userData.doorZ = doorZ
+    cab.userData.side = side
     root.add(cab)
     const tunnel = new THREE.Mesh(unitBox(), shell)
     tunnel.name = 'bridge-tunnel'
     tunnel.scale.set(stop.cabW * 0.86, stop.cabH * 0.78, stop.tunnelM)
-    const anchor = side * (skin + 1.6)
-    tunnel.position.set(stop.x, stop.cabY, anchor + side * (stop.tunnelM / 2))
+    tunnel.position.set(stop.x, stop.cabY, pivotZ - side * (stop.tunnelM / 2))
     tunnel.userData.restScaleZ = stop.tunnelM
-    tunnel.userData.anchor = anchor
+    tunnel.userData.pivotZ = pivotZ
     tunnel.userData.side = side
     root.add(tunnel)
-    const footZ = side * (skin + 1.6 + stop.tunnelM)
     const column = new THREE.Mesh(unitCylinder(6), steel)
     column.name = 'bridge-column'
     column.scale.set(0.28, Math.max(0.4, stop.sillM), 0.28)
-    column.position.set(stop.x, stop.sillM / 2, footZ)
-    column.userData.anchor = anchor
-    column.userData.restScaleZ = stop.tunnelM
+    column.position.set(stop.x, stop.sillM / 2, pivotZ)
+    column.userData.pivotZ = pivotZ
     column.userData.side = side
     root.add(column)
+    const rotunda = new THREE.Mesh(unitCylinder(10), steel)
+    rotunda.name = 'bridge-rotunda'
+    rotunda.scale.set(0.9, Math.max(0.4, stop.sillM), 0.9)
+    rotunda.position.set(stop.x, stop.sillM / 2, pivotZ)
+    rotunda.userData.pivotZ = pivotZ
+    rotunda.userData.side = side
+    root.add(rotunda)
   }
   const sockets = bridgeSocketTable(spec, side)
   if (Object.keys(sockets).length) mountSockets(root, sockets)
   return root
+}
+
+/**
+ * Extend from the terminal pivot toward the door.
+ * 0 parks the cab on the rotunda. 1 docks it on the doorway.
+ * The column and the rotunda do not move.
+ */
+export function applyBridge(root: THREE.Object3D, extend: number) {
+  const u = Math.min(1, Math.max(0, extend))
+  root.traverse((obj) => {
+    const pivot = obj.userData.pivotZ
+    if (typeof pivot !== 'number') return
+    const side = obj.userData.side === -1 ? -1 : 1
+    if (obj.name === 'bridge' || obj.name === 'bridge-upper') {
+      const door = obj.userData.doorZ
+      if (typeof door !== 'number') return
+      obj.position.z = pivot + (door - pivot) * u
+      return
+    }
+    if (obj.name === 'bridge-tunnel') {
+      const rest = obj.userData.restScaleZ
+      if (typeof rest !== 'number') return
+      obj.visible = u > 0.04
+      obj.scale.z = rest * Math.max(0.02, u)
+      obj.position.z = pivot - side * (obj.scale.z / 2)
+      return
+    }
+    if (obj.name === 'bridge-column' || obj.name === 'bridge-rotunda') {
+      obj.position.z = pivot
+    }
+  })
 }

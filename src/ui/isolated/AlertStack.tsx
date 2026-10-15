@@ -66,7 +66,7 @@ function AlertDock({ game }: { game: Game }) {
   }
   const shown = rows.slice(0, ALERT_TUNING.visible)
   return (
-    <div className="alert-dock" data-testid="alert-stack">
+    <div className="alert-dock" data-testid="alert-stack" data-hud-panel="alerts">
       <div className="alert-dock-head">
         <span>
           Alerts · {rows.length}

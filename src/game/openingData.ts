@@ -62,6 +62,14 @@ export function openingSpacingBonus(clock: number): number {
 /** Slots written when the first carrier signs inside the opening. */
 export const OPENING_FIRST_SLOTS = 2
 
+/**
+ * Prefab I check-in service, as a multiple of the normal desk time, once the
+ * opening window has ended. The first turns stay on the normal pace. After
+ * that the same two desks take longer with each passenger, and the kiosk
+ * line crosses the red wait. An expanded hall goes back to pace 1.
+ */
+export const STARTER_CHECKIN_PACE = 3
+
 /** Seconds after the kit before the first letter can arrive. */
 export const FIRST_LETTER_COOL = 2
 

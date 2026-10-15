@@ -11,6 +11,7 @@ import { schedulePillEscape, setSchedulePill } from './timetable/scheduleSheet.t
 import { closeHubProfile, isHubProfileOpen } from './hub/session.ts'
 import { cancelHallTool, hallToolActive, rotateHallTool } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
+import { cueCanSkip } from '../render/viewCue'
 import { pauseState } from './pauseState.ts'
 
 /** One listener for every press action. Hold actions are sampled by the cameras. */
@@ -79,8 +80,12 @@ export function PlayInput({ game }: { game: Game }) {
         else game.rotatePiece()
         return
       }
+      if (game.viewCue && cueCanSkip()) {
+        game.setView(game.viewCue)
+        return
+      }
       if (id === 'view.hall') {
-        game.setView(game.view === 'hall' ? 'apron' : 'hall')
+        game.askView(game.view === 'hall' ? 'apron' : 'hall')
         return
       }
       if (id === 'view.photo') {

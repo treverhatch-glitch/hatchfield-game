@@ -32,6 +32,10 @@ const MESSAGE_KINDS = new Set([
   'emergency',
   'council',
   'season',
+  'negotiation',
+  'diplomacy',
+  'price-war',
+  'year',
 ])
 
 /** Letter-stack ids that move onto the phone on desktop, including threat and divert. */
@@ -82,7 +86,7 @@ export function phoneOwnsLetter(id: string): boolean {
 }
 
 /** Letters that may cover the play view. Everything else rides the phone. */
-const SCREEN_INTERRUPT_IDS = new Set(['crash', 'fuel-out'])
+const SCREEN_INTERRUPT_IDS = new Set(['crash', 'fuel-out', 'fire'])
 
 export function screenInterrupt(id: string): boolean {
   return SCREEN_INTERRUPT_IDS.has(id)
@@ -90,7 +94,7 @@ export function screenInterrupt(id: string): boolean {
 
 /**
  * Desktop reads phone-owned letters on the handset, including contracts.
- * Only a crash or a fuel outage stays on the stack.
+ * Only a crash, a fuel outage, or a fire stays on the stack.
  */
 export function letterOnStack(id: string, desktopPhone: boolean): boolean {
   if (!desktopPhone) return true

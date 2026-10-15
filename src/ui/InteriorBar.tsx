@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Game } from '../game/sim'
 import type { HallBuildMode } from '../render/hallWorld'
+import { StampIcon } from './nav/stampIcons.tsx'
 import { EQUIP_SPEC, FLOOR_PAINTS, ROOM_SPEC, WALL_PAINTS } from '../terminalbuild/config.ts'
 import type { RoomKind } from '../terminalbuild/types.ts'
 
@@ -31,28 +32,28 @@ export function InteriorBar({
     setBuild(same ? null : mode)
   }
   return (
-    <div className="interior-bar" data-testid="interior-bar">
+    <div className="interior-bar" data-testid="interior-bar" data-hud-panel="interior">
       <div className="kit-tabs">
         <button type="button" data-testid="interior-foundation" className={build?.kind === 'foundation' ? 'on' : ''} onClick={() => tool({ kind: 'foundation' })}>
-          Foundation
+          <StampIcon id="foundation" /> Foundation
         </button>
         <button type="button" data-testid="interior-wall" className={build?.kind === 'wall' && !build.erase ? 'on' : ''} onClick={() => tool({ kind: 'wall', erase: false })}>
-          Walls
+          <StampIcon id="walls" /> Walls
         </button>
         <button type="button" data-testid="interior-erase" className={build?.kind === 'wall' && build.erase ? 'on' : ''} onClick={() => tool({ kind: 'wall', erase: true })}>
-          Erase
+          <StampIcon id="erase" /> Erase
         </button>
         <button type="button" data-testid="interior-door" className={build?.kind === 'door' ? 'on' : ''} onClick={() => tool({ kind: 'door' })}>
-          Door
+          <StampIcon id="door" /> Door
         </button>
         <button type="button" data-testid="interior-room" className={build?.kind === 'room' ? 'on' : ''} onClick={() => setOpen(open === 'room' ? null : 'room')}>
-          Zone
+          <StampIcon id="zone" /> Zone
         </button>
         <button type="button" data-testid="interior-floor" className={build?.kind === 'floor' ? 'on' : ''} onClick={() => setOpen(open === 'floor' ? null : 'floor')}>
-          Floor
+          <StampIcon id="floor" /> Floor
         </button>
         <button type="button" data-testid="interior-wallpaper" className={build?.kind === 'wallpaper' ? 'on' : ''} onClick={() => setOpen(open === 'wall' ? null : 'wall')}>
-          Wallpaper
+          <StampIcon id="wallpaper" /> Wallpaper
         </button>
         {rooms.map((room) => (
           <button

@@ -1,6 +1,7 @@
 import type { RealDoor } from './realworld'
 import {
   AIRCRAFT_VISUAL_SCALE,
+  BRIDGE_CAB_M,
   CELL,
   STAND_ENVELOPE,
   WING_GAP_M,
@@ -193,6 +194,34 @@ export function bridgeDockMeters(spec: ModelSpec): { x: number; z: number; y: nu
     h: stop.cabH * 0.86,
     w: stop.cabW,
   }
+}
+
+export interface BridgeDoor {
+  /** Meters forward of the aircraft origin. */
+  x: number
+  /** Bellows face, meters to port. Always outside the skin. */
+  z: number
+  /** Cab centre height, meters above the wheels. */
+  y: number
+  h: number
+  w: number
+  upper: boolean
+}
+
+/**
+ * Where an apron bridge cab meets each bridge door, port side, forward main
+ * door first. Starboard docking mirrors `z`.
+ */
+export function bridgeDoorsMeters(spec: ModelSpec): BridgeDoor[] {
+  const face = spec.rx + BRIDGE_CAB_M.gapM
+  return bridgeStops(spec).map((stop) => ({
+    x: stop.x,
+    z: face,
+    y: stop.cabY,
+    h: stop.cabH + BRIDGE_CAB_M.headroomM,
+    w: stop.cabW,
+    upper: stop.upper,
+  }))
 }
 
 /**

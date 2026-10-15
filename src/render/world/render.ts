@@ -5,7 +5,7 @@ import { gradeTree } from '../grade'
 import { sharedSettings } from '../../features/settings/settings.ts'
 import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
-import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
+import { AirfieldLights, buildJetBridges, poseApronBridge, setBridgeNight } from './airfield'
 import { capReadableFog, lerpHex, skyState, type SkyState } from './daylight'
 import {
   airfieldLevels,
@@ -20,6 +20,7 @@ import {
 } from './dayNight'
 import { tintNoonLights } from './noonHint'
 import { setWindowGlow } from './nightArt'
+import type { ShellWeights } from '../viewCue'
 import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
 import {
@@ -502,6 +503,18 @@ export class WorldRenderer {
     return raycaster.intersectObjects(roots, true).some((hit) => objectIsFidsBoard(hit.object))
   }
 
+  /** First terminal, for the view-change dolly. */
+  terminalAim(): { x: number; z: number } | null {
+    const building = this.buildings[0]
+    if (!building) return null
+    return { x: building.center.x, z: building.center.z }
+  }
+
+  /** Roof lift and wall snap. Null seats every shell. The sim does not call this. */
+  setShellCue(weights: ShellWeights | null) {
+    for (const building of this.buildings) building.applyShellCue(weights)
+  }
+
   update(view: WorldView, camera: THREE.Camera, dt: number) {
     // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
     const step = Math.min(0.25, Math.max(0, dt))
@@ -639,7 +652,7 @@ export class WorldRenderer {
       tuft instanceof THREE.MeshLambertMaterial ? tuft : undefined,
     )
 
-    const enclosed = view.view === 'apron'
+    const enclosed = view.view === 'apron' || view.viewCue != null
     setWindowGlow(night.terminalWindows)
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
     const feed = isFidsSource(view)
@@ -663,10 +676,24 @@ export class WorldRenderer {
       airfieldLevels(this.dayNightSample),
       this.quality === 'low',
     )
+    this.poseJetBridges(view)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
     this.rain.updateRich(step, s.precip > 0 ? (snow > 0 ? 'snow' : 'rain') : 'none', weather, s.precip, focus.x, focus.z)
+  }
+
+  /** Park every bought bridge on its terminal socket, then reach toward a docked aircraft. */
+  private poseJetBridges(view: WorldView) {
+    const root = this.staticGroup.getObjectByName('jet-bridges')
+    if (!root) return
+    for (const child of root.children) {
+      if (child.name !== 'apron-bridge') continue
+      const stand = child.userData.stand as { c: number; r: number } | undefined
+      const extend = stand && view.bridgeExtendAt ? view.bridgeExtendAt(stand) : 0
+      const craft = stand && extend > 0 ? (view.bridgeAircraftAt?.(stand) ?? null) : null
+      poseApronBridge(child, extend, craft)
+    }
   }
 
   /**

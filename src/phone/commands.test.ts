@@ -39,6 +39,11 @@ function host(): PhoneCommandHost {
     hostEmergency: vi.fn(),
     refuseEmergency: vi.fn(),
     voteCouncil: vi.fn(),
+    counterNegotiation: vi.fn(),
+    closeNegotiationPanel: vi.fn(),
+    answerDiplomacy: vi.fn(),
+    respondToPriceWar: vi.fn(),
+    dismissYearReport: vi.fn(),
     emit: vi.fn(),
   }
 }

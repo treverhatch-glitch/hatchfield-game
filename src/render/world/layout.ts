@@ -5,8 +5,8 @@
  */
 import type { StandClass, Tile, Vec } from '../../game/types'
 import { aircraftWorldPerMeter, getAircraftSpec } from '../aircraft/specs'
-import { bridgeDockMeters, envelopeLetter, envelopeWorld, standPreviewId, type IcaoCode } from '../aircraft/stands'
-import { CELL, cellX, cellZ, tileAt, type WorldView } from './view'
+import { bridgeDoorsMeters, envelopeLetter, envelopeWorld, standPreviewId, type IcaoCode } from '../aircraft/stands'
+import { CELL, cellX, cellZ, tileAt, type BridgeCraft, type WorldView } from './view'
 
 export type Dir = 'n' | 's' | 'e' | 'w'
 export const DIRS: readonly Dir[] = ['n', 'e', 's', 'w']
@@ -192,7 +192,7 @@ export interface StandInfo {
   jetway: boolean
   /** Side the aircraft taxis in from (lead-in line starts there). */
   entry: Dir
-  /** Bought bridges. A jetway with none listed still draws one. */
+  /** Bought bridges. Zero draws none — the stand stays on stairs. */
   bridges?: number
   /** Apron mast is drawn only when this is true. */
   lit?: boolean
@@ -246,20 +246,126 @@ export interface JetBridge {
   side: Dir
   /** Rotunda point on the facade (world). */
   root: P2
-  /** Cab end, at the design aircraft's forward-door tunnel foot. */
+  /** Bellows face (world). Docked, it sits just off the door skin. The cab is behind it. */
   cab: P2
-  /** Tunnel center height, world units. */
+  /** Unit direction the cab faces, toward the fuselage. Missing faces along the tunnel. */
+  cabFace?: P2
+  /** Cab center height, world units. */
   cabY: number
   cabH: number
   cabW: number
+  /** Slot among this stand's bridges, in facade order. */
+  index?: number
+  count?: number
 }
 
-/** Nearest terminal facade for each jetway stand within `range` cells. */
+/** Parked bellows face sits this far off the rotunda, in world units. */
+const BRIDGE_PARKED_REACH = 3.2
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v))
+}
+
+/**
+ * The rotunda stays on the terminal socket. `extend` 0 parks the cab beside it.
+ * `extend` 1 puts the cab on the design aircraft's door.
+ */
+export function dockedJetBridge(bridge: JetBridge, extend: number): JetBridge {
+  const u = clamp01(extend)
+  const dx = bridge.cab.x - bridge.root.x
+  const dz = bridge.cab.z - bridge.root.z
+  const full = Math.hypot(dx, dz)
+  if (!(full > 1e-4)) return bridge
+  const parked = Math.min(BRIDGE_PARKED_REACH, full)
+  const reach = parked + (full - parked) * u
+  const k = reach / full
+  const cab = { x: bridge.root.x + dx * k, z: bridge.root.z + dz * k }
+  const out: JetBridge = { ...bridge, cab }
+  if (bridge.cabFace) out.cabFace = swingFace(bridge.root, cab, bridge.cabFace, u)
+  return out
+}
+
+/** Cab heading: along the tunnel when parked, onto `face` by half reach. */
+function swingFace(root: P2, cab: P2, face: P2, extend: number): P2 {
+  const ax = cab.x - root.x
+  const az = cab.z - root.z
+  const al = Math.hypot(ax, az) || 1
+  const w = clamp01(extend * 2)
+  const fx = ax / al + (face.x - ax / al) * w
+  const fz = az / al + (face.z - az / al) * w
+  const fl = Math.hypot(fx, fz)
+  return fl > 1e-6 ? { x: fx / fl, z: fz / fl } : face
+}
+
+/**
+ * Where this bridge docks on the aircraft actually parked on its stand.
+ * Doors are taken on the side facing the rotunda and handed out in facade
+ * order. Null when this bridge has no door on that airframe.
+ */
+export function dockToAircraft(bridge: JetBridge, craft: BridgeCraft): JetBridge | null {
+  const spec = getAircraftSpec(craft.airframeId)
+  const count = Math.max(1, bridge.count ?? 1)
+  const index = bridge.index ?? 0
+  const doors = bridgeDoorsMeters(spec).slice(0, count)
+  if (index >= doors.length) return null
+  const wu = aircraftWorldPerMeter()
+  const cx = cellX(craft.x)
+  const cz = cellZ(craft.y)
+  const nose = { x: Math.cos(craft.heading), z: Math.sin(craft.heading) }
+  let lat = { x: -nose.z, z: nose.x }
+  if ((bridge.root.x - cx) * lat.x + (bridge.root.z - cz) * lat.z < 0) lat = { x: -lat.x, z: -lat.z }
+  const v = DIR_VEC[bridge.side]
+  const tx = v.dc === 0 ? 1 : 0
+  const tz = v.dr === 0 ? 1 : 0
+  const placed = doors
+    .map((door) => ({
+      door,
+      x: cx + (nose.x * door.x + lat.x * door.z) * wu,
+      z: cz + (nose.z * door.x + lat.z * door.z) * wu,
+    }))
+    .sort((a, b) => a.x * tx + a.z * tz - (b.x * tx + b.z * tz))
+  const pick = placed[index]
+  return {
+    ...bridge,
+    cab: { x: pick.x, z: pick.z },
+    cabFace: { x: -lat.x, z: -lat.z },
+    cabY: pick.door.y * wu,
+    cabH: pick.door.h * wu,
+    cabW: pick.door.w * wu,
+  }
+}
+
+/**
+ * Drive the cab from its parked spot to `target` (a `dockToAircraft` result).
+ * The cab swings to face the fuselage over the first half of the reach.
+ * With no target this is `dockedJetBridge`.
+ */
+export function reachJetBridge(bridge: JetBridge, target: JetBridge | null, extend: number): JetBridge {
+  if (!target) return dockedJetBridge(bridge, extend)
+  const u = clamp01(extend)
+  const parked = dockedJetBridge(bridge, 0)
+  const lerp = (a: number, b: number) => a + (b - a) * u
+  const cab = { x: lerp(parked.cab.x, target.cab.x), z: lerp(parked.cab.z, target.cab.z) }
+  const out: JetBridge = {
+    ...bridge,
+    cab,
+    cabY: lerp(parked.cabY, target.cabY),
+    cabH: lerp(parked.cabH, target.cabH),
+    cabW: lerp(parked.cabW, target.cabW),
+  }
+  if (target.cabFace) out.cabFace = swingFace(bridge.root, cab, target.cabFace, u)
+  else delete out.cabFace
+  return out
+}
+
+/** Nearest terminal facade for each stand that has bought a jet bridge, within `range` cells. */
 export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBridge[] {
   const terms = clusters(view, 'terminal')
   const out: JetBridge[] = []
   for (const s of list) {
     if (!s.jetway) continue
+    const copies = Math.max(0, Math.floor(s.bridges ?? 0))
+    if (copies < 1) continue
     let best: { cell: Vec; side: Dir; d: number } | null = null
     for (const cl of terms) {
       for (const e of exteriorEdges(view, cl)) {
@@ -285,7 +391,7 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     const sx = cellX(s.c)
     const sz = cellZ(s.r)
     const spec = getAircraftSpec(standPreviewId(s.cls, s.scale))
-    const dock = bridgeDockMeters(spec)
+    const dock = bridgeDoorsMeters(spec)[0]
     const nose = DIR_VEC[OPPOSITE[s.entry]]
     const perpA = { dc: -nose.dr, dr: nose.dc }
     const perpB = { dc: nose.dr, dr: -nose.dc }
@@ -301,10 +407,12 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     const dz = dockZ - root.z
     const facesStand = toStandX * dx + toStandZ * dz > 0
     let cab = { x: dockX, z: dockZ }
+    let cabFace: P2 | undefined = dock ? { x: -port.dc, z: -port.dr } : undefined
     if (!facesStand) {
       const len = Math.hypot(toStandX, toStandZ) || 1
       const reach = Math.max(1.2, len - CELL * 0.28)
       cab = { x: root.x + (toStandX / len) * reach, z: root.z + (toStandZ / len) * reach }
+      cabFace = undefined
     }
     const built: JetBridge = {
       stand: { c: s.c, r: s.r },
@@ -313,10 +421,10 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
       root,
       cab,
       cabY: (dock?.y ?? 3.2) * wu,
-      cabH: Math.max(0.65, (dock?.h ?? 1.7) * wu),
+      cabH: Math.max(0.65, (dock?.h ?? 2.4) * wu),
       cabW: Math.max(0.55, (dock?.w ?? 1.55) * wu),
     }
-    const copies = Math.max(1, s.bridges ?? 1)
+    if (cabFace) built.cabFace = cabFace
     for (let i = 0; i < copies; i++) out.push(fanBridge(built, i, copies))
   }
   return out
@@ -324,13 +432,15 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
 
 /** Slide extra doors along the facade so a second bridge is not the first one again. */
 function fanBridge(bridge: JetBridge, index: number, count: number): JetBridge {
-  if (count <= 1) return bridge
+  if (count <= 1) return { ...bridge, index: 0, count: 1 }
   const v = DIR_VEC[bridge.side]
   const tx = v.dc === 0 ? 1 : 0
   const tz = v.dr === 0 ? 1 : 0
   const shift = (index - (count - 1) / 2) * 3.6
   return {
     ...bridge,
+    index,
+    count,
     root: { x: bridge.root.x + tx * shift, z: bridge.root.z + tz * shift },
     cab: { x: bridge.cab.x + tx * shift, z: bridge.cab.z + tz * shift },
   }

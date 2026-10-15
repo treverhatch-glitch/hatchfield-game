@@ -190,4 +190,18 @@ describe('menu taxonomy', () => {
     const settings = [...seen.keys()].filter((id) => id === ('settings' as ManageTabId))
     expect(settings).toHaveLength(0)
   })
+
+  it('Growth manage tabs never include id wallet or label Ops wallet', () => {
+    const growth = MANAGE_MENUS.find((menu) => menu.id === 'growth')
+    expect(growth).toBeDefined()
+    const ids = growth!.tabs.map((tab) => `${tab.id}`)
+    const labels = growth!.tabs.map((tab) => tab.label)
+    expect(ids).not.toContain('wallet')
+    expect(labels).not.toContain('Ops wallet')
+    expect(growth!.tip).not.toMatch(/ops wallet/i)
+    for (const tab of growth!.tabs) {
+      expect(tab.sheet).not.toBe('wallet' as typeof tab.sheet)
+      expect(`${tab.label} ${tab.tip}`).not.toMatch(/ops wallet/i)
+    }
+  })
 })

@@ -43,6 +43,11 @@ export function phoneHost(game: Game): PhoneCommandHost {
     hostEmergency: () => game.resolveEmergency('accept'),
     refuseEmergency: () => game.resolveEmergency('refuse'),
     voteCouncil: (requestId, choiceId) => game.answerCouncilRequest(requestId, choiceId),
+    counterNegotiation: () => game.counterNegotiation(),
+    closeNegotiationPanel: () => game.closeNegotiationPanel(),
+    answerDiplomacy: (letterId, choice) => game.answerDiplomacy(letterId, choice, choice === 'counter' ? ['landing'] : undefined),
+    respondToPriceWar: (choice) => game.respondToPriceWar(choice),
+    dismissYearReport: () => game.dismissYearReport(),
     emit: () => game.emit(),
   }
 }
@@ -145,6 +150,21 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'vote-council':
       host.voteCouncil(action.requestId, action.choiceId)
+      return
+    case 'counter-negotiation':
+      host.counterNegotiation()
+      return
+    case 'close-negotiation':
+      host.closeNegotiationPanel()
+      return
+    case 'answer-diplomacy':
+      host.answerDiplomacy(action.letterId, action.choice)
+      return
+    case 'price-war':
+      host.respondToPriceWar(action.choice)
+      return
+    case 'dismiss-year':
+      host.dismissYearReport()
       return
     default: {
       const never: never = action

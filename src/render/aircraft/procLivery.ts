@@ -39,6 +39,8 @@ export interface ProcLivery {
   wordmark: string
   scheme: 'twotone' | 'solid'
   helicopter: boolean
+  /** Roof band. Omitted when it matches the fuselage colour. */
+  crown: string
 }
 
 function shade(hex: string, factor: number): string {
@@ -80,18 +82,22 @@ export function procLiverySpec(airlineId: string, modelId: string): ProcLivery |
   if (!airline || !airline.fleet.includes(modelId)) return undefined
   const scheme = schemeFor(airline, modelId)
   const lightPrimary = luma(airline.primary) > 0.75
+  const fuselage = airline.fuselage ?? (scheme === 'solid' ? airline.primary : WHITE)
   const made: ProcLivery = {
     airlineId,
     modelId,
-    fuselage: scheme === 'solid' ? airline.primary : WHITE,
-    belly: shade(airline.primary, BELLY_SHADE),
-    cheatline: scheme === 'solid' ? airline.secondary : lightPrimary ? airline.accent : airline.secondary,
-    tail: airline.primary,
+    fuselage,
+    belly: airline.belly ?? shade(airline.primary, BELLY_SHADE),
+    cheatline:
+      airline.cheatline ??
+      (scheme === 'solid' ? airline.secondary : lightPrimary ? airline.accent : airline.secondary),
+    tail: airline.tail ?? airline.primary,
     motif: airline.motif,
-    nacelle: scheme === 'solid' ? shade(airline.primary, 0.85) : airline.primary,
+    nacelle: scheme === 'solid' ? shade(airline.fuselage ?? airline.primary, 0.85) : airline.primary,
     wordmark: airline.name.toUpperCase(),
     scheme,
     helicopter: MODEL_SPECS[modelId]?.family === 'helo',
+    crown: airline.crown ?? fuselage,
   }
   specCache.set(key, made)
   return made
@@ -109,6 +115,8 @@ export function rosterLivery(airlineId: string, modelId: string): Livery | undef
     mark: airline.code.slice(0, 2),
     scheme: spec.scheme,
     airline: procLiveryKey(airlineId, modelId),
+    crown: spec.crown,
+    wing: airline.wing,
   }
 }
 
@@ -139,6 +147,10 @@ type Ctx = CanvasRenderingContext2D
 export function drawFuselagePlate(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   ctx.fillStyle = p.fuselage
   ctx.fillRect(0, 0, w, h)
+  if (p.crown.toLowerCase() !== p.fuselage.toLowerCase()) {
+    ctx.fillStyle = p.crown
+    ctx.fillRect(0, 0, w, h * 0.28)
+  }
   // Belly sits below the window line. Solid airframes keep one colour with a darker keel.
   ctx.fillStyle = p.belly
   ctx.fillRect(0, h * 0.62, w, h * 0.38)
@@ -165,7 +177,7 @@ function drawWordmark(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   ctx.font = `bold ${size}px sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
-  ctx.fillStyle = p.scheme === 'solid' ? WHITE : p.tail
+  ctx.fillStyle = luma(p.fuselage) < 0.55 ? WHITE : p.scheme === 'solid' ? WHITE : p.tail
   const maxWidth = w * (p.helicopter ? 0.5 : 0.42)
   ctx.fillText(p.wordmark, w * 0.2, h * 0.33, maxWidth)
 }
@@ -180,6 +192,8 @@ export function drawTailPlate(ctx: Ctx, w: number, h: number, p: ProcLivery, acc
   const cy = h * 0.5
   const r = Math.min(w, h) * 0.26
   switch (p.motif) {
+    case 'none':
+      break
     case 'bar':
       ctx.fillRect(w * 0.18, cy - r * 0.35, w * 0.64, r * 0.7)
       break

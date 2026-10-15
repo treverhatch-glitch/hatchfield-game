@@ -145,6 +145,8 @@ describe('what stays off the phone', () => {
     expect(letterOnStack('inbound', true)).toBe(false)
     expect(letterOnStack('crash', true)).toBe(true)
     expect(letterOnStack('fuel-out', true)).toBe(true)
+    expect(letterOnStack('fire', true)).toBe(true)
+    expect(letterOnStack('diplomacy', true)).toBe(false)
     expect(letterOnStack('contract', false)).toBe(true)
   })
 })

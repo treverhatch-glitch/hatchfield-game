@@ -49,6 +49,9 @@ export function Timetable({
   fuelLine = null,
   fuelShort = false,
   onFuel,
+  forceOpen = false,
+  docked = false,
+  onForceClose,
 }: {
   adapter: TimetableAdapter
   menuOpen?: boolean
@@ -57,6 +60,10 @@ export function Timetable({
   fuelLine?: string | null
   fuelShort?: boolean
   onFuel?: () => void
+  /** Bottom-left Timetable tab. The pill is that tab, not a second control. */
+  forceOpen?: boolean
+  docked?: boolean
+  onForceClose?: () => void
 }) {
   const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [userClosed, setUserClosed] = useState(false)
@@ -85,7 +92,7 @@ export function Timetable({
 
   useEffect(() => setSchedulePill(pillOpen), [pillOpen])
   useEffect(() => subscribeScheduleSheet(() => setPillOpen(schedulePillOpen())), [])
-  const shown = !userClosed && sheetShown({ pill: pillOpen, planner: plannerOpen, buildMenu: menuOpen })
+  const shown = forceOpen || (!docked && !userClosed && sheetShown({ pill: pillOpen, planner: plannerOpen, buildMenu: menuOpen }))
   const [painted, setPainted] = useState(shown)
   const [closing, setClosing] = useState(false)
   useEffect(() => {
@@ -254,6 +261,7 @@ export function Timetable({
   const collapse = () => {
     setUserClosed(true)
     setPillOpen(false)
+    onForceClose?.()
   }
 
   const gantt = buildGantt(shownFlights, stands, span)
@@ -275,6 +283,8 @@ export function Timetable({
     </div>
   )
   const nowLine = <i className="tt-now" data-testid="tt-now" style={{ left: `${nowX * 100}%` }} />
+
+  if (docked && !painted) return null
 
   return (
     <div

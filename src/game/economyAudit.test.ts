@@ -80,6 +80,7 @@ describe('airline roster', () => {
     const ids = game.allAirlines().map((a) => a.id)
     expect(ids).toContain('zoomjet')
     expect(new Set(ids).size).toBe(ids.length)
+    expect(game.airline('zoomjet').name).toBe('Zoomjet')
   })
 })
 

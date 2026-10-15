@@ -105,6 +105,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
   const cargoAirline = cargo ? game.airline(cargo.airline) : null
   const warned = game.warnedAirlines()
   const warnKey = `warn:${warned.slice().sort().join(',')}`
+  const signGate = offer ? game.checkinSignReport(offer.airline) : null
 
   const world: PhoneWorld = {
     contract:
@@ -118,10 +119,14 @@ export function readPhoneWorld(game: Game): PhoneWorld {
             secondsLeft: Math.ceil(offer.deadline),
             verdict: game.letterVerdict(offer.airline).label,
             verdictMet: game.letterVerdict(offer.airline).met,
-            requirements: game.reqReport(offer.airline).map((row) => ({
-              label: `${row.met ? 'Met' : 'Missing'} · ${row.label}`,
-              met: row.met,
-            })),
+            requirements: [
+              ...(signGate?.line ? [{ label: signGate.line, met: signGate.ok }] : []),
+              ...game.reqReport(offer.airline).map((row) => ({
+                label: `${row.met ? 'Met' : 'Missing'} · ${row.label}`,
+                met: row.met,
+              })),
+            ],
+            signBlocked: Boolean(signGate && !signGate.ok),
             terms: `Terms · landing ${money(game.wave3.landingOffer(offer.airline, offerAirline.landing))} · bags ${money(offerAirline.bags)}${
               offerAirline.catering ? ` · catering ${money(offerAirline.catering)}` : ''
             } · ${game.wave3.feeLine(offer.airline)} · ${game.wave3.slotLine(offer.airline)}`,
@@ -283,8 +288,51 @@ export function readPhoneWorld(game: Game): PhoneWorld {
       daysToLeave: note.daysToLeave,
       causes: note.topCauses.map((cause, i) => `${i + 1}. ${cause.label} (Fix: ${cause.fix})`).join(' · '),
     })),
+    negotiation: negotiationPhone(game),
+    diplomacy: game.diplomacyLetters().map((letter) => ({
+      id: letter.id,
+      airline: letter.airline,
+      text: letter.text,
+      kind: letter.kind,
+    })),
+    priceWar: priceWarPhone(game),
+    yearReport: yearPhone(game),
   }
   return world
+}
+
+function negotiationPhone(game: Game): PhoneWorld['negotiation'] {
+  const panel = game.negotiationPanel()
+  if (!panel) return null
+  return {
+    airlineName: panel.airlineName,
+    note: panel.note,
+    pitch: panel.pitch,
+    summary: panel.rows
+      .map((row) => `${row.label} · ask ${row.ask.toFixed(2)} · theirs ${row.theirs.toFixed(2)}`)
+      .join('\n'),
+    open: panel.open,
+  }
+}
+
+function priceWarPhone(game: Game): PhoneWorld['priceWar'] {
+  const card = game.priceWarCard()
+  if (!card) return null
+  return {
+    headline: card.headline,
+    detail: `${card.detail} · walk-in ${Math.round(game.rivalWalkInFactor() * 100)}%`,
+    actions: card.actions.map((action) => ({ id: action.id, label: action.label })),
+  }
+}
+
+function yearPhone(game: Game): PhoneWorld['yearReport'] {
+  const report = game.pendingYearReport()
+  if (!report) return null
+  const net = report.net
+  return {
+    year: report.year,
+    summary: `Revenue ${money(report.revenue)} · costs ${money(report.costs)} · net ${net < 0 ? '-' : ''}${money(Math.abs(net))}. ${report.passengers.toLocaleString('en-US')} passengers. Best: ${report.best.label}. The full book stays under Money → Commercial.`,
+  }
 }
 
 export function readPhoneCards(game: Game): PhoneCard[] {

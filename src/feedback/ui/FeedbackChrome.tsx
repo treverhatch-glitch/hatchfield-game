@@ -106,11 +106,16 @@ export function CelebrationLayer({ celebration }: { celebration: Celebration | n
   )
 }
 
+/** Field goals for the bottom-left dock. */
+export function FieldGoals() {
+  const view = useFeedbackView()
+  return <MilestoneStack goals={view.goals} paid={view.paid} />
+}
+
 export function FeedbackChrome() {
   const view = useFeedbackView()
   return (
     <div className="feedback-layer" data-testid="feedback-layer">
-      <MilestoneStack goals={view.goals} paid={view.paid} />
       <EffectToasts toasts={view.toasts} />
       <CelebrationLayer celebration={view.celebration} />
     </div>
