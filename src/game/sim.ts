@@ -15057,10 +15057,14 @@ export class Game {
     const wait = this.relationWaitLine(id)
     if (wait) return wait
     if (!this.signed.includes(id)) return null
+    if (!this.airlineParkable(id)) return this.fleetOperateGap(id) ?? 'No stand their aircraft can use'
     const lead = this.commercialLead[id]
     if (lead && !lead.opened && this.leadGateClock(id) > this.clock) return `First flight in ${lead.leadDays} days`
     const slot = this.openSchedule().find((s) => s.airline === id && s.delayReason)
-    return slot?.delayReason ?? null
+    if (slot?.delayReason) return slot.delayReason
+    const upcoming = this.openSchedule().find((s) => s.airline === id && s.eta > this.clock)
+    if (upcoming) return `Next turn in ${Math.max(1, Math.round(upcoming.eta - this.clock))}s`
+    return null
   }
 
   /** The only thing keeping this fleet on the ground is a missing pad. */
@@ -16179,7 +16183,10 @@ export class Game {
         }
       }
     }
-    if (this.scheduleAuto) this.ensureHeloBank()
+    if (this.scheduleAuto) {
+      this.ensureHeloBank()
+      this.ensureQuietBank()
+    }
     // Drop finished noise.
     if (this.schedule.length > 40) {
       this.schedule = this.schedule.filter(
@@ -16220,6 +16227,24 @@ export class Game {
     slot.delaySec = Math.min(120, slot.delaySec + add)
     slot.status = 'delayed'
     slot.delayReason = reason
+  }
+
+  /**
+   * A signed jet that has never turned a flight still gets one slot.
+   * The runway gap still spaces it. The bank target must not hide them.
+   */
+  private ensureQuietBank() {
+    for (const id of this.signed) {
+      if (this.isBanned(id) || this.carrierNeedsPad(id) || !this.airlineParkable(id)) continue
+      const counts = this.wave3.relation(id).counts
+      if (counts.onTime + counts.delay > 0) continue
+      const open = this.schedule.some(
+        (slot) =>
+          slot.airline === id &&
+          (slot.status === 'scheduled' || slot.status === 'delayed' || slot.status === 'inbound'),
+      )
+      if (!open) this.seedScheduleForAirline(id, 1)
+    }
   }
 
   /** A signed helicopter with a pad and an empty bank gets turns of its own. */

@@ -22,16 +22,18 @@ describe('helicopter carriers over 60 days', () => {
       Math.random = random
     }
     const lines: string[] = []
+    const failures: string[] = []
     for (const report of reports) {
       lines.push(report.persona)
       for (const row of report.books.relations) {
         const turns = row.onTime + row.delayed
         lines.push(
-          `${row.name} T${row.tier} ${row.label} ${row.score} on-time ${row.onTime} delayed ${row.delayed} blocked ${row.blocked ?? '—'}`,
+          `${row.name} T${row.tier} ${row.label} ${row.score} on-time ${row.onTime} delayed ${row.delayed} kept ${row.kept} blocked ${row.blocked ?? '—'}`,
         )
-        expect(turns > 0 || row.blocked, `${report.persona} ${row.name}`).toBeTruthy()
+        if (!(turns > 0 || row.blocked)) failures.push(`${report.persona} ${row.name}`)
       }
     }
     console.log(lines.join('\n'))
+    expect(failures, lines.join('\n')).toEqual([])
   })
 })

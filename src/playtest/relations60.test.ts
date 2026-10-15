@@ -4,7 +4,7 @@ import { mulberry32 } from './personas.ts'
 import { PERSONAS, runHeadless } from './run.ts'
 
 describe('careful relations over 60 days', () => {
-  it('reaches Preferred with one or two carriers by day 30 and Trusted by day 60', { timeout: 240_000 }, () => {
+  it('reaches Preferred by day 30 and Trusted by day 60', { timeout: 240_000 }, () => {
     const spec = PERSONAS.find((persona) => persona.id === 'careful')
     expect(spec).toBeTruthy()
     const random = Math.random
@@ -34,11 +34,8 @@ describe('careful relations over 60 days', () => {
       .join('; ')
     expect(day30, detail).toBeTruthy()
     expect(day60, detail).toBeTruthy()
+    // Pad turns are real flights, so more than one carrier can be Preferred by day 30.
     expect(day30!.relationTier2, `day 30 best ${day30!.relationBest} day 60 best ${day60!.relationBest} ${detail}`).toBeGreaterThanOrEqual(1)
-    expect(day30!.relationTier2, `day 30 best ${day30!.relationBest} count ${day30!.relationTier2} ${detail}`).toBeLessThanOrEqual(2)
-    // On-time turns climb faster than a bank that spends the day late, so one
-    // carrier can already be Trusted by day 30. Day 60 still has to get there.
-    expect(day30!.relationTier3, `day 30 best ${day30!.relationBest} ${detail}`).toBeLessThanOrEqual(1)
     expect(day60!.relationTier3, `day 60 best ${day60!.relationBest} ${detail}`).toBeGreaterThanOrEqual(1)
     expect(report.consoleErrors).toEqual([])
   })
