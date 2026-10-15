@@ -768,7 +768,11 @@ button {
   pointer-events: auto;
 }
 
-/* Operational alerts. Bottom right, above the build bar, under an open panel (z-index 30). */
+/* Operational alerts. Bottom right, above the build bar, under an open panel (z-index 30).
+   The open schedule band is 360px, so the stack steps up while that band is open. */
+.hud:has(.tt-root[data-open='1']) .alert-dock {
+  bottom: 444px;
+}
 .alert-dock {
   pointer-events: none;
   position: absolute;
@@ -1033,9 +1037,9 @@ button {
 
 .hud .tt-root {
   top: auto;
-  right: auto;
-  bottom: 92px;
-  left: 12px;
+  right: 16px;
+  bottom: 72px;
+  left: 56px;
 }
 
 .vitals-quiet {

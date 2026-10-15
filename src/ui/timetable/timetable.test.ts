@@ -3,7 +3,7 @@ import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, icaoForAirframe, TOWER_HOLD, TOWER_PULL } from './gameAdapter'
-import { boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf } from './layout'
+import { axisTicks, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
 import { SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
@@ -19,6 +19,18 @@ describe('clock face', () => {
   it('hour ticks fall on whole in-game hours', () => {
     const t = hourTicks({ from: 1, to: 31 }, 180)
     expect(t.map((x) => x.label)).toEqual(['01:00', '02:00', '03:00', '04:00'])
+  })
+  it('draws a faint half-hour between the hours', () => {
+    const t = axisTicks({ from: 0, to: 15 }, 180)
+    expect(t.map((x) => x.label)).toEqual(['00:00', '', '01:00', '', '02:00'])
+    expect(t.filter((x) => x.minor)).toHaveLength(2)
+  })
+  it('opens the sheet on the whole day and zooms inside it', () => {
+    expect(viewSpan(100, 180, 24)).toEqual({ from: 0, to: 180 })
+    const six = viewSpan(100, 180, 6)
+    expect(six.to - six.from).toBeCloseTo(180 / 4, 5)
+    expect(six.from).toBeGreaterThanOrEqual(0)
+    expect(six.to).toBeLessThanOrEqual(180)
   })
   it('clamps to window and floor', () => {
     const w = { start: 10, end: 20, source: 'tower' as const }
@@ -77,11 +89,13 @@ describe('game schedule adapter', () => {
     expect(s2.onStandTo - s2.onStandFrom).toBeCloseTo(turnSimSec('narrow'), 5)
   })
 
-  it('groups stands by ICAO class, largest first, with unassigned last', () => {
+  it('lists every stand in one group, with the tower lane first', () => {
     const { a } = setup()
     const groups = buildGantt(a.flights(), a.stands(), { from: 90, to: 250 })
-    expect(groups.map((g) => g.icao)).toEqual(['F', 'C', 'none'])
-    expect(groups[0].rows[0].bars[0].flight.flightNo).toBe('PI2')
+    expect(groups.map((g) => g.icao)).toEqual(['none', 'stands'])
+    expect(groups[1].rows.map((r) => r.stand?.label)).toEqual(['G4', 'G6'])
+    expect(groups[1].rows[1].bars[0].flight.flightNo).toBe('PI2')
+    expect(groups[0].rows[0].bars[0].flight.flightNo).toBe('SK1')
   })
 
   it('moveTo clamps into the window and maps to pull/bump', () => {
@@ -120,7 +134,9 @@ describe('game schedule adapter', () => {
     const { a, slot } = setup()
     slot('s3', 'sky', 152, { standPref: { c: 6, r: 4 } })
     const g = buildGantt(a.flights(), a.stands(), { from: 90, to: 300 })
-    expect(g[0].rows[0].bars.every((b) => b.conflict)).toBe(true)
+    const row = g.find((group) => group.icao === 'stands')!.rows.find((r) => r.stand?.id === '6,4')!
+    expect(row.bars.length).toBeGreaterThan(1)
+    expect(row.bars.every((b) => b.conflict)).toBe(true)
   })
 
   it('runway buckets count movements per hour against capacity', () => {

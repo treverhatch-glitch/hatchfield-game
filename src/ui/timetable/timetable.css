@@ -1,12 +1,16 @@
 /* Timetable dock — collapsed pill by default, never wider than ~half the screen. */
 .tt-root {
   position: absolute;
-  left: 8px;
-  bottom: 6px;
+  left: 56px;
+  right: 16px;
+  bottom: 72px;
   z-index: 22;
   pointer-events: none;
   font-size: 11px;
   color: #e2e8f0;
+}
+.tt-root[data-open='1'] {
+  z-index: 34;
 }
 .tt-root > * {
   pointer-events: auto;
@@ -41,9 +45,10 @@
 }
 .tt-dock {
   position: relative;
-  width: min(760px, 52vw);
-  max-height: 34vh;
-  margin-bottom: 52px;
+  width: 100%;
+  height: 360px;
+  max-height: 360px;
+  margin-bottom: 0;
   display: flex;
   flex-direction: column;
   background: rgb(15 23 42 / 0.86);
@@ -102,7 +107,7 @@
   height: 14px;
 }
 .tt-label {
-  width: 64px;
+  width: 168px;
   flex: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -147,6 +152,18 @@
   transform: translateX(-50%);
   font-size: 9px;
   opacity: 0.6;
+}
+.tt-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgb(226 232 240 / 0.28);
+  z-index: 1;
+  pointer-events: none;
+}
+.tt-grid.minor {
+  background: rgb(226 232 240 / 0.1);
 }
 .tt-now {
   position: absolute;
@@ -279,9 +296,10 @@
 }
 .tt-card {
   position: absolute;
-  left: calc(100% + 8px);
-  bottom: 0;
-  width: 240px;
+  right: 8px;
+  bottom: 8px;
+  width: 280px;
+  z-index: 5;
   background: rgb(15 23 42 / 0.94);
   border: 1px solid rgb(255 255 255 / 0.12);
   border-radius: 10px;

@@ -1,4 +1,4 @@
-import { clockLabel, hourSecs, ICAO_ORDER, standFits } from './time'
+import { clockLabel, hourSecs, standFits } from './time'
 import type { IcaoCode, TtFlight, TtRunway, TtStand } from './types'
 
 export interface GanttBar {
@@ -12,7 +12,8 @@ export interface GanttRow {
   bars: GanttBar[]
 }
 export interface GanttGroup {
-  icao: IcaoCode | 'none'
+  /** `stands` is every gate, pier order. `none` is the Tower lane for unassigned turns. */
+  icao: IcaoCode | 'none' | 'stands'
   rows: GanttRow[]
 }
 
@@ -39,6 +40,30 @@ export function hourTicks(span: ViewSpan, dayLength: number): { t: number; label
     out.push({ t, label: clockLabel(t, dayLength) })
   }
   return out
+}
+
+/** Hour lines, plus a faint half-hour between them. */
+export function axisTicks(span: ViewSpan, dayLength: number): { t: number; label: string; minor: boolean }[] {
+  const step = hourSecs(dayLength) / 2
+  const out: { t: number; label: string; minor: boolean }[] = []
+  const start = Math.ceil((span.from - 1e-6) / step) * step
+  for (let t = start; t <= span.to + 1e-6; t += step) {
+    const onHour = Math.abs(t / (step * 2) - Math.round(t / (step * 2))) < 1e-3
+    out.push({ t, label: onHour ? clockLabel(t, dayLength) : '', minor: !onHour })
+  }
+  return out
+}
+
+/**
+ * The open sheet looks at one sim day. 24h is that whole day.
+ * A shorter zoom is a window inside the day, kept on the clock when it fits.
+ */
+export function viewSpan(now: number, dayLength: number, zoomHours: number): ViewSpan {
+  const dayStart = Math.floor(now / dayLength) * dayLength
+  if (zoomHours >= 24) return { from: dayStart, to: dayStart + dayLength }
+  const windowSec = hourSecs(dayLength) * zoomHours
+  const from = Math.max(dayStart, Math.min(now - windowSec / 2, dayStart + dayLength - windowSec))
+  return { from, to: from + windowSec }
 }
 
 /**
@@ -82,12 +107,6 @@ export function buildGantt(flights: TtFlight[], stands: TtStand[], span: ViewSpa
     })
   }
   const groups: GanttGroup[] = []
-  for (const code of [...ICAO_ORDER].reverse()) {
-    const rows = stands
-      .filter((s) => s.icao === code)
-      .map((s) => ({ stand: s, bars: toBars(byStand.get(s.id) ?? [], s) }))
-    if (rows.length) groups.push({ icao: code, rows })
-  }
   if (loose.length) {
     // Pack unassigned rotations into as few non-overlapping lanes as possible.
     const lanes: TtFlight[][] = []
@@ -98,6 +117,10 @@ export function buildGantt(flights: TtFlight[], stands: TtStand[], span: ViewSpa
     }
     groups.push({ icao: 'none', rows: lanes.map((l) => ({ stand: null, bars: toBars(l, null) })) })
   }
+  const rows = [...stands]
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+    .map((s) => ({ stand: s, bars: toBars(byStand.get(s.id) ?? [], s) }))
+  if (rows.length) groups.push({ icao: 'stands', rows })
   return groups
 }
 

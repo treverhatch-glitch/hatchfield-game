@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, type RunwayLaneModel, type ViewSpan } from './layout'
-import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, ICAO_LABEL, standFits } from './time'
+import { axisTicks, boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type RunwayLaneModel, type ViewSpan } from './layout'
+import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, standFits } from './time'
 import type { TimetableAdapter, TtFlight } from './types'
 import './timetable.css'
 
@@ -31,7 +31,7 @@ export function Timetable({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const [tab, setTab] = useState<Tab>('stands')
-  const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(12)
+  const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(24)
   const [sel, setSel] = useState<string | null>(null)
   const [swapFrom, setSwapFrom] = useState<string | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -48,8 +48,7 @@ export function Timetable({
   const now = adapter.now()
   const flights = adapter.flights()
   const stands = adapter.stands()
-  const hr = hourSecs(day)
-  const span: ViewSpan = { from: now - hr, to: now + hr * (zoom - 1) }
+  const span = viewSpan(now, day, zoom)
   const shown = open && !menuOpen
   const runwayList = adapter.runways()
   const multiRw = runwayList.length > 1
@@ -99,8 +98,11 @@ export function Timetable({
   }
 
   const gantt = buildGantt(flights, stands, span)
-  const ticks = hourTicks(span, day)
+  const ticks = axisTicks(span, day)
   const nowX = frac(now, span)
+  const grid = ticks.map((t) => (
+    <i key={t.t} className={t.minor ? 'tt-grid minor' : 'tt-grid'} style={{ left: `${frac(t.t, span) * 100}%` }} />
+  ))
 
   const timeAxis = (
     <div className="tt-axis">
@@ -170,13 +172,14 @@ export function Timetable({
                 {gantt.length === 0 ? <p className="tt-empty">No stands or flights yet.</p> : null}
                 {gantt.map((g) => (
                   <div key={g.icao} className="tt-group">
-                    <h4>{g.icao === 'none' ? 'Unassigned · tower picks' : ICAO_LABEL[g.icao]}</h4>
+                    {g.icao === 'none' ? <h4>Tower</h4> : null}
                     {g.rows.map((row, ri) => (
                       <div key={row.stand?.id ?? `none-${ri}`} className="tt-row">
                         <span className="tt-label" title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}>
                           {row.stand ? row.stand.label : ri === 0 ? 'Tower' : ''}
                         </span>
                         <div className="tt-lane">
+                          {grid}
                           {nowLine}
                           {row.bars.map((b) => {
                             const f = b.flight
