@@ -170,7 +170,7 @@ function deskLabel(tier: HubOfferTier): string {
   return DESK_ASK[tier] === 'preferred' ? 'Preferred desk' : 'Dedicated desks'
 }
 
-function facilityLabel(type: HubArchetype, tier: HubOfferTier, key: LeaseKey, need: number): string {
+function facilityLabel(tier: HubOfferTier, key: LeaseKey, need: number): string {
   if (key === 'desk') return deskLabel(tier)
   const one = need === 1
   switch (key) {
@@ -348,7 +348,7 @@ function nextAskLabels(type: HubArchetype, tier: HubOfferTier): readonly string[
   if (!after) return []
   const needs = leasesNeeded(type, after)
   const labels = LEASE_KEY_ORDER.filter((key) => (needs[key] ?? 0) > 0).map((key) =>
-    facilityLabel(type, after, key, needs[key] ?? 0),
+    facilityLabel(after, key, needs[key] ?? 0),
   )
   if (asksConnection(type, after)) labels.push(type === 'cargo' ? 'Sort window' : 'Connection window')
   for (const role of VEHICLE_ROLES) {
@@ -370,7 +370,7 @@ export function offerChecklistLines(airline: HubCarrier, world: HubFacilities, t
     const need = needs[key] ?? 0
     if (need <= 0) continue
     const waiting = (key === 'desk' || key === 'lane') && !world.deskAllocator
-    lines.push(countLine(key, facilityLabel(airline.type, tier, key, need), haveFacility(world, key, tier), need, waiting))
+    lines.push(countLine(key, facilityLabel(tier, key, need), haveFacility(world, key, tier), need, waiting))
   }
   if (asksConnection(airline.type, tier)) lines.push(connectionLine(airline.type, world.connectionMin))
   const vehicles = vehicleNeedFor(airline.type, tier)
