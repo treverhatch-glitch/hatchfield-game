@@ -3,6 +3,7 @@ import type { LandsideView, SegmentRead } from '../landside/types.ts'
 import type { PowerLoad, PowerSnapshot } from '../economy/types.ts'
 import { bayColor, bayLabel, fuelColor, powerColor, waitColor } from './color.ts'
 import {
+  AIRFIELD_LEGEND,
   BAY_LEGEND,
   FUEL_LEGEND,
   HEAT,
@@ -197,6 +198,59 @@ export function baysModel(stands: readonly BayStand[]): InfoViewModel {
     tint: stands.map((stand) =>
       cell(stand.id, stand.c, stand.r, bayColor(stand.occupied, stand.queued), stand.queued > 0),
     ),
+  }
+}
+
+export interface AirfieldLoad {
+  strips: number
+  /** Movements the strips can start in one sim-day. */
+  capacity: number
+  /** Arrival and departure movements booked in that day. */
+  scheduled: number
+  /** Sim-seconds between arrivals on this field. */
+  gapSec: number
+  overbooked: boolean
+}
+
+export function airfieldModel(
+  load: AirfieldLoad,
+  strips: readonly { c: number; r: number }[],
+): InfoViewModel {
+  const capacity = Number.isFinite(load.capacity) ? Math.max(0, load.capacity) : 0
+  const scheduled = Number.isFinite(load.scheduled) ? Math.max(0, load.scheduled) : 0
+  const shownCapacity = Math.max(1, Math.round(capacity))
+  const color = powerColor(scheduled, capacity)
+  const gap = Number.isFinite(load.gapSec) ? load.gapSec : 0
+  return {
+    id: 'airfield',
+    title: 'Airfield',
+    legend: [...AIRFIELD_LEGEND],
+    scores: [
+      {
+        id: 'movements',
+        label: 'Movements',
+        value: `${Math.round(scheduled)} / ${shownCapacity}`,
+        why: `Inputs: ${Math.round(scheduled)} scheduled arrivals and departures against ${shownCapacity} movements this runway can start in a day.`,
+      },
+      {
+        id: 'gap',
+        label: 'Arrival gap',
+        value: `${Math.round(gap)}s`,
+        why: `Inputs: ${load.strips} strip${load.strips === 1 ? '' : 's'} and the seconds a departure needs to clear before the next arrival.`,
+      },
+    ],
+    details: [
+      {
+        id: 'contracts',
+        label: 'Contracts',
+        value: load.overbooked ? 'Over the runway' : 'Inside capacity',
+        why: load.overbooked
+          ? `Inputs: signed contracts booked ${Math.round(scheduled)} movements and the strips turn ${shownCapacity} a day.`
+          : `Inputs: signed contracts booked ${Math.round(scheduled)} movements and the strips turn ${shownCapacity} a day.`,
+      },
+    ],
+    fixes: load.overbooked ? ['Contracts exceed the runway — add a strip or spread the bank.'] : [],
+    tint: strips.map((spot, index) => cell(`runway:${index}:${spot.c},${spot.r}`, spot.c, spot.r, color, load.overbooked)),
   }
 }
 

@@ -3,7 +3,7 @@ import { FUEL } from '../fuel/config.ts'
 import type { Game } from '../game/sim.ts'
 import { tilesOf } from '../game/path.ts'
 import { tankDef } from '../scale/logic.ts'
-import { baysModel, fuelModel, powerModel, queuesModel, trafficModel } from './model.ts'
+import { airfieldModel, baysModel, fuelModel, powerModel, queuesModel, trafficModel } from './model.ts'
 import type { InfoViewModel, MapViewId } from './types.ts'
 
 /**
@@ -21,6 +21,7 @@ export function readMapView(game: Game, id: MapViewId): InfoViewModel {
     )
   }
   if (id === 'bays') return baysModel(game.bayView().stands)
+  if (id === 'airfield') return airfieldModel(game.runwayLoad(), tilesOf(game.tiles, 'runway'))
   if (id === 'power') {
     const power = game.powerReport()
     const loads = game.powerLoads()

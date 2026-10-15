@@ -1,5 +1,12 @@
 import { finiteAmount } from '../disruptions/engine.ts'
 import { GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
+import {
+  RUNWAY_GENTLE_SLIP_SEC,
+  RUNWAY_LATE_SLACK_SEC,
+  runwayArrivalGapSec,
+  runwayMovementCapacity,
+  runwayOverbooked,
+} from '../atc/capacity.ts'
 import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
@@ -5176,6 +5183,69 @@ export class Game {
     return runwayStrips(this.tiles, MIN_RUNWAY).length
   }
 
+  /**
+   * Movements on the open timetable against what the strips can start in a day.
+   * One slot is an arrival and, when it falls in the day, its departure.
+   */
+  runwayLoad(): {
+    strips: number
+    capacity: number
+    scheduled: number
+    gapSec: number
+    overbooked: boolean
+  } {
+    const strips = Math.max(1, this.runwayStripCount())
+    const gapSec = runwayArrivalGapSec(strips)
+    const capacity = runwayMovementCapacity(strips)
+    const start = this.clock
+    const end = this.clock + REAL_SECONDS_PER_GAME_DAY
+    let scheduled = 0
+    for (const slot of this.schedule) {
+      if (slot.status !== 'scheduled' && slot.status !== 'delayed' && slot.status !== 'inbound') continue
+      // One turn is the arrival and the departure that must clear before the next ETA.
+      if (slot.eta >= start - RUNWAY_LATE_SLACK_SEC && slot.eta < end) scheduled += 2
+    }
+    return {
+      strips,
+      capacity,
+      scheduled,
+      gapSec,
+      overbooked: runwayOverbooked(scheduled, capacity),
+    }
+  }
+
+  private runwayOverbooked(): boolean {
+    return this.runwayLoad().overbooked
+  }
+
+  /** Book the seconds a flight actually waited. No cascade and no six-second floor. */
+  private noteSpawnLateness(slot: ScheduleSlot) {
+    const late = this.clock - slot.eta
+    if (!(late > 0.05)) return
+    const booked = Math.min(120, late)
+    if (!(booked > slot.delaySec)) return
+    slot.delaySec = booked
+    if (slot.status === 'scheduled') slot.status = 'delayed'
+    if (!slot.delayReason) slot.delayReason = 'Runway sequence'
+  }
+
+  /** Warn while signed contracts have more movements booked than the strips can turn. */
+  private noteRunwayContractAlert() {
+    const load = this.runwayLoad()
+    if (!load.overbooked) {
+      this.alerts.clear('runway-capacity')
+      return
+    }
+    const scheduled = Math.round(load.scheduled)
+    const capacity = Math.max(1, Math.round(load.capacity))
+    this.raiseAlert({
+      key: 'runway-capacity',
+      severity: 'warning',
+      title: 'Runway overbooked',
+      detail: `Signed contracts have ${scheduled} movements booked. This runway turns ${capacity} a day. Add a strip or spread the bank.`,
+    })
+  }
+
   canIpo(): { ok: boolean; why: string } {
     if (this.public) return { ok: false, why: 'Already listed.' }
     if (this.flightsDone < IPO_MIN_FLIGHTS) {
@@ -9119,7 +9189,7 @@ export class Game {
     const slot = this.schedule.find(
       (s) => s.flightId === g.flightId && s.status !== 'done' && s.status !== 'cancelled',
     )
-    if (slot) this.delaySlot(slot, 10, 'Security queue')
+    if (slot) this.nudgeSlot(slot, 10, 'Security queue')
     else if (g.airlineId) this.adjustHeat(g.airlineId as AirlineId, -0.45)
   }
 
@@ -13691,23 +13761,22 @@ export class Game {
     let t = firstBank
       ? this.clock + FIRST_SLOT_GAP + Math.random() * FIRST_SLOT_JITTER
       : this.clock + 12 + Math.random() * 10
-    // Lead-gated flights sit past the opening. They must not shove the
-    // opening bank forward, and the opening cap must not erase them.
+    // Lead-gated flights sit past the opening. A new slot keeps the runway
+    // gap from every open ETA, including ones already past the opening, so a
+    // later batch cannot land on top of them.
     const openingLimit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
-    const last = this.schedule
-      .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
-      .filter((s) => openingLimit == null || s.eta < OPENING_SEC)
-      .sort((x, y) => y.eta - x.eta)[0]
-    if (last) t = Math.max(t, last.eta + 16)
+    const physicalGap = runwayArrivalGapSec(Math.max(1, this.runwayStripCount()))
     const gate = this.leadGateClock(airlineId)
     if (gate > t) t = gate
     const inOpeningBank = t < OPENING_SEC
     const hub = this.isHub(airlineId)
     const mods = this.specMods()
     const lcc = a.bizModel === 'lcc' || a.persona === 'budget'
-    const spacing =
+    const spacing = Math.max(
+      physicalGap,
       bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
-      (inOpeningBank ? openingSpacingBonus(this.clock) : 0)
+        (inOpeningBank ? openingSpacingBonus(this.clock) : 0),
+    )
     let n = bankSlotCount(count, {
       hub,
       lcc,
@@ -13731,6 +13800,7 @@ export class Game {
     const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
     const plannedId = planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null
     for (let i = 0; i < n; i++) {
+      eta = this.etaClearOfRunway(eta, physicalGap)
       this.flightSeq += 1
       const slot: ScheduleSlot = {
         id: uid('slot'),
@@ -13756,6 +13826,23 @@ export class Game {
         holidayPeak: this.holidayPeakHook,
       })
     }
+  }
+
+  /** Soonest time at or after `eta` that keeps `gap` from every open slot. */
+  private etaClearOfRunway(eta: number, gap: number): number {
+    let t = eta
+    const open = this.schedule.filter(
+      (s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound',
+    )
+    for (let guard = 0; guard < 32; guard++) {
+      const blocker = open
+        .map((s) => s.eta)
+        .filter((at) => Math.abs(at - t) < gap - 1e-6)
+        .sort((a, b) => b - a)[0]
+      if (blocker == null) return t
+      t = blocker + gap
+    }
+    return t
   }
 
   /** Player places a slot ~N seconds out for a signed airline. */
@@ -14141,6 +14228,23 @@ export class Game {
     return cascaded
   }
 
+  /**
+   * Slip one flight by a few seconds when the runway still has room.
+   * An overbooked bank keeps the full delay and its cascade.
+   */
+  private nudgeSlot(slot: ScheduleSlot, sec: number, reason: string) {
+    if (this.runwayOverbooked()) {
+      this.delaySlot(slot, sec, reason)
+      return
+    }
+    const add = Math.max(0, Math.min(RUNWAY_GENTLE_SLIP_SEC, Number.isFinite(sec) ? sec : 0))
+    if (!(add > 0)) return
+    slot.eta += add
+    slot.delaySec = Math.min(120, slot.delaySec + add)
+    slot.status = 'delayed'
+    slot.delayReason = reason
+  }
+
   tickSchedule(dt: number) {
     this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
     this.nightCurfewCool = Math.max(0, this.nightCurfewCool - dt)
@@ -14151,11 +14255,12 @@ export class Game {
       const soon = this.openSchedule().find(
         (s) =>
           (s.status === 'scheduled' || s.status === 'delayed') &&
-          s.eta - this.clock < 45,
+          s.eta - this.clock < 45 &&
+          s.delayReason !== 'Storm / dest weather',
       )
       if (soon) {
         const slip = this.hasResearch('deice') ? 7 + Math.random() * 6 : 12 + Math.random() * 14
-        this.delaySlot(soon, slip, 'Storm / dest weather')
+        this.nudgeSlot(soon, slip, 'Storm / dest weather')
         this.stormPulseCool = this.hasResearch('deice') ? 38 : 24
         this.pushNews(
           this.hasResearch('deice')
@@ -14177,10 +14282,11 @@ export class Game {
       const soon = this.openSchedule().find((s) => {
         if (s.eta - this.clock > 40) return false
         if (s.status !== 'scheduled' && s.status !== 'delayed') return false
+        if (s.delayReason === 'Night curfew') return false
         return this.airline(s.airline).kind === 'pax'
       })
       if (soon) {
-        this.delaySlot(soon, 14 + Math.random() * 12, 'Night curfew')
+        this.nudgeSlot(soon, 14 + Math.random() * 12, 'Night curfew')
         this.nightCurfewCool = 28
         this.adjustHeat(soon.airline, -0.35)
         this.pushNews(
@@ -14192,9 +14298,14 @@ export class Game {
     // Fog slips (storms use the pulse above so the ticker stays readable).
     const fogOdds = dt * 0.02
     if (this.weather === 'fog' && Math.random() < fogOdds) {
-      const soon = this.openSchedule().find((s) => s.eta - this.clock < 40)
+      const soon = this.openSchedule().find(
+        (s) =>
+          s.eta - this.clock < 40 &&
+          s.status === 'scheduled' &&
+          s.delayReason !== 'Fog / dest weather',
+      )
       if (soon && soon.status === 'scheduled') {
-        this.delaySlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
+        this.nudgeSlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
         this.pushNews(
           `${soon.flightNo} slipped in fog — bank may need a bump.`,
           'bad',
@@ -14251,6 +14362,7 @@ export class Game {
         (s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound',
       )
     }
+    this.noteRunwayContractAlert()
   }
 
   nextDueSlot(): ScheduleSlot | null {
@@ -18070,6 +18182,73 @@ export class Game {
     )
   }
 
+  /**
+   * The strip is busy only while a jet holds the runway lock or is still in the
+   * takeoff roll. Taxi to the stand and taxi out to the hold line are not runway time.
+   */
+  private runwayStripBusy(): boolean {
+    return this.flights.some((f) => {
+      if ((f.craft ?? 'jet') !== 'jet') return false
+      if (this.atc.holdsRunway(f.id)) return true
+      return f.phase === 'takeoff' && f.phaseTime < 4
+    })
+  }
+
+  /**
+   * Short final owns the strip. The approach is inside the final window, and a
+   * landing roll keeps it until the runway lock is handed back. Taxi to the
+   * stand after that is not an approach.
+   */
+  private arrivalOnApproach(): boolean {
+    return this.flights.some((f) => {
+      if ((f.craft ?? 'jet') !== 'jet') return false
+      if (f.phase === 'approach') return true
+      return f.phase === 'landing' && this.atc.holdsRunway(f.id)
+    })
+  }
+
+  /** True when a scheduled arrival or a departure already has a claim on the strip. */
+  private scheduleOwnsRunway(): boolean {
+    if (this.arrivalOnApproach() || this.runwayStripBusy()) return true
+    const rolling = this.flights.some(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        (f.phase === 'board' ||
+          f.phase === 'pushback' ||
+          f.phase === 'taxi_out' ||
+          f.phase === 'takeoff'),
+    )
+    if (rolling) return true
+    const next = this.openSchedule().find((s) => s.status === 'scheduled' || s.status === 'delayed')
+    return Boolean(next && next.eta <= this.clock + 40)
+  }
+
+  /** A scheduled arrival is close enough that an ambulance or a Guard jet should stay off the strip. */
+  private scheduledArrivalSoon(withinSec = 50): boolean {
+    return this.openSchedule().some(
+      (s) =>
+        (s.status === 'scheduled' || s.status === 'delayed') &&
+        s.eta <= this.clock + withinSec,
+    )
+  }
+
+  /** True when `self` can take the strip without cutting off an arrival or another roll. */
+  private departureMayEnterStrip(self: Flight): boolean {
+    if (this.arrivalOnApproach()) return false
+    if (
+      (self.kind === 'air_ambulance' || self.kind === 'military') &&
+      this.scheduledArrivalSoon()
+    ) {
+      return false
+    }
+    return !this.flights.some(
+      (f) =>
+        f !== self &&
+        (f.craft ?? 'jet') === 'jet' &&
+        (['landing', 'pushback', 'taxi_out', 'takeoff'] as Phase[]).includes(f.phase),
+    )
+  }
+
   freeStands(): Vec[] {
     const stands = tilesOf(this.tiles, 'stand')
     const reserved = this.tier3.tiedStandKeys()
@@ -18314,11 +18493,16 @@ export class Game {
     // Prefer the timetable. If nothing is due, only seed when auto and bank empty.
     const slot = this.nextDueSlot()
     // Spawn cool must not leave due slots rotting past ETA (bank soft-lock).
+    // An overbooked bank books the wait. A bank that fits spawns as soon as the strip is free.
     if (this.spawnCool > 0) {
-      if (slot && slot.eta < this.clock - 6) {
+      const overdue = slot != null && slot.eta < this.clock - RUNWAY_LATE_SLACK_SEC
+      if (slot && overdue && this.runwayOverbooked()) {
         this.delaySlot(slot, 6 + Math.random() * 5, 'Tower sequencing')
+        return
       }
-      return
+      // A bank that fits the runway does not sit out the tower cool once the strip is free.
+      const stripFree = !this.runwayStripBusy() && !this.arrivalOnApproach()
+      if (!stripFree || !slot || slot.eta > this.clock + 1) return
     }
     if (!slot) {
       if (!this.scheduleAuto) return
@@ -18340,8 +18524,17 @@ export class Game {
     }
     if (this.holdLead(slot)) return
 
-    // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
-    if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
+    // One approach per strip. Taxi to the stand does not keep the next arrival on the ground.
+    const strips = Math.max(1, this.runwayStripCount())
+    const onFinal = inbound.filter(
+      (f) => f.phase === 'hold' || f.phase === 'approach' || f.phase === 'landing',
+    ).length
+    // No gate, or a final already up — slip an overbooked bank, otherwise wait.
+    if (onFinal >= strips || (this.groundBusy() && !this.assignStand())) {
+      if (!this.runwayOverbooked()) {
+        this.spawnCool = Math.max(this.spawnCool, 1.5)
+        return
+      }
       const hosts = this.stolenHosts()
       const reason = hosts.length ? 'Gate stolen (emergency)' : 'Runway backlog'
       this.delaySlot(slot, 10 + Math.random() * 8, reason)
@@ -18397,9 +18590,13 @@ export class Game {
       return
     }
     if (slot.runwayPref == null) slot.runwayPref = this.pickBalancedRunway()
-    // If pavement is busy, slip the slot instead of parking a hold that
-    // reserves a stand forever (that deadlocked releaseHold).
-    if (this.groundBusy()) {
+    // The strip is rolling a landing or a departure. Taxi-in to a free stand does not count.
+    // Inside capacity the next arrival waits; an overbooked bank books the lateness.
+    if (this.runwayStripBusy()) {
+      if (!this.runwayOverbooked()) {
+        this.spawnCool = Math.max(this.spawnCool, 1.5)
+        return
+      }
       this.delaySlot(slot, 8 + Math.random() * 6, 'Pavement busy')
       this.spawnCool = 4
       return
@@ -18497,6 +18694,7 @@ export class Game {
     if (!f.cargo) this.assignClaimLane(f)
     this.bindShowUp(slot, f)
     this.noteCraft(af.kind)
+    this.noteSpawnLateness(slot)
     slot.status = 'inbound'
     slot.flightId = f.id
     this.spawnCool = tilesOf(this.tiles, 'tower').length ? 10 : 14
@@ -18700,6 +18898,8 @@ export class Game {
   releaseHold() {
     const hasTower = tilesOf(this.tiles, 'tower').length > 0
     if (this.groundBusy() && !hasTower) return
+    // One arrival on the approach. A second final is what go-arounds are made of.
+    if (this.arrivalOnApproach() || this.runwayStripBusy()) return
     // Tower: allow a held jet to commit if no landing/takeoff in progress.
     if (
       hasTower &&
@@ -19425,7 +19625,7 @@ export class Game {
     this.reputation = Math.max(0, this.reputation - 0.25)
     if (f.scheduleId) {
       const slot = this.schedule.find((s) => s.id === f.scheduleId)
-      if (slot) this.delaySlot(slot, 25, 'Go-around: runway not clear')
+      if (slot) this.nudgeSlot(slot, 25, 'Go-around: runway not clear')
     }
     if (f.goArounds >= ATC_MAX_GO_AROUNDS) {
       this.divertFlight(f, `${f.flightNo} diverted after ${f.goArounds} go-arounds — runway kept blocked.`)
@@ -19770,6 +19970,7 @@ export class Game {
     if (!this.milAgreement) return
     this.milCool = Math.max(0, this.milCool)
     if (this.milCool > 0) return
+    if (this.scheduleOwnsRunway()) return
     if (this.groundBusy()) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     // Prefer dedicated mil ramp; never steal a busy pax jetway if a hardstand exists.
@@ -19893,6 +20094,7 @@ export class Game {
     if (this.ambuCool > 0) return
     if (this.budgetOf('ambulance') < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
+    if (this.scheduleOwnsRunway()) return
     if (this.groundBusy()) return
     const af = pickAirframe(
       'air_ambulance',
@@ -21754,7 +21956,12 @@ export class Game {
               (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
               f.phaseTime > 28
             const ramp = this.rampCall(f, f.phaseTime > 80)
-            if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > 24)) {
+            if (
+              deiceOk &&
+              ramp !== 'hold' &&
+              (this.departureMayEnterStrip(f) || (this.runwayOverbooked() && f.phaseTime > 24)) &&
+              (!this.groundBusy() || f.phaseTime > 24)
+            ) {
               if (ramp === 'short') {
                 this.adjustHeat(f.airline, -1.2)
                 this.pushNews(
@@ -21840,8 +22047,8 @@ export class Game {
           f.hangarBay = null
           if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
             const ramp = this.rampCall(f, f.phaseTime >= 90)
-            if (ramp === 'hold') {
-              /* Fuel outage, or the ramp is still inside its window. */
+            if (ramp === 'hold' || !this.departureMayEnterStrip(f)) {
+              /* Fuel outage, the ramp is still inside its window, or an arrival owns the strip. */
             } else {
               if (ramp === 'short') {
                 this.adjustHeat(f.airline, -1.2)
@@ -21891,7 +22098,7 @@ export class Game {
             (s) => s.id !== f.scheduleId && (s.status === 'scheduled' || s.status === 'delayed'),
           )
           if (next) {
-            this.delaySlot(next, 12 + Math.random() * 10, 'Slow boarding upstream')
+            this.nudgeSlot(next, 12 + Math.random() * 10, 'Slow boarding upstream')
             this.pushNews(
               `${f.flightNo} slow boarding — ${next.flightNo} and the bank slide.`,
               'bad',
@@ -21908,7 +22115,13 @@ export class Game {
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
           const ramp = this.rampCall(f, f.phaseTime > boardLimit + 80)
-          if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+          if (
+            deiceOk &&
+            ramp !== 'hold' &&
+            (this.departureMayEnterStrip(f) ||
+              (this.runwayOverbooked() && f.phaseTime > boardLimit + 4)) &&
+            (!this.groundBusy() || f.phaseTime > boardLimit + 4)
+          ) {
             if (ramp === 'short') {
               this.adjustHeat(f.airline, -1.2)
               this.pushNews(
@@ -21935,7 +22148,7 @@ export class Game {
             if (Math.random() < 0.35) {
               this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
             }
-          } else if (f.phaseTime > boardLimit + 6 && deiceOk) {
+          } else if (f.phaseTime > boardLimit + 6 && deiceOk && this.runwayOverbooked()) {
             const next = this.openSchedule()[0]
             if (next && Math.random() < step * 0.35) {
               this.delaySlot(next, 8, 'Departure blocked')
@@ -21944,30 +22157,35 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
+        // Own pushback counts as ground-busy, so the strip check excludes self.
+        // An arrival on approach keeps the departure at the stand's exit.
         if (this.taxiRouteReady(f)) this.atcFollow(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
-          if (out && !this.groundBusy()) {
+          const clear = out != null && this.departureMayEnterStrip(f)
+          const yieldToSchedule =
+            (f.kind === 'air_ambulance' || f.kind === 'military') && this.scheduledArrivalSoon()
+          const force = out != null && f.phaseTime > 45 && !this.arrivalOnApproach() && !yieldToSchedule
+          if (out && (clear || force)) {
             f.path = out
             f.seg = 0
             f.t = 0
             if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
-          } else if (f.phaseTime > 8 && out) {
-            f.path = out
-            f.seg = 0
-            f.t = 0
-            if (!f.cargo) this.settleOutboundBags(f, true)
-            f.phase = 'taxi_out'
-            f.phaseTime = 0
-          } else if (f.phaseTime > 8) {
+          } else if (f.phaseTime > 8 && !out) {
             this.holdForTaxi(f)
           }
         }
       } else if (f.phase === 'taxi_out') {
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
+        } else if (
+          this.arrivalOnApproach() &&
+          !this.atc.holdsRunway(f.id) &&
+          !this.runwayOverbooked()
+        ) {
+          // Hold short. Rolling onto the strip now would cut off the arrival.
         } else if (this.atcFollow(f, 1.2, step)) {
           f.phase = 'takeoff'
           f.phaseTime = 0

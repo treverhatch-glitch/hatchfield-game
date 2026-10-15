@@ -8,6 +8,7 @@ const SCORE: Record<MapViewId, string> = {
   traffic: 'info-score-pressure',
   queues: 'info-score-checkin-wait',
   bays: 'info-score-in-use',
+  airfield: 'info-score-movements',
   power: 'info-score-capacity',
   fuel: 'info-score-level',
 }
@@ -65,7 +66,17 @@ describe('info view screenshots', () => {
           for (const title of titles) expect(title, id).toMatch(/Inputs:/)
           await page.getByTestId('info-view-numbers').click()
           const panel =
-            id === 'traffic' ? 'landside-flow' : id === 'fuel' ? 'fuel-farm' : id === 'bays' ? 'info-detail-in-use' : id === 'queues' ? 'info-detail-checkin-wait' : 'info-detail-capacity'
+            id === 'traffic'
+              ? 'landside-flow'
+              : id === 'fuel'
+                ? 'fuel-farm'
+                : id === 'bays'
+                  ? 'info-detail-in-use'
+                  : id === 'queues'
+                    ? 'info-detail-checkin-wait'
+                    : id === 'airfield'
+                      ? 'info-detail-movements'
+                      : 'info-detail-capacity'
           await page.getByTestId(panel).waitFor({ state: 'visible' })
           await page.screenshot({ path: `${OUT}/${id}.png`, fullPage: false })
           await page.keyboard.press('Escape')

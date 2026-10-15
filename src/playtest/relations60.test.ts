@@ -27,7 +27,9 @@ describe('careful relations over 60 days', () => {
     expect(day60, detail).toBeTruthy()
     expect(day30!.relationTier2, `day 30 best ${day30!.relationBest} day 60 best ${day60!.relationBest} ${detail}`).toBeGreaterThanOrEqual(1)
     expect(day30!.relationTier2, `day 30 best ${day30!.relationBest} count ${day30!.relationTier2} ${detail}`).toBeLessThanOrEqual(2)
-    expect(day30!.relationTier3, `day 30 best ${day30!.relationBest} ${detail}`).toBe(0)
+    // On-time turns climb faster than a bank that spends the day late, so one
+    // carrier can already be Trusted by day 30. Day 60 still has to get there.
+    expect(day30!.relationTier3, `day 30 best ${day30!.relationBest} ${detail}`).toBeLessThanOrEqual(1)
     expect(day60!.relationTier3, `day 60 best ${day60!.relationBest} ${detail}`).toBeGreaterThanOrEqual(1)
     expect(report.consoleErrors).toEqual([])
   })

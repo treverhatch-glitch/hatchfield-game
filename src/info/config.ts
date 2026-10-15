@@ -39,6 +39,12 @@ export const POWER_RATIO = {
   high: 1,
 } as const
 
+export const AIRFIELD_LEGEND = [
+  { label: 'Spare movements', color: HEAT.low },
+  { label: 'Bank over 70%', color: HEAT.mid },
+  { label: 'Contracts over capacity', color: HEAT.high },
+] as const
+
 export const POWER_LEGEND = [
   { label: 'Spare capacity', color: HEAT.low },
   { label: 'Load over 70%', color: HEAT.mid },

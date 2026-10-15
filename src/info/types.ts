@@ -1,5 +1,5 @@
 /** One map overlay at a time. The bar, the legend, and the renderer share these ids. */
-export const MAP_VIEWS = ['traffic', 'queues', 'bays', 'power', 'fuel'] as const
+export const MAP_VIEWS = ['traffic', 'queues', 'bays', 'airfield', 'power', 'fuel'] as const
 
 export type MapViewId = (typeof MAP_VIEWS)[number]
 
@@ -7,6 +7,7 @@ export const MAP_VIEW_LABEL: Record<MapViewId, string> = {
   traffic: 'Traffic',
   queues: 'Queues',
   bays: 'Bays',
+  airfield: 'Airfield',
   power: 'Power',
   fuel: 'Fuel',
 }
