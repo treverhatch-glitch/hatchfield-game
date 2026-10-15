@@ -14,6 +14,7 @@ import { stationSocketTable } from '../socketLayout'
 import { mountSockets } from '../socketMount'
 import { footprint, type Part, type Prim } from './parts'
 import { material } from './materials'
+import { readAnimSec } from '../interior/animClock'
 import { MOVING_TRAYS, PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType, type TrayTrack } from './props'
 
 export { TERMINAL_PROP_TYPES, MOVING_TRAYS, type TerminalPropType, type TrayTrack } from './props'
@@ -206,8 +207,8 @@ export function trayPositions(t: TrayTrack, time: number): number[] {
 
 /**
  * Trays (and the bags in them on forward tracks) sliding along the x-ray
- * rollers and the return conveyor. Self-animating: the tray mesh updates the
- * instance matrices in onBeforeRender, so no game loop wiring is needed.
+ * rollers and the return conveyor. onBeforeRender reads the sim's animSec,
+ * which stays put while the game is paused.
  */
 function buildMovingTrays(placements: PropPlacement[], shadows: boolean): THREE.Group | null {
   type Slot = { item: THREE.Matrix4; track: TrayTrack }
@@ -235,7 +236,6 @@ function buildMovingTrays(placements: PropPlacement[], shadows: boolean): THREE.
   const m = new THREE.Matrix4(), tmp = new THREE.Matrix4()
   const sTray = new THREE.Vector3(0.56, 0.1, 0.4), sBag = new THREE.Vector3(0.4, 0.15, 0.27)
   const qI = new THREE.Quaternion()
-  const t0 = typeof performance !== 'undefined' ? performance.now() : 0
   const update = (time: number) => {
     let ti = 0
     const bi = bags.map(() => 0)
@@ -256,7 +256,7 @@ function buildMovingTrays(placements: PropPlacement[], shadows: boolean): THREE.
     trays.instanceMatrix.needsUpdate = true
     bags.forEach((b, k) => { b.count = bi[k]; b.instanceMatrix.needsUpdate = true })
   }
-  update(0)
-  trays.onBeforeRender = () => update(((typeof performance !== 'undefined' ? performance.now() : 0) - t0) / 1000)
+  update(readAnimSec())
+  trays.onBeforeRender = () => update(readAnimSec())
   return g
 }

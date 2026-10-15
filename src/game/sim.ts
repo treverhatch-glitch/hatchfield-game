@@ -531,6 +531,7 @@ import { findFootprint, footprintReason, footprintSpec, stampFrom } from '../ter
 import { footprintOf } from '../terminalplay/place.ts'
 import { hallQueues, queueAtNode } from '../terminalplay/queues.ts'
 import { hallFitFor, matchTerminal, stampAnchor } from '../render/hallRooms.ts'
+import { advanceAnimSec, resetAnimSec } from '../render/interior/animClock.ts'
 import {
   binFull,
   cellAt,
@@ -1932,6 +1933,7 @@ export class Game {
     this.fits = []
     // Face hour 0 is midnight and the sky follows that clock. Open on the morning the economy already calls day.
     this.clock = clockForFaceHour(0, 8)
+    resetAnimSec(0)
     this.speed = 0
     this.tool = 'pan'
     this.facing = 'h'
@@ -27352,6 +27354,7 @@ export class Game {
     this.runwayLoadCache = null
     const step = dt * this.speed
     this.clock += step
+    advanceAnimSec(dt, this.speed)
     this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
     this.ensureEconomy()

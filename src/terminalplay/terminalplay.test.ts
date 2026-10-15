@@ -228,10 +228,11 @@ describe('live queues on the doorway walk', () => {
     game.buyLand('city')
     game.buildStarterKit()
     expect(game.hallGuests.filter((g) => g.preview)).toHaveLength(0)
-    game.tickHall(1.5)
+    expect(game.hallGuests).toHaveLength(0)
     expect(game.securityQueueCount()).toBe(0)
-    const g = game.hallGuests.find((row) => !row.preview) ?? null
-    expect(g).toBeNull()
+    game.tickHall(1.5)
+    expect(game.hallGuests).toHaveLength(0)
+    expect(game.securityQueueCount()).toBe(0)
     game.demoHallCrowd(1)
     const dep = game.hallGuests.find((row) => !row.preview)!
     expect(dep.path[0]).toBe('entrance')
