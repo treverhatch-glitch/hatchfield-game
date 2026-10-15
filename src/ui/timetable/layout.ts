@@ -64,12 +64,33 @@ export function axisTicks(span: ViewSpan, dayLength: number): { t: number; label
  * The open sheet looks at one sim day. 24h is that whole day.
  * A shorter zoom is a window inside the day, kept on the clock when it fits.
  */
-export function viewSpan(now: number, dayLength: number, zoomHours: number): ViewSpan {
-  const dayStart = Math.floor(now / dayLength) * dayLength
+export function viewSpan(now: number, dayLength: number, zoomHours: number, dayShift = 0): ViewSpan {
+  const dayStart = Math.floor(now / dayLength) * dayLength + dayShift * dayLength
   if (zoomHours >= 24) return { from: dayStart, to: dayStart + dayLength }
   const windowSec = hourSecs(dayLength) * zoomHours
-  const from = Math.max(dayStart, Math.min(now - windowSec / 2, dayStart + dayLength - windowSec))
+  const anchor = dayShift === 0 ? now : dayStart + dayLength / 2
+  const from = Math.max(dayStart, Math.min(anchor - windowSec / 2, dayStart + dayLength - windowSec))
   return { from, to: from + windowSec }
+}
+
+export interface FlightFilter {
+  airline?: string | null
+  conflictsOnly?: boolean
+  code?: string
+  query?: string
+  conflictIds?: Set<string>
+}
+
+/** Hide bars that miss the airline, code, flight number, or conflict filter. */
+export function filterFlights(flights: TtFlight[], filter: FlightFilter): TtFlight[] {
+  const q = filter.query?.trim().toLowerCase() ?? ''
+  return flights.filter((f) => {
+    if (filter.airline && f.airlineName !== filter.airline) return false
+    if (filter.code && f.icao !== filter.code) return false
+    if (q && !f.flightNo.toLowerCase().includes(q)) return false
+    if (filter.conflictsOnly && filter.conflictIds && !filter.conflictIds.has(f.id)) return false
+    return true
+  })
 }
 
 /**
@@ -289,9 +310,14 @@ export function boardRows(
   now: number,
   dayLength: number,
   limit = 14,
+  span?: ViewSpan,
 ): BoardRow[] {
   return flights
-    .filter((f) => f.direction === dir && f.time >= now - hourSecs(dayLength))
+    .filter((f) => {
+      if (f.direction !== dir || f.status === 'cancelled') return false
+      if (span) return f.time >= span.from && f.time < span.to
+      return f.time >= now - hourSecs(dayLength)
+    })
     .sort((a, b) => a.time - b.time)
     .slice(0, limit)
     .map((f) => {

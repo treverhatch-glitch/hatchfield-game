@@ -32,6 +32,8 @@ export interface TtFlight {
   flightNo: string
   airlineName: string
   color: string
+  /** Livery stripe. A thin edge so two similar blues still separate. */
+  stripe?: string
   direction: TtDirection
   /** Planned sim time for this movement (arrival ETA or departure ETD). */
   time: number

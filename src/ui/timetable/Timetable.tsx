@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { axisTicks, barNote, boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type GanttBar, type RunwayLaneModel, type ViewSpan } from './layout'
+import { axisTicks, barNote, boardRows, buildGantt, filterFlights, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type GanttBar, type RunwayLaneModel, type ViewSpan } from './layout'
 import { gameMinToSim, SCHEDULE } from './scheduleConfig'
 import { schedulePillOpen, setSchedulePill, sheetShown, subscribeScheduleSheet } from './scheduleSheet'
 import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, standFits } from './time'
@@ -38,6 +38,11 @@ export function Timetable({
   const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [tab, setTab] = useState<Tab>('stands')
   const [zoom, setZoom] = useState<(typeof ZOOMS)[number]>(24)
+  const [dayShift, setDayShift] = useState(0)
+  const [airlineFilter, setAirlineFilter] = useState<string | null>(null)
+  const [conflictsOnly, setConflictsOnly] = useState(false)
+  const [codeFilter, setCodeFilter] = useState('')
+  const [query, setQuery] = useState('')
   const [sel, setSel] = useState<string | null>(null)
   const [swapFrom, setSwapFrom] = useState<string | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -58,7 +63,21 @@ export function Timetable({
   const now = adapter.now()
   const flights = adapter.flights()
   const stands = adapter.stands()
-  const span = viewSpan(now, day, zoom)
+  const span = viewSpan(now, day, zoom, dayShift)
+  const conflictIds = new Set(
+    buildGantt(flights, stands, span).flatMap((g) =>
+      g.rows.flatMap((r) => r.bars.filter((b) => b.conflict).map((b) => b.flight.id)),
+    ),
+  )
+  const shownFlights = filterFlights(flights, {
+    airline: airlineFilter,
+    conflictsOnly,
+    code: codeFilter,
+    query,
+    conflictIds,
+  })
+  const filterOn = Boolean(airlineFilter || conflictsOnly || codeFilter || query.trim())
+  const airlines = [...new Map(flights.map((f) => [f.airlineName, f])).values()]
   const runwayList = adapter.runways()
   const multiRw = runwayList.length > 1
   const rwLabel = (id: string | null | undefined) => (id ? runwayList.find((r) => r.id === id)?.label ?? id : 'Auto')
@@ -122,7 +141,9 @@ export function Timetable({
     setSel(f.id)
   }
 
-  const gantt = buildGantt(flights, stands, span)
+  const gantt = buildGantt(shownFlights, stands, span)
+    .map((g) => (filterOn ? { ...g, rows: g.rows.filter((r) => r.bars.length > 0) } : g))
+    .filter((g) => g.rows.length > 0)
   const ticks = axisTicks(span, day)
   const nowX = frac(now, span)
   const grid = ticks.map((t) => (
@@ -163,28 +184,65 @@ export function Timetable({
             <nav className="tt-tabs">
               {(['stands', 'runway', 'board'] as Tab[]).map((t) => (
                 <button key={t} type="button" className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                  {t === 'stands' ? 'Stands' : t === 'runway' ? 'Runway' : 'Flight board'}
+                  {t === 'stands' ? 'Stands' : t === 'runway' ? 'Runway' : 'List'}
                 </button>
               ))}
             </nav>
             <span className="tt-clock">
               Day {dayIndex(now, day)} · {clockLabel(now, day)} · <em>{adapter.source}</em>
             </span>
-            {tab !== 'board' ? (
-              <span className="tt-zoom">
-                {ZOOMS.map((z) => (
-                  <button key={z} type="button" className={zoom === z ? 'on' : ''} onClick={() => setZoom(z)}>
-                    {z}h
-                  </button>
-                ))}
-              </span>
-            ) : null}
+            <span className="tt-zoom">
+              <button type="button" onClick={() => setDayShift((d) => d - 1)} title="Previous day">
+                ‹
+              </button>
+              {ZOOMS.map((z) => (
+                <button key={z} type="button" className={zoom === z ? 'on' : ''} onClick={() => setZoom(z)}>
+                  {z}h
+                </button>
+              ))}
+              <button type="button" onClick={() => setDayShift((d) => d + 1)} title="Next day">
+                ›
+              </button>
+            </span>
             {plannerOpen ? null : (
               <button type="button" className="tt-close" onClick={() => setPillOpen(false)} title="Collapse">
                 ▾
               </button>
             )}
           </header>
+          <div className="tt-filter" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" className={!airlineFilter ? 'on' : ''} onClick={() => setAirlineFilter(null)}>
+              All
+            </button>
+            {airlines.map((a) => (
+              <button
+                key={a.airlineName}
+                type="button"
+                className={airlineFilter === a.airlineName ? 'on' : ''}
+                style={{ borderColor: a.color, color: a.color }}
+                onClick={() => setAirlineFilter(airlineFilter === a.airlineName ? null : a.airlineName)}
+              >
+                {a.airlineName}
+              </button>
+            ))}
+            <button type="button" className={conflictsOnly ? 'on' : ''} onClick={() => setConflictsOnly((v) => !v)}>
+              Conflicts
+            </button>
+            <select value={codeFilter} onChange={(e) => setCodeFilter(e.target.value)} aria-label="Aircraft code">
+              <option value="">Code</option>
+              {['A', 'B', 'C', 'D', 'E', 'F'].map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              value={query}
+              placeholder="Flight"
+              aria-label="Flight number"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
           {swapFrom ? (
             <p className="tt-hint">Pick another flight to swap stands with · <button type="button" onClick={() => setSwapFrom(null)}>Cancel</button></p>
           ) : null}
@@ -243,6 +301,7 @@ export function Timetable({
                                     left: `${(b.left + frac(span.from + off, span)) * 100}%`,
                                     width: `${b.width * 100}%`,
                                     ['--al' as string]: f.color,
+                                    ['--stripe' as string]: f.stripe ?? f.color,
                                   }}
                                   onPointerDown={(e) => onBarDown(e, f)}
                                   onPointerMove={(e) => onBarMove(e, f)}
@@ -266,7 +325,7 @@ export function Timetable({
             ) : null}
 
             {tab === 'runway' ? (
-              <RunwayLane adapter={adapter} flights={flights} span={span} sel={sel} onSel={setSel} />
+              <RunwayLane adapter={adapter} flights={shownFlights} span={span} sel={sel} onSel={setSel} />
             ) : null}
 
             {tab === 'board' ? (
@@ -284,7 +343,7 @@ export function Timetable({
                       </tr>
                     </thead>
                     <tbody>
-                      {boardRows(flights, dir, now, day).map((r) => (
+                      {boardRows(shownFlights, dir, now, day, 200, span).map((r) => (
                         <tr key={r.id} data-sel={sel === r.id ? '1' : '0'} onClick={() => setSel(r.id)}>
                           <td>
                             {r.est ? <s>{r.time}</s> : r.time}

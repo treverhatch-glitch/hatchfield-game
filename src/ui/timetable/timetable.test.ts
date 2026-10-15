@@ -3,7 +3,7 @@ import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
-import { axisTicks, barNote, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
+import { axisTicks, barNote, boardRows, buildGantt, filterFlights, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
 import type { TtFlight } from './types'
 import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { schedulePillEscape, setSchedulePill, setSchedulePlanner, sheetShown } from './scheduleSheet'
@@ -29,10 +29,24 @@ describe('clock face', () => {
   })
   it('opens the sheet on the whole day and zooms inside it', () => {
     expect(viewSpan(100, 180, 24)).toEqual({ from: 0, to: 180 })
+    expect(viewSpan(100, 180, 24, 1)).toEqual({ from: 180, to: 360 })
     const six = viewSpan(100, 180, 6)
     expect(six.to - six.from).toBeCloseTo(180 / 4, 5)
     expect(six.from).toBeGreaterThanOrEqual(0)
     expect(six.to).toBeLessThanOrEqual(180)
+  })
+  it('filters by airline and keeps a full-day list', () => {
+    const rows = [
+      bare({ airlineName: 'Northline', flightNo: 'NO1', color: '#2f6f9a', stripe: '#e8eef5' }),
+      bare({ id: 'b:arr', airlineName: 'Bushline', flightNo: 'BU2', color: '#6b8f3a', time: 20, onStandFrom: 20, onStandTo: 25 }),
+    ]
+    expect(filterFlights(rows, { airline: 'Northline' }).map((f) => f.flightNo)).toEqual(['NO1'])
+    expect(rows[0].stripe).toBe('#e8eef5')
+    const many = Array.from({ length: 20 }, (_, i) =>
+      bare({ id: `n${i}:arr`, flightNo: `N${i}`, time: i, onStandFrom: i, onStandTo: i + 0.4 }),
+    )
+    expect(boardRows(many, 'arr', 0, 180, 200, { from: 0, to: 180 })).toHaveLength(20)
+    expect(boardRows(many, 'arr', 0, 180)).toHaveLength(14)
   })
   it('clamps to window and floor', () => {
     const w = { start: 10, end: 20, source: 'tower' as const }
