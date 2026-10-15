@@ -36,10 +36,9 @@ function addStands(game: Game, cells: { c: number; r: number }[]) {
 }
 
 /**
- * Bag push now waits until a cart has docked at belt_low. The starter fleet is
- * two carts, and that fleet — not the strip — is what stops a four-stand bank.
- * Depots are the player's cart bay. Stamp them here the way the farm is stocked,
- * so the count is the runway's.
+ * Bag push now waits until a cart has docked at belt_low. Depots are the
+ * player's cart bay. Stamp them here the way the farm is stocked, so the
+ * count is the runway's and not the starter cart fleet.
  */
 function addDepots(game: Game, count: number) {
   for (let i = 0; i < count; i++) game.tiles[18 + Math.floor(i / 4)][1 + (i % 4)] = 'depot'

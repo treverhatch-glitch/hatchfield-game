@@ -71,6 +71,10 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     helipads: 0,
     helipadBuilding: false,
     helipadCost: 9000,
+    cartWaits: 0,
+    depotCost: 9_800,
+    depotBuilding: false,
+    depotOpen: false,
     ...partial,
   }
 }
@@ -430,6 +434,41 @@ describe('playtest personas', () => {
     const tip = carefulIntents(card, freshMemory(), TIP_POLICY)
     expect(tip.intents).toContainEqual({ do: 'fuelTerm' })
     expect(tip.intents.some((intent) => intent.do === 'spotAccept')).toBe(false)
+  })
+
+  it('stamps a depot when cart-wait is the top bottleneck, and not when something else is', () => {
+    const held = board({
+      cartWaits: 3,
+      depotOpen: true,
+      depotCost: 9_800,
+      cash: 9_800 + 8_000,
+      stands: 4,
+      checkinWaiting: 1,
+      securityWaiting: 0,
+      runwayDeferred: 0,
+      curbQueue: 0,
+    })
+    const careful = carefulIntents(held, freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'stamp', tool: 'depot' })
+    expect(careful.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(false)
+    expect(careful.memory.depotOnDay).toBe(held.day)
+
+    const again = carefulIntents(held, careful.memory)
+    expect(again.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
+
+    const runway = carefulIntents(board({ ...held, runwayDeferred: 4, cartWaits: 2 }), freshMemory())
+    expect(runway.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
+
+    const locked = carefulIntents(board({ ...held, depotOpen: false, stands: 2, cash: 30_000 }), freshMemory())
+    expect(locked.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
+    expect(locked.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(false)
+
+    const broke = carefulIntents(board({ ...held, cash: 9_000 }), freshMemory())
+    expect(broke.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
+    expect(broke.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(false)
+
+    const greedy = greedyIntents(held, freshMemory())
+    expect(greedy.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'depot')).toBe(false)
   })
 
   it('chaotic clicks are stable for a seed', () => {

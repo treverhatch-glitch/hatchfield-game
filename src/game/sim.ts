@@ -790,7 +790,18 @@ import {
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
-import { CART_TUNING, CartYard, resolveSocket, type CartPose, type CartSite, type CartSocket } from '../carts/index.ts'
+import {
+  BAG_CART_WAIT,
+  CART_TUNING,
+  CATERING_CART_WAIT,
+  CartYard,
+  cartDepotFix,
+  resolveSocket,
+  type CartPose,
+  type CartSite,
+  type CartSocket,
+  type CartWait,
+} from '../carts/index.ts'
 import { aircraftSocketTable, apronCartSockets, CAROUSEL_SOCKETS, checkinRowSockets } from '../render/socketLayout.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type DeliveryRead, type FuelView } from '../fuel/index.ts'
 import { SPOT_OFFER, brandForContract, termBandLitres, type SpotInbound, type SpotOffer } from '../fuel/offerData.ts'
@@ -1666,6 +1677,9 @@ export class Game {
   private groundAnnounced = false
   private groundNotes: Advice[] = []
   private groundNoteKey = ''
+  /** Turns held because no bag cart or catering truck is free. */
+  private cartNotes: Advice[] = []
+  private cartNoteKey = ''
   private cargoNotes: Advice[] = []
   /** Recent sound names, for the apron audio cues. */
   soundCues: string[] = []
@@ -2064,6 +2078,8 @@ export class Game {
     this.groundAnnounced = false
     this.groundNotes = []
     this.groundNoteKey = ''
+    this.cartNotes = []
+    this.cartNoteKey = ''
     this.cargoNotes = []
     this.soundCues = []
     this.catering = null
@@ -11185,6 +11201,7 @@ export class Game {
     if (!fit) {
       this.advice = this.withSessionHint([
         ...this.groundNotes,
+        ...this.cartNotes,
         ...this.cargoNotes,
         ...this.scaleAdviceItems(),
         ...powerNotes,
@@ -11241,6 +11258,7 @@ export class Game {
       hall,
       standingNotes,
       this.groundNotes,
+      this.cartNotes,
       this.cargoNotes,
       this.scaleAdviceItems(),
       powerNotes,
@@ -11258,7 +11276,7 @@ export class Game {
 
   private keepApronFocus(powerNotes: Advice[]) {
     if (!this.apronFocus.length) return
-    const still = [...this.groundNotes, ...this.cargoNotes, ...powerNotes].find((note) =>
+    const still = [...this.groundNotes, ...this.cartNotes, ...this.cargoNotes, ...powerNotes].find((note) =>
       note.cells.some((cell) => this.apronFocus.some((mark) => mark.c === cell.c && mark.r === cell.r)),
     )
     if (!still) this.apronFocus = []
@@ -13386,7 +13404,10 @@ export class Game {
       if (!live.has(id)) this.cartPosted.delete(key)
     }
     const sites = this.cartSites()
-    if (!sites.some((site) => site.role === 'stand')) return
+    if (!sites.some((site) => site.role === 'stand')) {
+      this.syncCartNotes()
+      return
+    }
     this.cartYard.setSites(sites)
     const depots = tilesOf(this.tiles, 'depot').length
     this.cartYard.setFleet(
@@ -13439,6 +13460,84 @@ export class Game {
       }
     }
     this.cartYard.tick(step)
+    this.syncCartNotes()
+  }
+
+  /** Which bag or catering line is held because no cart is free. */
+  cartServiceHold(flightId: string): { bagsIn: boolean; bagsOut: boolean; catering: boolean } {
+    const rows = this.cartYard.waits().filter((wait) => wait.flightId === flightId)
+    return {
+      bagsIn: rows.some((wait) => wait.leg === 'in'),
+      bagsOut: rows.some((wait) => wait.leg === 'out'),
+      catering: rows.some((wait) => wait.kind === 'catering'),
+    }
+  }
+
+  /** "Waiting on bag cart" / "Waiting on catering" when that flight has no free cart. */
+  cartCause(flightId: string): string | null {
+    const lines = this.cartCauseLines(this.cartYard.waits().filter((wait) => wait.flightId === flightId))
+    return lines.length ? lines.join(' · ') : null
+  }
+
+  /** Flights held for a bag cart or a catering truck. The playtest board reads this. */
+  cartWaitCount(): number {
+    return new Set(this.cartYard.waits().map((wait) => wait.flightId)).size
+  }
+
+  /** Build → Vehicle depot, when that stamp is in the catalog. */
+  cartDepotHint(): string {
+    const stamp = BUILDINGS.find((row) => row.tool === 'depot')
+    return cartDepotFix(stamp?.name)
+  }
+
+  private cartCauseLines(waits: readonly CartWait[]): string[] {
+    const lines: string[] = []
+    if (waits.some((wait) => wait.kind === 'bag')) lines.push(BAG_CART_WAIT)
+    if (waits.some((wait) => wait.kind === 'catering')) lines.push(CATERING_CART_WAIT)
+    return lines
+  }
+
+  private standCartCause(standId: string): string | null {
+    const lines = this.cartCauseLines(this.cartYard.waits().filter((wait) => wait.standId === standId))
+    if (!lines.length) return null
+    const hint = this.cartDepotHint()
+    return hint ? `${lines.join(' · ')} · ${hint}` : lines.join(' · ')
+  }
+
+  /** Same shape as a late turnaround note: a cause title, the count, and the depot stamp. */
+  private syncCartNotes() {
+    const waits = this.cartYard.waits()
+    const fix = this.cartDepotHint()
+    const next: Advice[] = []
+    for (const kind of ['bag', 'catering'] as const) {
+      const rows = waits.filter((wait) => wait.kind === kind)
+      if (!rows.length) continue
+      const cells: { c: number; r: number }[] = []
+      const seen = new Set<string>()
+      for (const row of rows) {
+        if (seen.has(row.standId)) continue
+        seen.add(row.standId)
+        const [c, r] = row.standId.split(',').map(Number)
+        if (Number.isFinite(c) && Number.isFinite(r)) cells.push({ c, r })
+      }
+      const title = kind === 'bag' ? BAG_CART_WAIT : CATERING_CART_WAIT
+      const noun = kind === 'bag' ? 'bag cart' : 'catering truck'
+      const turns = rows.length === 1 ? 'turn is' : 'turns are'
+      next.push({
+        id: kind === 'bag' ? 'cart-bag' : 'cart-catering',
+        title,
+        detail: `${rows.length} ${turns} held until a ${noun} is free.`,
+        fix,
+        cells,
+        scope: 'apron',
+        severity: 'warning',
+      })
+    }
+    this.cartNotes = next
+    const key = next.map((note) => `${note.id}:${note.detail}:${note.fix}`).join('|')
+    if (key === this.cartNoteKey) return
+    this.cartNoteKey = key
+    this.refreshAdvice()
   }
 
   /** Bag-loaded: the outbound cart has finished its dock at belt_low. */
@@ -19625,7 +19724,7 @@ export class Game {
         {
           ...base,
           demand: this.standOccupied(v) ? 1 : 0,
-          note: this.standFuelNote(v),
+          note: this.standCardNote(id, v),
           sections: sections.length ? sections : undefined,
           staffAssigned: this.crewOn(fleet, [
             'pushback_tug',
@@ -19691,6 +19790,13 @@ export class Game {
       return this.attachVehicleQueue({ ...base, demand, staffAssigned: this.deskStaff })
     }
     return this.attachVehicleQueue(base)
+  }
+
+  /** Hydrant line, plus the cart cause when this stand is held for a cart. */
+  private standCardNote(standId: string, v: Vec): string {
+    const fuel = this.standFuelNote(v)
+    const cart = this.standCartCause(standId)
+    return cart ? `${fuel} · ${cart}` : fuel
   }
 
   /** Stand card: hydrant only when this stand has a pit and a dispenser exists. */

@@ -13,7 +13,9 @@ import {
   RESEARCHER_HIRE,
   RUNWAY_PREFAB_COST,
   STAND_COST,
+  DEPOT_COST,
 } from '../game/catalog.ts'
+import { UNLOCK_LEVEL } from '../progression/unlocks.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
@@ -710,6 +712,10 @@ class GamePlayer implements PlayerCommands {
       researcherCost: game.staffHireCost(RESEARCHER_HIRE),
       researchers: game.researchers,
       fieldAsk: fieldAskView(game),
+      cartWaits: game.cartWaitCount(),
+      depotCost: DEPOT_COST,
+      depotBuilding: game.sites.some((site) => site.tool === 'depot'),
+      depotOpen: game.fieldLevel() >= (UNLOCK_LEVEL.depot ?? 2),
     }
   }
 

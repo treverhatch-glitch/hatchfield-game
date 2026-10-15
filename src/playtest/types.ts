@@ -90,6 +90,14 @@ export interface AirportView {
   /** One researcher, after staff-hire scaling. */
   researcherCost: number
   researchers: number
+  /** Turns held because no bag cart or catering truck is free. */
+  cartWaits: number
+  /** Cash to stamp a vehicle depot. */
+  depotCost: number
+  /** A depot is already under construction. */
+  depotBuilding: boolean
+  /** Field level allows the depot stamp. */
+  depotOpen: boolean
   /** The open airline field ask, when one Build or Decline can answer it. */
   fieldAsk: {
     kind: FieldTaskKind
@@ -220,6 +228,8 @@ export interface PersonaMemory {
   stampsToday: number
   /** Sim day the persona last bought a research-tree node. -1 if never. */
   treeOnDay: number
+  /** Sim day Careful last stamped a cart depot. -1 or omitted if never. */
+  depotOnDay?: number
 }
 
 export interface PersonaDecision {
