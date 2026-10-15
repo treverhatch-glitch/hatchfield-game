@@ -3179,7 +3179,7 @@ h1.game-title::after {
 
 .map-goals {
   position: absolute;
-  top: calc(100% + 40px);
+  top: calc(100% + 96px);
   left: 0;
   bottom: auto;
   width: min(240px, 78vw);
