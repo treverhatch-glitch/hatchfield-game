@@ -8,9 +8,13 @@ import { SKIN_TILE_M } from '../../build/materialTargets'
 import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { mountSockets } from '../socketMount'
+import { MODEL_SIZE } from '../vehicleModels'
 import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from './buildingSkin'
 import { exteriorTexture } from './exteriorArt'
 import { mountServiceBay, mountSign } from './buildingSign'
+import { addParapet, addVault, softenBuilding } from './roundMass'
+
+const wu = (meters: number) => meters * WORLD_PER_METER
 
 function wall(target: Parameters<typeof skinMaterial>[0], part: Parameters<typeof skinMaterial>[1]) {
   return skinMaterial(target, part)
@@ -162,15 +166,17 @@ export function addFireStation(g: THREE.Group) {
   const frontZ = -CELL * 0.06 + depth / 2
   const doorMat = wall('fire_station', 'door')
   const trim = wall('fire_station', 'trim')
-  const bayW = span * 0.34
+  const bayW = Math.max(span * 0.34, wu(MODEL_SIZE.arff[2]) + 0.35)
+  const doorH = wu(MODEL_SIZE.arff[1]) + 0.28
+  const apron = wu(MODEL_SIZE.arff[0])
   for (const [i, x] of [[1, -span * 0.22], [2, span * 0.22]] as const) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(bayW, 1.7, 0.08), doorMat)
-    door.position.set(x, 0.9, frontZ + 0.02)
+    const door = new THREE.Mesh(new THREE.BoxGeometry(bayW, doorH, 0.08), doorMat)
+    door.position.set(x, doorH / 2, frontZ + 0.02)
     door.name = `apparatus:${i}`
     const lintel = new THREE.Mesh(new THREE.BoxGeometry(bayW + 0.14, 0.1, 0.1), trim)
-    lintel.position.set(x, 1.82, frontZ + 0.04)
+    lintel.position.set(x, doorH + 0.08, frontZ + 0.04)
     g.add(door, lintel)
-    mountServiceBay(g, String(i), bayW * 0.92, 1.35, x, frontZ + 1.05, '#e23b32')
+    mountServiceBay(g, String(i), bayW * 0.92, apron, x, frontZ + apron * 0.45, '#e23b32')
   }
   const glass = new THREE.Mesh(
     new THREE.BoxGeometry(span * 0.22, 0.55, 0.06),
@@ -183,7 +189,10 @@ export function addFireStation(g: THREE.Group) {
   const towerCap = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.12, 8), wall('fire_station', 'roof'))
   towerCap.position.set(span * 0.42, wallH + 1.4, -depth * 0.2)
   mountSign(g, 'FIRE', { w: span * 0.28, h: 0.28, x: 0, y: wallH - 0.15, z: frontZ + 0.08 }, '#3a1818', '#f6f1e4')
+  addParapet(g, span + 0.2, depth + 0.2, wallH + 0.16, -CELL * 0.04, trim)
+  addVault(g, span * 0.92, depth * 0.88, wallH + 0.16, -CELL * 0.04, wall('fire_station', 'roof'), 0.38)
   g.add(body, roof, glass, tower, towerCap)
+  softenBuilding(g)
 }
 
 /** Three truck docks under a canopy. */
@@ -199,20 +208,26 @@ export function addCargoShed(g: THREE.Group) {
   const frontZ = -CELL * 0.04 + depth / 2
   const doorMat = wall('cargo_terminal', 'door')
   const trim = wall('cargo_terminal', 'trim')
+  const doorW = Math.max(CELL * 0.18, wu(MODEL_SIZE.box_truck[2]) + 0.3)
+  const doorH = wu(MODEL_SIZE.box_truck[1]) + 0.22
+  const apron = wu(MODEL_SIZE.box_truck[0])
   for (const [i, x] of [[1, -0.28], [2, 0], [3, 0.28]] as const) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.18, 1.35, 0.08), doorMat)
-    door.position.set(CELL * x, 0.7, frontZ + 0.02)
+    const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, doorH, 0.08), doorMat)
+    door.position.set(CELL * x, doorH / 2, frontZ + 0.02)
     door.name = `dock-door:${i}`
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.2, 0.1, 0.1), trim)
-    lintel.position.set(CELL * x, 1.42, frontZ + 0.05)
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.12, 0.1, 0.1), trim)
+    lintel.position.set(CELL * x, doorH + 0.08, frontZ + 0.05)
     g.add(door, lintel)
-    mountServiceBay(g, String(i), CELL * 0.16, 1.15, CELL * x, frontZ + 0.95, '#d7a21a')
+    mountServiceBay(g, String(i), doorW * 0.92, apron, CELL * x, frontZ + apron * 0.42, '#d7a21a')
   }
   const canopy = new THREE.Mesh(skinBox(span + 0.2, 0.08, 1.2, SKIN_TILE_M.roof, WORLD_PER_METER), wall('cargo_terminal', 'roof'))
-  canopy.position.set(0, 1.7, frontZ + 0.55)
+  canopy.position.set(0, doorH + 0.2, frontZ + 0.55)
   canopy.castShadow = true
   mountSign(g, 'CARGO', { w: span * 0.32, h: 0.28, x: 0, y: wallH - 0.2, z: frontZ + 0.1 }, '#2a2824', '#f4f0e4')
+  addParapet(g, span + 0.15, depth + 0.3, wallH + 0.16, 0.05, trim)
+  addVault(g, span * 0.9, depth * 0.85, wallH + 0.18, -CELL * 0.02, wall('cargo_terminal', 'roof'), 0.48)
   g.add(body, roof, canopy)
+  softenBuilding(g)
 }
 
 /** Capture pad, fluid tank, and a truck bay beside the boom. */
@@ -240,9 +255,10 @@ export function addDeicePad(g: THREE.Group) {
   )
   head.position.set(CELL * 0.12, 1.25, -CELL * 0.22)
   mountServiceBay(g, 'pad', CELL * 0.55, CELL * 0.42, CELL * 0.08, CELL * 0.08, '#e8d56a')
-  mountServiceBay(g, 'truck', 1.5, 1.3, -CELL * 0.28, CELL * 0.22, '#3fa8d6')
+  mountServiceBay(g, 'truck', Math.max(1.5, wu(MODEL_SIZE.deice[2]) + 0.25), wu(MODEL_SIZE.deice[0]), -CELL * 0.28, CELL * 0.22, '#3fa8d6')
   mountSign(g, 'DEICE', { w: 1.15, h: 0.26, x: -CELL * 0.28, y: 1.85, z: -CELL * 0.22 + 0.7 }, '#1c2830', '#f4f7fa')
   g.add(pad, berm, tank, boom, head)
+  softenBuilding(g)
 }
 
 /** Cab stays inside the cell. A ramp bay sits at the foot for the service van. */
@@ -277,4 +293,5 @@ export function addControlTower(g: THREE.Group) {
   mountServiceBay(g, 'ramp', 1.6, 1.2, 0, CELL * 0.42 + 0.75, '#d7a21a')
   mountSign(g, 'TOWER', { w: 1.2, h: 0.26, x: 0, y: 1.25, z: CELL * 0.44 }, '#1c2830', '#f4f7fa')
   g.add(shaft, cab, cap, band, base, door)
+  softenBuilding(g)
 }

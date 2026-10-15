@@ -6,8 +6,12 @@
 import * as THREE from 'three'
 import { SKIN_TILE_M } from '../../build/materialTargets'
 import { CELL, WORLD_PER_METER } from '../aircraft/specs'
+import { MODEL_SIZE } from '../vehicleModels'
 import { skinBox, skinMaterial, yardMaterial, metreUv } from './buildingSkin'
 import { mountDock, mountSign } from './buildingSign'
+import { addParapet, softenBuilding } from './roundMass'
+
+const wu = (meters: number) => meters * WORLD_PER_METER
 
 export function addDepotBuilding(g: THREE.Group) {
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.96, CELL * 0.96), 4, WORLD_PER_METER), yardMaterial('gravel'))
@@ -24,22 +28,25 @@ export function addDepotBuilding(g: THREE.Group) {
   const roof = new THREE.Mesh(skinBox(span + 0.3, 0.12, depth + 0.45, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('ground_services', 'roof'))
   roof.position.set(0, wallH + 0.06, -CELL * 0.02)
   const frontZ = -CELL * 0.06 + depth / 2
-  const bayW = span * 0.22
+  const bayW = Math.max(span * 0.22, wu(MODEL_SIZE.fuel_tanker[2]) + 0.3)
+  const doorH = wu(MODEL_SIZE.fuel_tanker[1]) + 0.2
   const doorMat = skinMaterial('ground_services', 'door')
   const trim = skinMaterial('ground_services', 'trim')
   for (const x of [-span * 0.28, 0, span * 0.28]) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(bayW, 1.15, 0.08), doorMat)
-    door.position.set(x, 0.62, frontZ + 0.02)
+    const door = new THREE.Mesh(new THREE.BoxGeometry(bayW, doorH, 0.08), doorMat)
+    door.position.set(x, doorH / 2, frontZ + 0.02)
     const frame = new THREE.Mesh(new THREE.BoxGeometry(bayW + 0.12, 0.08, 0.1), trim)
-    frame.position.set(x, 1.24, frontZ + 0.04)
+    frame.position.set(x, doorH + 0.06, frontZ + 0.04)
     g.add(door, frame)
   }
   const canopy = new THREE.Mesh(skinBox(span + 0.2, 0.08, 1.15, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('ground_services', 'roof'))
-  canopy.position.set(0, 1.55, frontZ + 0.45)
+  canopy.position.set(0, doorH + 0.22, frontZ + 0.45)
   canopy.castShadow = true
-  mountSign(g, 'DEPOT', { w: span * 0.42, h: 0.28, x: 0, y: 1.82, z: frontZ + 0.1 }, '#3a3428', '#f6f1e4')
-  mountDock(g, span * 0.86, 1.05, 0, frontZ + 0.85)
+  mountSign(g, 'DEPOT', { w: span * 0.42, h: 0.28, x: 0, y: doorH + 0.42, z: frontZ + 0.1 }, '#3a3428', '#f6f1e4')
+  mountDock(g, span * 0.86, wu(MODEL_SIZE.fuel_tanker[0]), 0, frontZ + wu(MODEL_SIZE.fuel_tanker[0]) * 0.4)
+  addParapet(g, span + 0.2, depth + 0.3, wallH + 0.14, -CELL * 0.04, trim)
   g.add(yard, shed, roof, canopy)
+  softenBuilding(g)
 }
 
 export function addPoliceBuilding(g: THREE.Group) {
@@ -71,6 +78,7 @@ export function addPoliceBuilding(g: THREE.Group) {
   mountSign(g, 'POLICE', { w: span * 0.55, h: 0.28, x: 0, y: wallH - 0.22, z: frontZ + 0.08 }, '#1c2430', '#d8e4f0')
   mountDock(g, span * 0.7, 0.85, 0, frontZ + 0.7, '#2a3038')
   g.add(body, roof, parapet, bar, door, window, canopy)
+  softenBuilding(g)
 }
 
 export function addGuardBuilding(g: THREE.Group) {
@@ -101,4 +109,5 @@ export function addGuardBuilding(g: THREE.Group) {
   mountSign(g, 'GUARD', { w: span * 0.85, h: 0.24, x: -CELL * 0.12, y: wallH - 0.16, z: frontZ + 0.08 }, '#2a3028', '#f2e2a0')
   mountDock(g, CELL * 0.55, 0.55, CELL * 0.18, 0.55, '#3a4048')
   g.add(booth, roof, window, bar, lamp)
+  softenBuilding(g)
 }

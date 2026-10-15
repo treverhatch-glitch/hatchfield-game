@@ -1,7 +1,7 @@
 /**
  * Before/after stills for the r9 building port.
  *   SHOT_TAG=before SHOT_URL=http://127.0.0.1:45217/ npx tsx scripts/buildings-r9-shots.mts
- * Writes docs/devlog/media/buildings-r9/<tag>-{fuel,hangar-small,hangar-wide,hangar-jumbo}.png
+ * Writes docs/devlog/media/buildings-r9/<tag>-{fuel,hangar-*,fire,cargo,depot,kitchen}.png
  */
 import { existsSync, mkdirSync } from 'node:fs'
 import { chromium, type Page } from 'playwright'
@@ -53,6 +53,10 @@ await page.evaluate(() => {
   g.hangarScale['12,14'] = 'wide'
   g.tiles[8]![24] = 'hangar'
   g.hangarScale['24,8'] = 'jumbo'
+  g.tiles[4]![28] = 'fire'
+  g.tiles[10]![28] = 'cargo'
+  g.tiles[16]![28] = 'depot'
+  g.tiles[18]![20] = 'kitchen'
   g.bumpMap()
 })
 await page.waitForTimeout(600)
@@ -85,6 +89,10 @@ const shots: [string, number, number, number][] = [
   ['hangar-small', 12, 5, 58],
   ['hangar-wide', 12, 14, 78],
   ['hangar-jumbo', 24, 8, 96],
+  ['fire', 28, 4, 28],
+  ['cargo', 28, 10, 28],
+  ['depot', 28, 16, 28],
+  ['kitchen', 20, 18, 28],
 ]
 for (const [name, c, r, dist] of shots) {
   await look(page, c, r, dist)

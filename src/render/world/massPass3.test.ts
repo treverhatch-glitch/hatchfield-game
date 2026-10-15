@@ -87,7 +87,7 @@ describe('massing pass 3 sockets', () => {
       const g = build(building)
       expect(named(g, 'sign:').length, building).toBeGreaterThan(0)
       signFacesFront(g)
-      const cap = building.startsWith('hotel') ? 260 : building === 'rail' ? 420 : building === 'helipad' ? 360 : 220
+      const cap = building.startsWith('hotel') ? 900 : building === 'rail' ? 700 : building === 'helipad' ? 700 : 900
       expect(meshTriangleCount(g), building).toBeLessThanOrEqual(cap)
       const box = new THREE.Box3().setFromObject(g)
       expect(box.min.x, building).toBeGreaterThan(-CELL * 0.62)

@@ -10,8 +10,12 @@ import type { HotelClass } from '../../game/types'
 import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { MASS3_SOCKETS, mass3SocketTable } from '../socketLayout'
 import { mountSockets } from '../socketMount'
+import { MODEL_SIZE } from '../vehicleModels'
 import { metreUv, skinBox, skinMaterial, yardMaterial } from './buildingSkin'
 import { mountGable, mountServiceBay, mountSign } from './buildingSign'
+import { addParapet, addVault, softenBuilding } from './roundMass'
+
+const wu = (meters: number) => meters * WORLD_PER_METER
 
 const glass = () => new THREE.MeshStandardMaterial({ color: '#9ec4de', roughness: 0.15, metalness: 0.25 })
 
@@ -67,9 +71,11 @@ export function addCateringKitchen(g: THREE.Group) {
   const roof = new THREE.Mesh(skinBox(span + 0.25, 0.12, depth + 0.2, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('catering_kitchen', 'roof'))
   roof.position.set(0, wallH + 0.08, z)
   const front = z + depth / 2
+  const doorH = wu(MODEL_SIZE.catering_hilift[1]) + 0.2
+  const doorW = Math.max(1.35, wu(MODEL_SIZE.catering_hilift[2]) + 0.25)
   for (const x of [-1.55, 1.55]) {
-    const door = box(1.35, 1.55, 0.08, skinMaterial('catering_kitchen', 'door'), x, 0.82, front + 0.04)
-    const bumper = box(1.45, 0.12, 0.1, skinMaterial('catering_kitchen', 'trim'), x, 0.2, front + 0.12)
+    const door = box(doorW, doorH, 0.08, skinMaterial('catering_kitchen', 'door'), x, doorH / 2 + 0.04, front + 0.04)
+    const bumper = box(doorW + 0.1, 0.12, 0.1, skinMaterial('catering_kitchen', 'trim'), x, 0.2, front + 0.12)
     g.add(door, bumper)
   }
   const vent = box(0.7, 0.42, 0.55, skinMaterial('catering_kitchen', 'trim'), -1.1, wallH + 0.32, z)
@@ -77,8 +83,11 @@ export function addCateringKitchen(g: THREE.Group) {
   const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.7, 6), skinMaterial('catering_kitchen', 'trim'))
   stack.position.set(1.2, wallH + 0.85, z + 0.2)
   mountSign(g, 'CATER', { w: 1.5, h: 0.32, x: 0, y: wallH - 0.28, z: front + 0.1 }, '#5b3a1a', '#f7f1e8')
-  bays(g, 'kitchen', { '1': { w: 1.6, d: 2.1 }, '2': { w: 1.6, d: 2.1 } }, '#e07a3d')
+  bays(g, 'kitchen', { '1': { w: 1.6, d: wu(MODEL_SIZE.catering_hilift[0]) }, '2': { w: 1.6, d: wu(MODEL_SIZE.catering_hilift[0]) } }, '#e07a3d')
+  addParapet(g, span + 0.1, depth + 0.1, wallH + 0.16, z, skinMaterial('catering_kitchen', 'trim'))
+  addVault(g, span * 0.86, depth * 0.8, wallH + 0.18, z, skinMaterial('catering_kitchen', 'roof'), 0.36)
   g.add(body, roof, vent, vent2, stack)
+  softenBuilding(g)
 }
 
 /** Bag sort hall: three roller doors under a sawtooth roof. */
@@ -105,8 +114,13 @@ export function addBagSort(g: THREE.Group) {
     g.add(door, lip)
   }
   mountSign(g, 'BAGS', { w: 1.4, h: 0.3, x: 0, y: wallH - 0.22, z: front + 0.1 }, '#3d4650', '#f4f0e4')
-  bays(g, 'bags', { '1': { w: 1.45, d: 2.0 }, '2': { w: 1.45, d: 2.0 }, '3': { w: 1.45, d: 2.0 } }, '#e0a21b')
+  bays(g, 'bags', {
+    '1': { w: 1.45, d: wu(MODEL_SIZE.baggage_train[0]) },
+    '2': { w: 1.45, d: wu(MODEL_SIZE.baggage_train[0]) },
+    '3': { w: 1.45, d: wu(MODEL_SIZE.baggage_train[0]) },
+  }, '#e0a21b')
   g.add(body, slope, slopeR)
+  softenBuilding(g)
 }
 
 /** City bus station: a canopy and two coach stops. */
@@ -128,8 +142,9 @@ export function addBusStation(g: THREE.Group) {
   const bench = box(CELL * 0.4, 0.08, 0.4, skinMaterial('transit_station', 'wall'), 0, 0.48, -1.2)
   const glassPane = box(CELL * 0.55, 0.9, 0.04, glass(), 0, 1.15, -1.55)
   mountSign(g, 'BUS', { w: 1.3, h: 0.32, x: 0, y: 2.05, z: -0.95 }, '#1f3b57', '#f4f7fa')
-  bays(g, 'bus', { '1': { w: 1.7, d: 2.6 }, '2': { w: 1.7, d: 2.6 } }, '#c9a227')
+  bays(g, 'bus', { '1': { w: Math.max(1.7, wu(MODEL_SIZE.coach[2]) + 0.3), d: wu(MODEL_SIZE.coach[0]) }, '2': { w: Math.max(1.7, wu(MODEL_SIZE.coach[2]) + 0.3), d: wu(MODEL_SIZE.coach[0]) } }, '#c9a227')
   g.add(pad, curb, canopy, bench, glassPane)
+  softenBuilding(g)
 }
 
 /** A short train on one track socket. Low boxes so both slots stay cheap. */
@@ -238,7 +253,7 @@ export function addHelipad(g: THREE.Group) {
   bays(
     g,
     'helipad',
-    { pad: { w: CELL * 0.48, d: CELL * 0.48 }, bowser: { w: 1.6, d: 2.2 } },
+    { pad: { w: CELL * 0.48, d: CELL * 0.48 }, bowser: { w: Math.max(1.6, wu(MODEL_SIZE.fuel_tanker[2]) + 0.2), d: wu(MODEL_SIZE.fuel_tanker[0]) } },
     '#c9a227',
   )
   addPadHeli(g)
@@ -276,8 +291,9 @@ function addInn(g: THREE.Group) {
   const winMat = glass()
   for (const dx of [-1.15, 1.15]) g.add(box(0.55, 0.5, 0.05, winMat, dx, 1.7, front + 0.04))
   mountSign(g, 'INN', { w: 1.15, h: 0.28, x: 0, y: 2.15, z: front + 0.1 }, '#6b3a2a', '#f7f1e8')
-  bays(g, 'hotel_inn', { drop: { w: 1.8, d: 2.2 }, service: { w: 1.15, d: 1.5 } }, '#2f6f9a')
+  bays(g, 'hotel_inn', { drop: { w: 1.8, d: wu(MODEL_SIZE.coach[0]) }, service: { w: 1.15, d: wu(MODEL_SIZE.van[0]) } }, '#2f6f9a')
   g.add(body, roof, awning, door)
+  softenBuilding(g)
 }
 
 function addBiz(g: THREE.Group) {
@@ -301,8 +317,10 @@ function addBiz(g: THREE.Group) {
   const canopy = box(CELL * 0.5, 0.1, 1.15, skinMaterial('hotel', 'trim'), 0, 1.85, front + 0.4)
   const glassBand = box(span * 0.72, 2.6, 0.05, glass(), 0, 3.15, front + 0.04)
   mountSign(g, 'BIZ', { w: 1.2, h: 0.28, x: 0, y: 2.15, z: front + 0.55 }, '#2f5d8a', '#f4f7fa')
-  bays(g, 'hotel_biz', { drop: { w: 1.8, d: 2.2 }, service: { w: 1.15, d: 1.5 } }, '#2f6f9a')
+  bays(g, 'hotel_biz', { drop: { w: 1.8, d: wu(MODEL_SIZE.coach[0]) }, service: { w: 1.15, d: wu(MODEL_SIZE.van[0]) } }, '#2f6f9a')
+  addParapet(g, span + 0.05, depth + 0.05, wallH + 0.34, z, skinMaterial('hotel', 'trim'))
   g.add(body, roof, porch, canopy, glassBand)
+  softenBuilding(g)
 }
 
 function addResort(g: THREE.Group) {
@@ -324,6 +342,7 @@ function addResort(g: THREE.Group) {
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), skinMaterial('hotel', 'trim'))
   mast.position.set(0, towerH + 0.95, z)
   mountSign(g, 'RESORT', { w: 1.45, h: 0.28, x: 0, y: 2.45, z: front + 0.6 }, '#1f3b57', '#f4f7fa')
-  bays(g, 'hotel_resort', { drop: { w: 1.8, d: 2.2 }, service: { w: 1.5, d: 1.2 } }, '#c9a227')
+  bays(g, 'hotel_resort', { drop: { w: 1.8, d: wu(MODEL_SIZE.coach[0]) }, service: { w: 1.5, d: wu(MODEL_SIZE.van[0]) } }, '#c9a227')
   g.add(tower, wing, glassFace, canopy, crown, mast)
+  softenBuilding(g)
 }

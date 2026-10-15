@@ -71,7 +71,7 @@ describe('concept building massing', () => {
     expect(named(guard, 'service-dock')).toHaveLength(1)
     for (const g of [depot, police, guard]) {
       signFacesFront(g)
-      expect(meshTriangleCount(g)).toBeLessThanOrEqual(220)
+      expect(meshTriangleCount(g)).toBeLessThanOrEqual(900)
     }
   })
 
@@ -177,7 +177,7 @@ describe('concept building massing', () => {
     addMroMesh(mro, CELL)
     for (const id of ['narrow', 'wide', 'jumbo']) expect(mro.getObjectByName(`service-bay:${id}`), id).toBeTruthy()
     for (const g of [fire, cargo, deice, tower]) {
-      expect(meshTriangleCount(g)).toBeLessThanOrEqual(220)
+      expect(meshTriangleCount(g)).toBeLessThanOrEqual(1200)
       signFacesFront(g)
     }
     signFacesFront(fuel)
