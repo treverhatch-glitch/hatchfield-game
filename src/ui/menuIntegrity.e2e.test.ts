@@ -71,7 +71,8 @@ describe('every menu opens, has content, and closes', () => {
           }
           if (menu.id === 'retail') {
             await page.getByTestId('tray-snack').waitFor({ state: 'visible' })
-            await page.getByTestId('tray-food').waitFor({ state: 'visible' })
+            expect(await page.getByTestId('tray-food').count()).toBe(0)
+            expect(await page.getByTestId('tray-shops').count()).toBe(0)
             expect(await page.getByTestId('tray-fuel').count()).toBe(0)
           }
           if (menu.id === 'safety') {
