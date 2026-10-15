@@ -22,6 +22,7 @@ describe('hub profile panel', () => {
     expect(html).toContain('0 / 1')
     expect(html).toContain('data-testid="hub-dedicate-desk"')
     expect(html).toContain('data-testid="hub-open-assign"')
+    expect(html).toContain('data-testid="hub-rivals"')
     expect(html).toContain('data-testid="hub-missing-desk"')
     expect(html).toContain('data-testid="hub-dedicated"')
     const desk = html.match(/<button[^>]*data-testid="hub-dedicate-desk"[^>]*>/)?.[0] ?? ''

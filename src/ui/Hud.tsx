@@ -10,7 +10,7 @@ import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
 import { HubAssign, HubProgress } from './hub/HubPanels.tsx'
-import { showHubProfile } from './hub/session.ts'
+import { openHubProfile } from './hub/session.ts'
 import { AssignPanel } from './hub/AssignPanel.tsx'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
@@ -211,20 +211,29 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const topBar = useRef<HTMLElement>(null)
   useHudBandVar(topBar, '--hud-bar-bottom', 'bottom')
 
+  const panelRef = useRef(panelPick)
+  panelRef.current = panelPick
+  const airlineAsk = game.airlineDeskAsk?.n ?? 0
+  useEffect(() => {
+    if (!game.airlineDeskAsk) return
+    setChromePinned(true)
+    setInfoGroup('airlines')
+    setPanel('letters')
+    game.setSidePanel('hud')
+    if (game.airlineDeskAsk.airlineId) openHubProfile(game.airlineDeskAsk.airlineId)
+  }, [airlineAsk, game])
+
   useEffect(() => {
     return inputMap.onPress((id) => {
       if (id !== 'view.airlines') return
-      setPanel((cur) => {
-        if (cur === 'roster') {
-          setChromePinned(false)
-          return null
-        }
-        setChromePinned(true)
-        setInfoGroup('airlines')
-        return 'roster'
-      })
+      if (panelRef.current === 'letters') {
+        setChromePinned(false)
+        setPanel(null)
+        return
+      }
+      game.openAirlines(game.signed[0] ?? '')
     })
-  }, [])
+  }, [game])
 
   const focusHallDesk = (id: ManageTabId) => {
     const sheet = sheetFor(id)
@@ -249,10 +258,13 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   useEffect(() => {
     if (game.hubDeepLinkTick <= 0) return
+    setChromePinned(true)
     setInfoGroup('airlines')
-    openPanel('hubs')
-    if (game.hubDeepLinkAirline) showHubProfile(game.hubDeepLinkAirline)
-  }, [game.hubDeepLinkTick])
+    openPanel('letters')
+    game.setSidePanel('hud')
+    const id = game.airlineDeskAsk?.airlineId || game.hubDeepLinkAirline
+    if (id) openHubProfile(id)
+  }, [game.hubDeepLinkTick, game])
 
   const openUnlock = (link: UnlockLink) => {
     setUnlockFocus(link.anchor)
@@ -2338,10 +2350,14 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               type="button"
               className="bar-cluster"
               data-testid="hud-airlines"
-              title="Airlines and hub progress"
+              title="Airlines — relationship, hub level, checklist, rewards, rivals, and dedicated desks"
               onClick={() => {
-                setInfoGroup('airlines')
-                openPanel('hubs')
+                if (manageTab === 'letters') {
+                  setPanel(null)
+                  setChromePinned(false)
+                  return
+                }
+                game.openAirlines(game.signed[0] ?? '')
               }}
             >
               Airlines

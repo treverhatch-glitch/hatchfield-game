@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Band, DiplomacyTier } from '../diplomacy/types.ts'
 import type { Game } from '../game/sim.ts'
 import { RELATION_MIN, RELATION_MAX } from '../wave3/config.ts'
@@ -6,6 +6,7 @@ import { RELATION_PART_LABELS } from '../wave3/relations.ts'
 import type { RelationParts } from '../wave3/types.ts'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { HubSection } from './hub/HubPanels.tsx'
+import { openHubProfile } from './hub/session.ts'
 import { AirlineMark } from './AirlineMark.tsx'
 import { PortraitFace } from './PortraitFace.tsx'
 import { ReactionCard } from './ReactionCard.tsx'
@@ -33,8 +34,19 @@ export function AirlinesDesk({ game }: { game: Game }) {
   const [tenureOpen, setTenureOpen] = useState(false)
   const [spatFigures, setSpatFigures] = useState(false)
   const [courting, setCourting] = useState(false)
-  const [relationsOpen, setRelationsOpen] = useState(false)
-  const [relationId, setRelationId] = useState<string | null>(null)
+  const ask = game.airlineDeskAsk
+  const seenAsk = useRef(0)
+  if (ask && ask.n !== seenAsk.current) {
+    seenAsk.current = ask.n
+    if (ask.airlineId) openHubProfile(ask.airlineId)
+  }
+  const [relationsOpen, setRelationsOpen] = useState(() => Boolean(ask))
+  const [relationId, setRelationId] = useState<string | null>(() => ask?.airlineId || null)
+  useEffect(() => {
+    if (!ask) return
+    setRelationsOpen(true)
+    if (ask.airlineId) setRelationId(ask.airlineId)
+  }, [ask])
   const roster = game.diplomacyCards()
   const cards = roster.filter((card) => card.tier === tier)
   const nameOf = (id: string) => roster.find((card) => card.id === id)?.name ?? id

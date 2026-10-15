@@ -14,6 +14,7 @@ function host(): PhoneCommandHost {
     acceptHub: vi.fn(),
     declineHub: vi.fn(),
     openAirlines: vi.fn(),
+    openAssignScreen: vi.fn(),
     laterNudge: vi.fn(),
     declineNudge: vi.fn(),
     acceptMxOffer: vi.fn(),

@@ -1,6 +1,6 @@
 /**
- * Copy and targets for the dedicate picker. Pure. The sim writes the rows.
- * Desk and lane checklist lines stay on the allocator even after a lock.
+ * Copy and targets for the dedicate picker. Pure. The sim writes the rows
+ * through the desk allocator for desks and lanes.
  */
 import { LEASE_SCORE_CAP, SCORE_PER_LEASE, VEHICLE_ROLES, type VehicleRole } from './config.ts'
 import { isVehicleRole } from './vehicles.ts'
@@ -27,10 +27,7 @@ export function assignSentences(input: {
   spared: string
   feeNote?: string | null
 }): AssignSentences {
-  const waits = input.kind === 'desk' || input.kind === 'lane'
-  const relationship = waits
-    ? 'This lock does not add dedicated score yet. The checklist still waits on the desk allocator.'
-    : `+${SCORE_PER_LEASE.dedicated} per day on Dedicated leases, capped at ${LEASE_SCORE_CAP}.`
+  const relationship = `+${SCORE_PER_LEASE.dedicated} per day on Dedicated leases, capped at ${LEASE_SCORE_CAP}.`
   const rival = ['No rival hit for the lease.', input.anger.trim(), input.spared.trim()].filter(Boolean).join(' ')
   const flexibility = input.feeNote
     ? `Serves only ${input.airlineName}. Taken out of the common pool. ${input.feeNote}`

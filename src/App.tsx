@@ -142,6 +142,7 @@ function hudSnapshot(): string {
         game.layoverOffer?.airline,
         game.layover?.airline,
         game.hubOffer?.airline,
+        game.airlineDeskAsk?.n ?? 0,
         game.parkingOffer?.callsign,
         game.pendingThreat?.id,
         game.pendingEmergency?.id,

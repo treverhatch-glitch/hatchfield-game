@@ -361,7 +361,8 @@ function nextAskLabels(type: HubArchetype, tier: HubOfferTier): readonly string[
   return labels
 }
 
-function offerLines(airline: HubCarrier, world: HubFacilities, tier: HubOfferTier): ChecklistLine[] {
+/** Checklist lines for one rung. The sim passes `deskAllocator` once `leasesFor` exists. */
+export function offerChecklistLines(airline: HubCarrier, world: HubFacilities, tier: HubOfferTier): ChecklistLine[] {
   const gate = HUB_TIER_GATE[tier]
   const lines: ChecklistLine[] = [relationLine(airline.contractTier, gate.minTier)]
   if (airline.diplomacyBand) lines.push(bandLine(airline.diplomacyBand, bandNeeded(airline.type, tier)))
@@ -418,7 +419,7 @@ export function hubChecklist(airline: HubCarrier, world: HubFacilities): HubChec
     }
   }
 
-  const lines = offerLines(airline, world, next)
+  const lines = offerChecklistLines(airline, world, next)
   const met = lines.filter(lineMet).length
   return {
     airlineId: airline.id,

@@ -80,7 +80,7 @@ export const DESK_ASK: Record<HubOfferTier, 'preferred' | 'dedicated'> = {
 /** Budget and regional may meet a preferred desk with a tagged kiosk. A flag will not. */
 export const KIOSK_ARCHETYPES = ['budget', 'regional'] as const satisfies readonly HubArchetype[]
 
-/** Shown on desk and lane lines until the allocator exports leasesFor. Counts are ignored until then. */
+/** Shown on desk and lane lines when the caller has not turned the allocator on. */
 export const ALLOCATOR_WAIT = 'Waiting on the desk allocator'
 
 /**
@@ -126,6 +126,8 @@ export const RIVAL_TRIM_DAYS = 14
 /** One nudge per airline per gap, and this many new texts per game day. */
 export const NUDGE_GAP_DAYS = 4
 export const NUDGE_FIELD_CAP = 3
+/** Same cap. The desk-lease notes use this name. */
+export const NUDGE_DAY_CAP = NUDGE_FIELD_CAP
 
 /** Days between maintenance ferries once a hub carrier holds a hangar bay. */
 export const FERRY_GAP_DAYS = 3

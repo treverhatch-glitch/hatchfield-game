@@ -105,14 +105,11 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
         <button type="button" data-testid="hub-open-assign" onClick={() => openHubAssign(id)}>
           Assign
         </button>
-        {list.next === 'base' || list.next === 'hub' || list.next === 'primary' ? (
-          <>
-            <p className="hub-anger" data-testid="hub-anger">
-              {anger.anger || 'No signed rival is angry about this step.'}
-            </p>
-            {anger.spared ? <p className="muted">{anger.spared}</p> : null}
-          </>
-        ) : null}
+        <p className="muted" data-testid="hub-rivals">
+          {list.next === 'base' || list.next === 'hub' || list.next === 'primary'
+            ? `${anger.anger || 'No signed rival is angry about this step.'}${anger.spared ? ` ${anger.spared}` : ''}`
+            : 'No rival hit on this step.'}
+        </p>
         {game.hubVehicleChoices(id).map((choice) => (
           <span key={choice.role}>
             <button

@@ -1135,9 +1135,11 @@ export interface GameSnapshot {
   /** Premium check-in, fast-track lanes, and the VIP room. */
   premium?: PremiumState
   /** Check-in desks locked to one airline. Missing on older saves. */
-  dedicatedDesks?: { deskId: string; airlineId: AirlineId }[]
-  /** Security lanes named to one airline. Missing on older saves. The hub line still waits. */
+  dedicatedDesks?: { deskId: string; airlineId: AirlineId; mode?: 'preferred' | 'dedicated' }[]
+  /** Security lanes named to one airline. Missing on older saves. */
   dedicatedLanes?: { laneId: string; airlineId: string }[]
+  /** Allocator desk and lane leases. Missing on older saves; desks and lanes above are the dedicated rows. */
+  deskLeases?: { pointId: string; kind: string; airlineId: string; mode: string }[]
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
   /** Bellwater Intl rival sim. */

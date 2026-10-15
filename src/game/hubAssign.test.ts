@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { ALLOCATOR_WAIT } from '../hubprogress/config.ts'
 import { gateLeaseId } from '../hubprogress/leases.ts'
 import { Game } from './sim.ts'
 
@@ -9,7 +8,7 @@ function stands(game: Game) {
 }
 
 describe('dedicate picker', () => {
-  it('locks the desk that was clicked and leaves the checklist waiting', () => {
+  it('locks the desk that was clicked and clears the checklist line', () => {
     const game = new Game()
     game.sandbox = true
     game.beginNew('easy')
@@ -26,8 +25,11 @@ describe('dedicate picker', () => {
     expect(game.dedicatedDesks).toHaveLength(0)
     if (kiosk) expect(game.dedicateDesk('brisa', kiosk.deskId)).toBe(false)
     expect(game.dedicateDesk('brisa', belt!.deskId)).toBe(true)
-    expect(game.dedicatedDesks).toEqual([{ deskId: belt!.deskId, airlineId: 'brisa' }])
-    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe(ALLOCATOR_WAIT)
+    expect(game.dedicatedDesks).toEqual([{ deskId: belt!.deskId, airlineId: 'brisa', mode: 'dedicated' }])
+    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')).toMatchObject({
+      detail: '1 / 1',
+      status: 'ok',
+    })
 
     const lane = game.lanePlates()[0]
     expect(lane).toBeTruthy()
@@ -68,7 +70,7 @@ describe('dedicate picker', () => {
     expect(held).toHaveLength(2)
     expect(game.unassignDedicated('gulf_pearl', 'gate', held[0]!.id)).toBe(true)
     expect(game.dedicatedHoldings('gulf_pearl')).toHaveLength(1)
-    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe(ALLOCATOR_WAIT)
+    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe('0 / 1')
   })
 
   it('opens the picker when a stand is clicked', () => {

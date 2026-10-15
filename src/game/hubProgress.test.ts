@@ -16,7 +16,7 @@ describe('hub progress on the sim', () => {
     game.signed = ['brisa', 'atlas_cargo', 'harbor_heli', 'gulf_pearl']
     const brisa = game.hubChecklistFor('brisa')
     expect(brisa.next).toBe('focus')
-    expect(brisa.lines.find((line) => line.id === 'desk')?.detail).toBe('0 / 1')
+    expect(brisa.lines.find((line) => line.id === 'desk')).toMatchObject({ detail: '0 / 1', status: 'missing' })
     expect(brisa.lines.some((line) => line.id === 'lounge')).toBe(false)
 
     const atlas = game.hubChecklistFor('atlas_cargo')

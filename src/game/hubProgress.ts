@@ -1,6 +1,7 @@
 /**
  * Turns a sim snapshot into the pure hub checklist. Rendering reads the result.
- * Desk locks are the check-in allocator's dedicatedDesks rows.
+ * Desk and lane counts come from the allocator's leases. The checklist
+ * treats that export as present.
  */
 import type { AirlineBizModel } from './types.ts'
 import {
@@ -10,10 +11,14 @@ import {
   HUB_TIERS,
   isFacilityLeaseKind,
   isVehicleRole,
+  offerChecklistLines,
+  type ChecklistLine,
   type FacilityLease,
   type HubArchetype,
   type HubBand,
   type HubChecklist,
+  type HubFacilities,
+  type HubOfferTier,
   type HubTier,
   type VehicleLease,
   type VehicleRole,
@@ -38,10 +43,12 @@ export interface HubFieldFacts {
   stands: number
   /** Helipad tiles, used when no dedicated pad count is stored. */
   pads: number
-  /** Dedicated counts. Desk locks come from the check-in allocator. */
+  /** Dedicated counts. Desk and lane counts are the allocator's leases. */
   overnight: number
-  preferredDesks?: number
-  dedicatedDesks?: number
+  dedicatedDesks: number
+  /** Preferred desks. Dedicated desks also count toward a preferred ask. */
+  preferredDesks: number
+  dedicatedLanes: number
   lounges: number
   hangars: number
   fuel: number
@@ -184,10 +191,13 @@ function bandOf(value: string | undefined): HubBand | undefined {
   return undefined
 }
 
-export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; checklist: HubChecklist } {
-  const type = archetypeOf(facts)
-  const turns = facts.onTime + facts.delay + facts.cancel
+function wholeCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+}
+
+function facilitiesFrom(facts: HubFieldFacts): HubFacilities {
   const facilities = emptyHubFacilities()
+  facilities.deskAllocator = true
   facilities.stands = Math.max(0, facts.stands)
   facilities.pads = Math.max(0, facts.dedicatedPads ?? facts.pads)
   facilities.overnight = Math.max(0, facts.overnight)
@@ -200,24 +210,36 @@ export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; 
   facilities.primaryHolderId = facts.primaryHolderId
   facilities.primaryHolderName = facts.primaryHolderName
   facilities.daysAtTier = Math.max(0, Math.floor(facts.daysAtTier))
+  facilities.dedicatedDesks = wholeCount(facts.dedicatedDesks)
+  facilities.preferredDesks = wholeCount(facts.preferredDesks)
+  facilities.dedicatedLanes = wholeCount(facts.dedicatedLanes)
   facilities.vehicles = facts.vehicles
-  facilities.deskAllocator = true
-  facilities.preferredDesks = Math.max(0, Math.floor(facts.preferredDesks ?? 0))
-  facilities.dedicatedDesks = Math.max(0, Math.floor(facts.dedicatedDesks ?? 0))
-  const checklist = hubChecklist(
-    {
-      id: facts.id,
-      name: facts.name,
-      type,
-      signed: facts.signed,
-      tier: isHubTier(facts.storedTier) ? facts.storedTier : 'station',
-      contractTier: facts.contractTier,
-      diplomacyBand: bandOf(facts.diplomacyBand),
-      onTimeRate: turns > 0 ? facts.onTime / turns : 0,
-      onTimeDays: Math.max(0, facts.keptDays),
-      hubBlockers: facts.hubBlockers,
-    },
-    facilities,
-  )
-  return { type, checklist }
+  return facilities
+}
+
+function carrierFrom(facts: HubFieldFacts, type: HubArchetype) {
+  const turns = facts.onTime + facts.delay + facts.cancel
+  return {
+    id: facts.id,
+    name: facts.name,
+    type,
+    signed: facts.signed,
+    tier: isHubTier(facts.storedTier) ? facts.storedTier : ('station' as const),
+    contractTier: facts.contractTier,
+    diplomacyBand: bandOf(facts.diplomacyBand),
+    onTimeRate: turns > 0 ? facts.onTime / turns : 0,
+    onTimeDays: Math.max(0, facts.keptDays),
+    hubBlockers: facts.hubBlockers,
+  }
+}
+
+export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; checklist: HubChecklist } {
+  const type = archetypeOf(facts)
+  return { type, checklist: hubChecklist(carrierFrom(facts, type), facilitiesFrom(facts)) }
+}
+
+/** Lines for one warmth rung, including desk and lane counts from the allocator. */
+export function linesForAsk(facts: HubFieldFacts, step: HubOfferTier): ChecklistLine[] {
+  const type = archetypeOf(facts)
+  return offerChecklistLines(carrierFrom(facts, type), facilitiesFrom(facts), step)
 }

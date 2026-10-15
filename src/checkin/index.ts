@@ -13,3 +13,14 @@ export {
   type DeskMode,
   type FlightDeskShare,
 } from './allocate.ts'
+export {
+  leasesFor,
+  readDeskLeases,
+  releaseLease,
+  requestLease,
+  type DeskLease,
+  type DeskLeaseKind,
+  type DeskLeaseMode,
+  type DeskLeasePoint,
+  type LeaseRefusal,
+} from './deskLease.ts'

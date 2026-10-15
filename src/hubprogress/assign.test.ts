@@ -19,7 +19,7 @@ describe('assign picker copy', () => {
     expect(copy.flexibility).toBe('Serves only Gulf Pearl. Taken out of the common pool.')
   })
 
-  it('tells a desk lock that the checklist still waits', () => {
+  it('counts a desk lock toward the same lease credit', () => {
     const copy = assignSentences({
       airlineName: 'Brisa',
       kind: 'desk',
@@ -27,7 +27,9 @@ describe('assign picker copy', () => {
       spared: '',
       feeNote: 'Below Preferred this desk costs $2,000.',
     })
-    expect(copy.relationship).toContain('waits on the desk allocator')
+    expect(copy.relationship).toBe(
+      `+${SCORE_PER_LEASE.dedicated} per day on Dedicated leases, capped at ${LEASE_SCORE_CAP}.`,
+    )
     expect(copy.rival).toBe('No rival hit for the lease.')
     expect(copy.flexibility).toContain('Serves only Brisa')
     expect(copy.flexibility).toContain('$2,000')

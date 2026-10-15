@@ -24,6 +24,7 @@ describe('assign panel', () => {
     openHubProfile('gulf_pearl')
     const profile = renderToStaticMarkup(<HubSection game={game} id="gulf_pearl" />)
     expect(profile).toContain('data-testid="hub-missing-desk"')
-    expect(profile).toContain('Waiting on the desk allocator')
+    expect(profile).toContain('0 / 1')
+    expect(profile).toContain('data-testid="hub-rivals"')
   })
 })

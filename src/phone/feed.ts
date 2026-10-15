@@ -454,7 +454,8 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       arrives: true,
       secondsLeft: null,
       actions: [
-        btn('airlines', 'Airlines', { type: 'open-airlines', airlineId: nudge.airlineId }, { primary: true }),
+        btn('airlines', 'Open Airlines tab', { type: 'open-airlines', airlineId: nudge.airlineId }, { primary: true }),
+        btn('assign', 'Open assign screen', { type: 'open-assign', airlineId: nudge.airlineId }),
         btn('later', 'Later', { type: 'later-nudge', airlineId: nudge.airlineId }),
         btn('decline', 'Decline', { type: 'decline-nudge', airlineId: nudge.airlineId }),
       ],

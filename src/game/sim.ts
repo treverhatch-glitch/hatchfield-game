@@ -393,7 +393,13 @@ import {
   type Allocation,
   type CheckinDesk,
   type CheckinFlight,
+  leasesFor,
+  readDeskLeases,
+  releaseLease,
+  requestLease,
   type CheckinSignGate,
+  type DeskLease,
+  type DeskLeasePoint,
 } from '../checkin/index.ts'
 import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type CardSection, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
@@ -1549,10 +1555,14 @@ export class Game {
   schedule: ScheduleSlot[] = []
   /** Per-slot departure show-up. Passengers release before the aircraft exists. */
   showUps: ShowUpPlan[] = []
+  /** Desk and lane leases. `dedicatedDesks` and `dedicatedLanes` are the dedicated rows. */
+  deskLeases: DeskLease[] = []
   /** Common desks the player locked to one airline. They stay branded and are never shared. */
   dedicatedDesks: { deskId: string; airlineId: AirlineId; mode?: 'preferred' | 'dedicated' }[] = []
-  /** Security lanes named to one airline. The checklist still waits on the desk allocator. */
+  /** Security lanes named to one airline. */
   dedicatedLanes: { laneId: string; airlineId: string }[] = []
+  /** Asks the Airlines desk to open on this carrier. Not saved. */
+  airlineDeskAsk: { n: number; airlineId: string } | null = null
   /** Open dedicate picker. Not saved. */
   assignPick: { kind: AssignKind; id: string; role?: VehicleRole } | null = null
   /** Paint several desks, or several stands, then assign them together. Not saved. */
@@ -1898,8 +1908,10 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.deskLeases = []
     this.dedicatedDesks = []
     this.dedicatedLanes = []
+    this.airlineDeskAsk = null
     this.assignPick = null
     this.assignBulk = false
     this.assignSelection = []
@@ -3126,61 +3138,33 @@ export class Game {
 
   private commitDesk(airlineId: string, deskId?: string, quiet = false): boolean {
     const name = this.airline(airlineId).name
+    const points = this.deskLeasePoints()
     const alloc = this.checkinAllocation()
-    const desks = this.checkinDesks()
-    const staffed = new Map(desks.map((desk) => [desk.id, desk.staffed]))
-    let pick: (typeof alloc.desks)[number] | undefined
-    if (deskId) {
-      const row = alloc.desks.find((item) => item.deskId === deskId)
-      if (!row || row.mode === 'kiosk' || row.mode === 'dedicated') {
-        if (!quiet) {
-          this.pushNews(row?.mode === 'kiosk' ? 'A kiosk cannot be locked.' : `No desk free to lock for ${name}.`, 'bad')
-          this.emit()
-        }
-        return false
-      }
-      pick = row
-    } else {
-      const free = alloc.desks.filter((row) => row.mode !== 'kiosk' && row.mode !== 'dedicated')
-      free.sort((a, b) => {
-        const as = staffed.get(a.deskId) ? 0 : 2
-        const bs = staffed.get(b.deskId) ? 0 : 2
-        const ag = a.mode === 'general' ? 0 : 1
-        const bg = b.mode === 'general' ? 0 : 1
-        return as + ag - (bs + bg)
+    let pointId = deskId
+    if (!pointId) {
+      const free = alloc.desks.filter((row) => {
+        const point = points.find((item) => item.id === row.deskId)
+        return point?.kind === 'desk' && point.staffed && !point.kiosk && row.mode !== 'dedicated'
       })
-      pick = free[0]
-      if (!pick) {
-        if (!quiet) {
-          this.pushNews(`No desk free to lock for ${name}.`, 'bad')
-          this.emit()
-        }
-        return false
+      free.sort((a, b) => (a.mode === 'general' ? 0 : 1) - (b.mode === 'general' ? 0 : 1))
+      pointId = free[0]?.deskId
+    }
+    if (!pointId) {
+      if (!quiet) {
+        this.pushNews(`No desk free to lock for ${name}.`, 'bad')
+        this.emit()
       }
+      return false
     }
-    const tier = this.wave3.relation(airlineId).tier
-    if (tier < CHECKIN_ALLOC.preferredTier) {
-      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${name}`)) return false
-    }
-    this.dedicatedDesks.push({ deskId: pick.deskId, airlineId })
-    this.checkinCache = null
-    this.deskBrandCache = null
-    return true
+    return this.commitPoint(airlineId, pointId, 'desk', quiet)
   }
 
   /** The desk goes back to common use on the next assignment. */
   releaseDesk(deskId: string): boolean {
-    const next = this.dedicatedDesks.filter((row) => row.deskId !== deskId)
-    if (next.length === this.dedicatedDesks.length) return false
-    this.dedicatedDesks = next
-    this.checkinCache = null
-    this.deskBrandCache = null
-    this.pushNews('Desk released. It returns to common use.', 'ok')
-    this.emit()
-    return true
+    return this.releasePoint(deskId, 'Desk released. It returns to common use.')
   }
 
-  /** Assign screen. Common clears the lock. Preferred and dedicated stay on the one desk list the allocator reads. */
+  /** Assign screen. Common clears the lock. Preferred and dedicated go through requestLease. */
   leaseDesk(airlineId: string, deskId: string, mode: 'common' | 'preferred' | 'dedicated'): boolean {
     const desk = this.checkinDesks().find((row) => row.id === deskId)
     if (!desk || desk.kiosk) {
@@ -3188,37 +3172,31 @@ export class Game {
       this.emit()
       return false
     }
-    const held = this.dedicatedDesks.find((row) => row.deskId === deskId)
     if (mode === 'common') {
+      const held = this.deskLeases.find((row) => row.pointId === deskId)
       if (!held || held.airlineId !== airlineId) return false
       return this.releaseDesk(deskId)
     }
-    if (held && held.airlineId !== airlineId) {
-      this.pushNews('That desk is dedicated to someone else.', 'bad')
+    const result = requestLease(this.deskLeases, this.deskLeasePoints(), deskId, airlineId, mode)
+    if (!result.ok) {
+      this.pushNews(this.leaseRefusal(result.reason, 'desk', this.airline(airlineId).name), 'bad')
       this.emit()
       return false
     }
-    if (!held) {
-      const tier = this.wave3.relation(airlineId).tier
-      if (tier < CHECKIN_ALLOC.preferredTier && !this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${this.airline(airlineId).name}`)) {
-        return false
-      }
-      this.dedicatedDesks.push({ deskId, airlineId, mode })
-    } else {
-      held.mode = mode
+    const already = this.deskLeases.some((row) => row.pointId === deskId && row.airlineId === airlineId)
+    if (!already && this.wave3.relation(airlineId).tier < CHECKIN_ALLOC.preferredTier) {
+      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${this.airline(airlineId).name}`)) return false
     }
-    this.checkinCache = null
-    this.deskBrandCache = null
+    this.writeDeskLeases(result.leases)
     this.pushNews(`${this.airline(airlineId).name} set the desk to ${mode}.`, 'ok')
     this.emit()
     return true
   }
 
-  /** Name one security lane to this carrier. The hub lane line still waits on the allocator. */
+  /** Name one staffed security lane to this carrier. The checklist counts the lease. */
   dedicateLane(airlineId: string, laneId: string): boolean {
-    if (!laneId || !this.securityLanes().some((lane) => lane.id === laneId)) return false
-    if (this.dedicatedLanes.some((row) => row.laneId === laneId)) return false
-    this.dedicatedLanes.push({ laneId, airlineId })
+    const ok = this.commitPoint(airlineId, laneId, 'lane', false)
+    if (!ok) return false
     this.pushNews(`${this.airline(airlineId).name} keeps this lane.`, 'ok')
     this.emit()
     return true
@@ -3236,12 +3214,97 @@ export class Game {
   }
 
   releaseLane(laneId: string): boolean {
-    const next = this.dedicatedLanes.filter((row) => row.laneId !== laneId)
-    if (next.length === this.dedicatedLanes.length) return false
-    this.dedicatedLanes = next
-    this.pushNews('Lane released. It returns to common use.', 'ok')
+    return this.releasePoint(laneId, 'Lane released. It returns to common use.')
+  }
+
+  private commitPoint(airlineId: string, pointId: string, kind: 'desk' | 'lane', quiet: boolean): boolean {
+    const name = this.airline(airlineId).name
+    const result = requestLease(this.deskLeases, this.deskLeasePoints(), pointId, airlineId, 'dedicated')
+    if (!result.ok) {
+      if (!quiet) {
+        this.pushNews(this.leaseRefusal(result.reason, kind, name), 'bad')
+        this.emit()
+      }
+      return false
+    }
+    const already = this.deskLeases.some((row) => row.pointId === pointId && row.airlineId === airlineId)
+    if (!already && kind === 'desk' && this.wave3.relation(airlineId).tier < CHECKIN_ALLOC.preferredTier) {
+      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${name}`)) return false
+    }
+    this.writeDeskLeases(result.leases)
+    return true
+  }
+
+  private releasePoint(pointId: string, news: string): boolean {
+    const next = releaseLease(this.deskLeases, pointId)
+    if (next.length === this.deskLeases.length) return false
+    this.writeDeskLeases(next)
+    this.pushNews(news, 'ok')
     this.emit()
     return true
+  }
+
+  private leaseRefusal(reason: 'not_built' | 'unstaffed' | 'taken' | 'kiosk', kind: 'desk' | 'lane', name: string): string {
+    if (reason === 'kiosk') return 'A kiosk cannot be locked.'
+    if (reason === 'unstaffed') return kind === 'lane' ? 'That lane has no screener.' : 'That desk has no clerk.'
+    if (reason === 'taken') return 'Already dedicated to another carrier.'
+    return kind === 'lane' ? 'That lane is not built.' : `No desk free to lock for ${name}.`
+  }
+
+  private writeDeskLeases(next: DeskLease[]) {
+    this.deskLeases = next
+    this.dedicatedDesks = next
+      .filter((row) => row.kind === 'desk')
+      .map((row) => ({ deskId: row.pointId, airlineId: row.airlineId, mode: row.mode }))
+    this.dedicatedLanes = next
+      .filter((row) => row.kind === 'lane')
+      .map((row) => ({ laneId: row.pointId, airlineId: row.airlineId }))
+    this.checkinCache = null
+    this.deskBrandCache = null
+  }
+
+  /** Built desks and lanes, and whether each one can serve right now. */
+  private deskLeasePoints(): DeskLeasePoint[] {
+    const nav = this.hallNav.nav
+    const fit = this.activeHall()
+    if (!nav || !fit) return []
+    const points = staffPoints(nav.facilities.list, fit.items ?? [])
+    const open = openPointIds(points, {
+      checkin: this.onPostCount('checkin'),
+      security: this.onPostCount('security'),
+    })
+    const byId = new Map(points.map((point) => [point.id, point]))
+    const out: DeskLeasePoint[] = []
+    for (const facility of nav.facilities.list) {
+      if (facility.kind === 'checkin_desk') {
+        const point = byId.get(facility.id)
+        out.push({
+          id: facility.id,
+          kind: 'desk',
+          built: true,
+          staffed: open.has(facility.id),
+          kiosk: Boolean(point?.automatic),
+        })
+      } else if (facility.kind === 'security_lane') {
+        out.push({
+          id: facility.id,
+          kind: 'lane',
+          built: true,
+          staffed: open.has(facility.id),
+          kiosk: false,
+        })
+      }
+    }
+    return out
+  }
+
+  /** Leases whose point is still on the hall. A hall that has not booted keeps the saved rows. */
+  private liveDeskLeases(airlineId: string): DeskLease[] {
+    const rows = leasesFor(this.deskLeases, airlineId)
+    const points = this.deskLeasePoints()
+    if (points.length === 0) return rows
+    const live = new Set(points.map((point) => point.id))
+    return rows.filter((row) => live.has(row.pointId))
   }
 
   private securityLanes(): { id: string }[] {
@@ -3855,8 +3918,14 @@ export class Game {
     return this.diplomacy?.cards() ?? []
   }
 
-  /** Checklist for one carrier. Desk locks are the rows the check-in allocator already keeps. */
+  /** Checklist for one carrier. Desk and lane lines count `leasesFor`. */
   hubCarrierView(id: string) {
+    const facts = this.hubFieldFacts(id)
+    const view = checklistFromFacts(facts)
+    return { id, name: facts.name, type: view.type, checklist: view.checklist }
+  }
+
+  private hubFieldFacts(id: string) {
     const airline = this.airline(id)
     const rel = this.wave3.relation(id)
     const card = this.diplomacyCards().find((row) => row.id === id)
@@ -3866,7 +3935,8 @@ export class Game {
     const holder = engine?.state.hubAirlineId ?? storedPrimary
     const dedicated = this.hubDedicated[id] ?? {}
     const leased = this.liveHubLeases(id)
-    const view = checklistFromFacts({
+    const desks = this.liveDeskLeases(id)
+    return {
       id,
       name: airline.name,
       signed: this.signed.includes(id),
@@ -3890,15 +3960,15 @@ export class Game {
       pier: (dedicated.pier ?? 0) + leased.filter((lease) => lease.kind === 'gate').length,
       ramp: dedicated.ramp ?? 0,
       dedicatedPads: dedicated.pads ?? null,
+      dedicatedDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'dedicated').length,
+      preferredDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'preferred').length,
+      dedicatedLanes: desks.filter((row) => row.kind === 'lane').length,
       connectionMin: minimumConnectionTime(this.hubFacilities()),
       primaryHolderId: holder,
       primaryHolderName: holder ? (engine?.relation(holder)?.name ?? this.airline(holder).name) : null,
       daysAtTier: Math.max(0, this.gameDay() - (this.hubTierSince[id] ?? this.gameDay())),
       vehicles: vehicleCounts(this.liveHubVehicles(id)),
-      preferredDesks: this.dedicatedDesks.filter((row) => row.airlineId === id && row.mode === 'preferred').length,
-      dedicatedDesks: this.dedicatedDesks.filter((row) => row.airlineId === id && row.mode !== 'preferred').length,
-    })
-    return { id, name: airline.name, type: view.type, checklist: view.checklist }
+    }
   }
 
   hubChecklistFor(id: string) {
@@ -5629,8 +5699,10 @@ export class Game {
     this.fittings = {}
     this.hydrantArm = false
     this.resetPillar()
+    this.deskLeases = []
     this.dedicatedDesks = []
     this.dedicatedLanes = []
+    this.airlineDeskAsk = null
     this.assignPick = null
     this.assignBulk = false
     this.assignSelection = []
@@ -7293,8 +7365,9 @@ export class Game {
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
-      dedicatedDesks: this.dedicatedDesks.map((row) => ({ deskId: row.deskId, airlineId: row.airlineId })),
+      dedicatedDesks: this.dedicatedDesks.map((row) => ({ deskId: row.deskId, airlineId: row.airlineId, mode: row.mode })),
       dedicatedLanes: this.dedicatedLanes.map((row) => ({ laneId: row.laneId, airlineId: row.airlineId })),
+      deskLeases: this.deskLeases.map((row) => ({ ...row })),
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -7536,8 +7609,24 @@ export class Game {
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
-      this.dedicatedDesks = (s.dedicatedDesks ?? []).map((row) => ({ deskId: row.deskId, airlineId: row.airlineId }))
-      this.dedicatedLanes = readLaneLocks(s.dedicatedLanes)
+      this.deskLeases = readDeskLeases(s.deskLeases)
+      if (this.deskLeases.length === 0) {
+        this.deskLeases = [
+          ...(s.dedicatedDesks ?? []).map((row) => ({
+            pointId: row.deskId,
+            kind: 'desk' as const,
+            airlineId: row.airlineId,
+            mode: row.mode === 'preferred' ? ('preferred' as const) : ('dedicated' as const),
+          })),
+          ...readLaneLocks(s.dedicatedLanes).map((row) => ({
+            pointId: row.laneId,
+            kind: 'lane' as const,
+            airlineId: row.airlineId,
+            mode: 'dedicated' as const,
+          })),
+        ]
+      }
+      this.writeDeskLeases(this.deskLeases)
       this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false
@@ -18794,7 +18883,8 @@ export class Game {
     }
     const dedicated: Record<string, number> = {}
     for (const id of this.signed) {
-      const credit = leaseCredit(this.liveHubLeases(id).length + this.liveHubVehicles(id).length)
+      const desks = this.liveDeskLeases(id).filter((row) => row.mode === 'dedicated').length
+      const credit = leaseCredit(this.liveHubLeases(id).length + this.liveHubVehicles(id).length + desks)
       if (credit > 0) dedicated[id] = credit
     }
     return {
@@ -18836,6 +18926,26 @@ export class Game {
       }
     }
     this.refreshHubNudges(completedDay + 1)
+  }
+
+  /** Opens the Airlines desk outside the phone, on this carrier when one is named. */
+  openAirlines(airlineId: string) {
+    this.airlineDeskAsk = { n: (this.airlineDeskAsk?.n ?? 0) + 1, airlineId }
+    this.hubDeepLinkAirline = airlineId
+    this.hubDeepLinkTick += 1
+    this.emit()
+  }
+
+  /** Opens the dedicate picker on the warmth step the text named. */
+  openAssignScreen(airlineId: string) {
+    const step = this.hubNudges.find((row) => row.airlineId === airlineId)?.step
+    const kind: AssignKind =
+      step === 'lane' || step === 'lounge' || step === 'hangar' || step === 'desk'
+        ? step
+        : step === 'pier' || step === 'stand'
+          ? 'gate'
+          : 'desk'
+    this.openAssign(kind, '', step === 'fuel' ? 'fuelTruck' : undefined)
   }
 
   /** Send the next hub-tier letter once the relationship gate is met. */
@@ -18910,11 +19020,9 @@ export class Game {
     this.emit()
   }
 
-  /** Phone text opens the Airlines sheet on this carrier. */
+  /** Phone text opens the Airlines desk on this carrier. */
   openAirlinesFromPhone(airlineId: string) {
-    this.hubDeepLinkAirline = airlineId
-    this.hubDeepLinkTick += 1
-    this.emit()
+    this.openAirlines(airlineId)
   }
 
   /** Hub and Primary carriers with a named MRO bay ferry an aircraft in for a check. */
