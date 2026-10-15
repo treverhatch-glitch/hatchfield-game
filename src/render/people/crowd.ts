@@ -2,7 +2,7 @@
 // (one InstancedMesh per part); this file maps sim agents onto it and keeps
 // the thought-bubble layer.
 import * as THREE from 'three'
-import { PEOPLE_CAPACITY, PEOPLE_LOD } from '../../people/config'
+import { PEOPLE_CAPACITY, PEOPLE_LOD, PEOPLE_LOD_FULL } from '../../people/config'
 import { PeopleRenderer, type PeopleAgent } from '../../people/renderer'
 import type { PersonLook } from '../../people/types'
 import { lookFor, personPose, poseFor, type Role } from './roles'
@@ -34,6 +34,8 @@ export interface CrowdOptions {
   /** Metres past which nobody is drawn. */
   cull?: number
   camera?: THREE.Camera
+  /** Every drawn person at full detail, whatever the distance (overrides `lod` and `cull`). */
+  full?: boolean
 }
 export interface CrowdStats { visible: number; lod: [number, number, number]; culled: number; thoughts: number; drawCalls: number }
 
@@ -52,7 +54,7 @@ export interface Crowd {
 
 export function createCrowd(scene: THREE.Object3D, opts: CrowdOptions = {}): Crowd {
   const upm = opts.unitsPerMeter ?? 1
-  const lod = { ...PEOPLE_LOD, nearDistance: opts.lod?.[0] ?? PEOPLE_LOD.nearDistance, midDistance: opts.lod?.[1] ?? PEOPLE_LOD.midDistance, farDistance: opts.cull ?? PEOPLE_LOD.farDistance }
+  const lod = opts.full ? PEOPLE_LOD_FULL : { ...PEOPLE_LOD, nearDistance: opts.lod?.[0] ?? PEOPLE_LOD.nearDistance, midDistance: opts.lod?.[1] ?? PEOPLE_LOD.midDistance, farDistance: opts.cull ?? PEOPLE_LOD.farDistance }
   const renderer = new PeopleRenderer(scene, { capacity: opts.capacity ?? PEOPLE_CAPACITY, unitsPerMeter: upm, lod })
   const thoughts = new ThoughtLayer(upm)
   renderer.group.add(thoughts.group)

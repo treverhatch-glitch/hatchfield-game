@@ -22,6 +22,7 @@ import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
 import { servePose } from '../servicepoints/anim.ts'
 import { WALKER_LOST, WALKER_REBOOK } from '../paxnav/paxnav.ts'
+import { PEOPLE_LOD_FULL } from '../people/config.ts'
 import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
 import { crewLook, passengerLook } from '../people/variants.ts'
 import type { PersonLook } from '../people/types.ts'
@@ -162,7 +163,7 @@ export class HallNavCrowd {
   constructor() {
     this.group.name = 'hall-nav-crowd'
     this.detailCap = this.tuning.nearCap
-    this.people = new PeopleRenderer(this.group, { capacity: this.detailCap })
+    this.people = new PeopleRenderer(this.group, { capacity: this.detailCap, lod: PEOPLE_LOD_FULL })
   }
 
   /**

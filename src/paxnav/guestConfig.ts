@@ -238,3 +238,29 @@ export const GUEST_TUNING = {
   repPerMissed: -0.2,
   repPerComplaint: -0.05,
 } as const
+
+/** How a guest reads at a glance: the hover tooltip and the card header. */
+export const GUEST_GLANCE = {
+  /** Satisfaction (0–100) at or above each floor gives the mood word, best first. */
+  moods: [
+    { min: 80, label: 'Delighted' },
+    { min: 62, label: 'Content' },
+    { min: 45, label: 'Uneasy' },
+    { min: 28, label: 'Unhappy' },
+    { min: 0, label: 'Furious' },
+  ] as const,
+  /** A need under this level is not worth naming as the top need. */
+  topNeedMin: 0.35,
+  needLabels: {
+    hunger: 'Hungry',
+    thirst: 'Thirsty',
+    bladder: 'Needs the restroom',
+    boredom: 'Bored',
+    tired: 'Tired',
+    comfort: 'Uncomfortable',
+    anxiety: 'Worried about the flight',
+  } satisfies Record<NeedKey, string>,
+  /** Shown when no need is high and no thought has landed. */
+  calmNeed: 'Nothing pressing',
+  noThought: 'Nothing on their mind',
+}

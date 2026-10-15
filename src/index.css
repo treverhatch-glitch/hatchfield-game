@@ -2766,6 +2766,26 @@ html[data-gfx='low'] .view-layer.dim {
   color: #e8eef4;
 }
 
+.walker-tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 260px;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  color: #e8eef4;
+}
+
+.walker-tip .walker-tip-thought {
+  color: #ffd98a;
+}
+
 .kit-tip .good,
 .hall-build .good {
   color: #8ee0a8;

@@ -4,6 +4,8 @@ import { queueWaitMinutes } from './queue';
 export interface SecurityLaneConfig {
   tech: SecurityTech;
   open: boolean;
+  /** Measured pax/hr for this lane. Replaces the tech's table rate when the live walk knows better. */
+  ratePerHr?: number;
 }
 
 export interface SecurityPlanResult {
@@ -14,6 +16,11 @@ export interface SecurityPlanResult {
   utilisation: number;
   waitMinutes: number;
   bottleneck: boolean;
+}
+
+function laneRate(lane: SecurityLaneConfig): number {
+  if (typeof lane.ratePerHr === 'number' && Number.isFinite(lane.ratePerHr) && lane.ratePerHr > 0) return lane.ratePerHr;
+  return SECURITY_TECH_RATES[lane.tech] ?? 0;
 }
 
 /**
@@ -34,8 +41,7 @@ export function securityPlan(
   const openLanes = openLanesList.length;
 
   const capacity = openLanesList.reduce((sum, lane) => {
-    const rate = SECURITY_TECH_RATES[lane.tech] ?? 0;
-    return sum + rate;
+    return sum + laneRate(lane);
   }, 0);
 
   const utilisation = capacity > 0 ? safePax / capacity : safePax > 0 ? 1 : 0;
