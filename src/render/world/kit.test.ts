@@ -10,7 +10,8 @@ describe('terminal prop kit', () => {
       expect(list.every((part) => part.geo.getAttribute('position').count > 0)).toBe(true)
     }
     expect(parts.counter.some((part) => part.detail)).toBe(true)
-    expect(parts.kiosk.some((part) => part.surface === 'wood')).toBe(true)
+    expect(parts.kiosk.some((part) => part.surface === 'steel')).toBe(true)
+    expect(parts.kiosk.some((part) => part.surface === 'shop')).toBe(true)
     expect(parts.wc.some((part) => part.surface === 'wall')).toBe(true)
     expect(parts.bin.length).toBeGreaterThan(0)
     expect(parts.bag.some((part) => part.detail)).toBe(true)

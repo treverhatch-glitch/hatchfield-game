@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { propParts } from '../world/kit'
 import { SurfaceLibrary } from './library'
 import { ROSTER } from '../../airlines/roster'
-import { AIRLINE_LOGOS, BRAND_LOGO, CARPET_ROOMS, PACK4_FILES, TERRAZZO_ROOMS, pack4Edge, pack4Url } from './pack4'
+import { AIRLINE_LOGOS, BRAND_LOGO, CARPET_ROOMS, OFFICE_CARPET_ROOMS, PACK4_FILES, PLANK_ROOMS, RUBBER_ROOMS, TERRAZZO_ROOMS, pack4Edge, pack4Url } from './pack4'
 
 describe('texture pack 4', () => {
   it('keeps the files full size unless the quality setting asks for less', () => {
@@ -12,10 +12,13 @@ describe('texture pack 4', () => {
     expect(pack4Edge('low')).toBe(128)
   })
 
-  it('maps halls to terrazzo and gates and offices to grey carpet', () => {
+  it('maps halls to terrazzo, gates to carpet, and security and shops to their floors', () => {
     expect(TERRAZZO_ROOMS).toContain('checkin')
-    expect(TERRAZZO_ROOMS).toContain('security')
-    expect(CARPET_ROOMS).toEqual(['gate', 'office'])
+    expect(TERRAZZO_ROOMS).not.toContain('security')
+    expect(CARPET_ROOMS).toEqual(['gate'])
+    expect(OFFICE_CARPET_ROOMS).toEqual(['office'])
+    expect(RUBBER_ROOMS).toEqual(['security'])
+    expect(PLANK_ROOMS).toEqual(['shops'])
     expect(pack4Url(PACK4_FILES.terrazzo)).toBe('/assets/pack4/tex_terrazzo.jpg')
     expect(pack4Url(PACK4_FILES.carpetGrey)).toContain('tex_carpet_grey.jpg')
     expect(pack4Url(PACK4_FILES.ceiling)).toContain('tex_ceiling_tiles.jpg')
@@ -62,7 +65,8 @@ describe('texture pack 4', () => {
   it('puts granite on counter tops and a logo slot on the check-in desk', () => {
     const parts = propParts()
     expect(parts.counter.some((p) => p.surface === 'granite')).toBe(true)
-    expect(parts.counter.some((p) => p.surface === 'steel')).toBe(true)
+    expect(parts.counter.some((p) => p.surface === 'wood')).toBe(true)
+    expect(parts.kiosk.some((p) => p.surface === 'steel')).toBe(true)
     expect(parts.counter.some((p) => p.mat === 'logo')).toBe(true)
     expect(parts.kiosk.some((p) => p.surface === 'granite')).toBe(true)
   })

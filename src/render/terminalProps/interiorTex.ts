@@ -38,6 +38,21 @@ export const INTERIOR_TILES = {
   office_panel: 'office_panel.jpg',
   jetbridge_panel: 'jetbridge_panel.jpg',
   lounge_wood: 'lounge_wood.jpg',
+  gate_carpet: 'gate_carpet.jpg',
+  wall_panel_cream: 'wall_panel_cream.jpg',
+  brushed_steel: 'brushed_steel.jpg',
+  oak_veneer: 'oak_veneer.jpg',
+  security_rubber: 'security_rubber.jpg',
+  shop_plank: 'shop_plank.jpg',
+  ceiling_baffle: 'ceiling_baffle.jpg',
+  restroom_tile: 'restroom_tile.jpg',
+  jet_runner: 'jet_runner.jpg',
+} as const
+
+/** Hall floors that must not replace the belt rubber or the shelf wood. */
+export const INTERIOR_FLOOR_FILES = {
+  lane: `${INTERIOR_DIR}/security_rubber.jpg`,
+  plank: `${INTERIOR_DIR}/shop_plank.jpg`,
 } as const
 
 export type InteriorTile = keyof typeof INTERIOR_TILES

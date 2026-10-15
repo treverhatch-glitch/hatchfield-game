@@ -8,6 +8,7 @@
 import * as THREE from 'three'
 import { MATERIAL_TARGETS, SKIN_TILE_M, YARD_TEXTURE, type BuildingTargetId } from '../../build/materialTargets'
 import { artTexture, photoTexturesEnabled, type ArtTextureId } from './textureRegistry'
+import { exteriorTexture, type ExteriorArtId } from './exteriorArt'
 import type { QualityLevel } from './quality'
 
 export type SkinPart = 'wall' | 'roof' | 'trim' | 'door'
@@ -46,6 +47,15 @@ export const TILE_TARGET: Partial<Record<string, BuildingTargetId>> = {
   deice: 'deice_pad',
 }
 
+/** Full-res plates for the playtest exteriors. Graphics tier does not resize them. */
+const EXTERIOR: Partial<Record<BuildingTargetId, Partial<Record<SkinPart, ExteriorArtId>>>> = {
+  terminal: { wall: 'curtain', roof: 'membrane' },
+  hangar: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  fuel_farm: { wall: 'tank', roof: 'tank' },
+  fire_station: { wall: 'masonry', roof: 'membrane', door: 'bay' },
+  control_tower: { wall: 'shaft', roof: 'membrane' },
+}
+
 const state = { photos: true, anisotropy: 4 }
 
 /** Follow the graphics preset: Low keeps flat colours. */
@@ -62,6 +72,11 @@ function photo(id: ArtTextureId | null): THREE.Texture | null {
   return id && state.photos ? artTexture(id, state.anisotropy) : null
 }
 
+function exteriorMap(target: BuildingTargetId, part: SkinPart): THREE.Texture | null {
+  const id = EXTERIOR[target]?.[part]
+  return id ? exteriorTexture(id, state.anisotropy) : null
+}
+
 /**
  * A wall, roof, trim or door material for a building type. Walls and roofs
  * carry the photo map (it multiplies the target colour); trim and doors stay flat.
@@ -69,7 +84,7 @@ function photo(id: ArtTextureId | null): THREE.Texture | null {
 export function skinMaterial(target: BuildingTargetId, part: SkinPart, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
   const t = MATERIAL_TARGETS[target]
   const roughness = part === 'roof' ? t.roofRoughness : part === 'wall' ? t.wallRoughness : 0.5
-  const map = part === 'wall' ? photo(t.wallTexture) : part === 'roof' ? photo(t.roofTexture) : null
+  const map = exteriorMap(target, part) ?? (part === 'wall' ? photo(t.wallTexture) : part === 'roof' ? photo(t.roofTexture) : null)
   // A photo multiplies the colour, so ease the target toward white to keep the same overall tone.
   const color = extra.color ?? t[part]
   const m = new THREE.MeshStandardMaterial({ roughness, map, ...extra, color: map ? tint(String(color instanceof THREE.Color ? `#${color.getHexString()}` : color), 0.35) : color })

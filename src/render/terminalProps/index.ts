@@ -60,6 +60,8 @@ export const TERMINAL_ITEM_TO_PROP: Readonly<Record<string, TerminalPropType>> =
   dutyfree: 'shop_dutyfree',
   shop: 'shop_news',
   news: 'shop_news',
+  gadget: 'shop_gadget',
+  newsagent: 'shop_gadget',
   fast_food: 'shop_fastfood',
   restaurant: 'food_court',
   food_court: 'food_court',

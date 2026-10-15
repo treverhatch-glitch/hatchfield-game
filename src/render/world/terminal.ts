@@ -7,11 +7,12 @@ import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
 import { SurfaceLibrary, type LibraryMap } from '../materials/library'
 import { tileByPosition } from '../materials/pack1'
-import { CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
+import { CARPET_ROOMS, OFFICE_CARPET_ROOMS, PLANK_ROOMS, RUBBER_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
 import { ROSTER } from '../../airlines/roster'
 import type { QualityLevel } from './quality'
 import { MATERIAL_TARGETS } from '../../build/materialTargets'
 import { tint as lighten } from './buildingSkin'
+import { exteriorTexture } from './exteriorArt'
 import {
   BAG_COLORS,
   bake,
@@ -113,6 +114,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
   surfaces.loadPngs()
   surfaces.loadPack1(quality)
   surfaces.loadPack4(quality)
+  surfaces.loadInteriorFloors(quality)
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
   const palette: Record<string, THREE.Material> = {
@@ -279,10 +281,11 @@ export class TerminalBuilding {
     )
     shared.surfaces.watch(this.floorMat)
     tileByPosition(this.floorMat, shared.surfaces.repeatFor('terrazzo'))
+    const curtain = exteriorTexture('curtain')
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
         color: 0xffffff,
-        map: shared.surfaces.maps.glass,
+        map: curtain ?? shared.surfaces.maps.glass,
         transparent: true,
         opacity: 0.82,
         depthWrite: false,
@@ -290,7 +293,7 @@ export class TerminalBuilding {
         emissiveIntensity: 0,
       }),
     )
-    shared.surfaces.watch(this.glassMat)
+    if (!curtain) shared.surfaces.watch(this.glassMat)
     tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18
@@ -602,25 +605,24 @@ export class TerminalBuilding {
   /** Room floors, interior walls / partitions / lintels, and a hanging sign per room. */
   private buildRooms(index: number) {
     const rp = this.plan.rooms
-    const hallGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(TERRAZZO_ROOMS), flat: true })
-    const carpetGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(CARPET_ROOMS), flat: true })
-    const hallMat = new THREE.MeshLambertMaterial({
-      map: this.shared.surfaces.maps.terrazzo,
-      vertexColors: true,
+    const floorSpecs = [
+      [roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(TERRAZZO_ROOMS), flat: true }), 'terrazzo', 'terminal-floor'],
+      [roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(CARPET_ROOMS), flat: true }), 'carpet', 'terminal-carpet'],
+      [roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(OFFICE_CARPET_ROOMS), flat: true }), 'carpetGrey', 'terminal-office-carpet'],
+      [roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(RUBBER_ROOMS), flat: true }), 'lane', 'terminal-rubber'],
+      [roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(PLANK_ROOMS), flat: true }), 'plank', 'terminal-plank'],
+    ] as const
+    const floorMeshes: [THREE.BufferGeometry, THREE.Material, string][] = floorSpecs.map(([geo, kind, name]) => {
+      const mat = new THREE.MeshLambertMaterial({
+        map: this.shared.surfaces.maps[kind],
+        vertexColors: true,
+      })
+      this.shared.surfaces.watch(mat)
+      tileByPosition(mat, this.shared.surfaces.repeatFor(kind))
+      this.owned.mats.push(mat)
+      return [geo, mat, name]
     })
-    const carpetMat = new THREE.MeshLambertMaterial({
-      map: this.shared.surfaces.maps.carpetGrey,
-      vertexColors: true,
-    })
-    this.shared.surfaces.watch(hallMat)
-    this.shared.surfaces.watch(carpetMat)
-    tileByPosition(hallMat, this.shared.surfaces.repeatFor('terrazzo'))
-    tileByPosition(carpetMat, this.shared.surfaces.repeatFor('carpetGrey'))
-    this.owned.mats.push(hallMat, carpetMat)
-    for (const [geo, mat, name] of [
-      [hallGeo, hallMat, 'terminal-floor'],
-      [carpetGeo, carpetMat, 'terminal-carpet'],
-    ] as const) {
+    for (const [geo, mat, name] of floorMeshes) {
       if (!geo.getAttribute('position')?.count) {
         geo.dispose()
         continue

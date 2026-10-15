@@ -1055,7 +1055,11 @@ export class HallWorld {
     const roof = building.root.getObjectByName('terminal-roof-group')
     if (shell) {
       shell.visible = true
-      for (const child of shell.children) child.visible = child.name === 'terminal-floor' || child.name === 'terminal-carpet'
+      const keep = new Set(['terminal-floor', 'terminal-carpet', 'terminal-office-carpet', 'terminal-rubber', 'terminal-plank'])
+      for (const child of shell.children) {
+        if (child.name === 'terminal-ceiling') continue
+        child.visible = keep.has(child.name)
+      }
     }
     if (roof) roof.visible = false
   }
