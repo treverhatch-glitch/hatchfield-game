@@ -15906,6 +15906,9 @@ export class Game {
         eta = this.etaClearOfPad(eta)
       } else {
         const requested = eta
+        // Night stretches the step off a slot. The clear gap stays the strip
+        // headway, so a morning slot is not pushed out just because the next
+        // request lands after dark.
         eta = this.etaClearOfRunway(eta, physicalGap, strip)
         const mine = strip == null ? this.slotStripIndex(null) : strip
         const forcedByPrior = this.schedule.some(
@@ -21317,7 +21320,9 @@ export class Game {
     ) {
       return false
     }
-    return !mine.some((index) => this.arrivalOnApproach(index) || this.runwayStripBusy(index, self.id))
+    // The approach does not pin the stand. The roll waits at the hold line
+    // (departureFitsHole). A lock or a takeoff on this strip still blocks.
+    return !mine.some((index) => this.runwayStripBusy(index, self.id))
   }
 
   freeStands(): Vec[] {

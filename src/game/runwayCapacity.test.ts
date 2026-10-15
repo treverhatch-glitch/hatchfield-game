@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { runwayArrivalGapSec } from '../atc/capacity.ts'
+import { runwayArrivalGapSec, runwayMovementCapacity } from '../atc/capacity.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { MIN_RUNWAY } from './catalog.ts'
+import { OPENING_SEC } from './openingData.ts'
 import { runwayStrips } from './path.ts'
 import { mulberry32 } from '../playtest/personas.ts'
 import { Game } from './sim.ts'
@@ -37,9 +38,14 @@ function addSouthStrip(game: Game) {
   game.bumpMap()
 }
 
-function runDays(game: Game, days: number) {
+function runDays(game: Game, days: number): { done: number; atOpening: number } {
   const end = game.clock + days * REAL_SECONDS_PER_GAME_DAY
-  while (game.clock < end) game.tick(0.25)
+  let atOpening: number | null = null
+  while (game.clock < end) {
+    game.tick(0.25)
+    if (atOpening == null && game.clock >= OPENING_SEC) atOpening = game.flightsDone
+  }
+  return { done: game.flightsDone, atOpening: atOpening ?? game.flightsDone }
 }
 
 function diverts(game: Game): number {
@@ -113,14 +119,15 @@ describe('runway capacity', () => {
     ])
     expect(runwayStrips(game.tiles, MIN_RUNWAY).length).toBe(1)
     expect(game.tiles.flat().filter((t) => t === 'stand').length).toBe(4)
-    runDays(game, 8)
+    const result = runDays(game, 8)
     Math.random = random
-    // The strip can book 3× the old 150s bank (see capacity.test). Completions
-    // stay under that ceiling: a turnaround is longer than the runway hole,
-    // so four stands do not finish 45 flights in eight days. They do finish
-    // more than the 150s bank, without a divert.
-    expect(game.flightsDone, `diverts ${diverts(game)}`).toBeGreaterThan(LEGACY_EIGHT_DAY_FLIGHTS)
-    expect(diverts(game)).toBeLessThanOrEqual(1)
+    // Booked movements are 3× the retired 150s bank (4 a day → 12). Completions
+    // stay under that ceiling: the opening headway, the night closure, and a
+    // turnaround longer than the runway hole keep four stands from finishing
+    // 45 flights in eight days. They do finish more than the 150s bank.
+    expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
+    expect(result.done, `diverts ${diverts(game)}`).toBeGreaterThan(LEGACY_EIGHT_DAY_FLIGHTS)
+    expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)
 
@@ -139,8 +146,7 @@ describe('runway capacity', () => {
     one.scheduleAuto = true
     one.signed = ['harbor', 'northline']
     addStands(one, stands)
-    runDays(one, 8)
-    const oneFlights = one.flightsDone
+    const oneRun = runDays(one, 8)
     const oneDiverts = diverts(one)
 
     Math.random = mulberry32(0x5171)
@@ -150,13 +156,16 @@ describe('runway capacity', () => {
     addStands(two, stands)
     addSouthStrip(two)
     expect(two.runwayLoad().lanes).toBe(2)
-    runDays(two, 8)
+    const twoRun = runDays(two, 8)
     Math.random = random
-    expect(oneDiverts).toBeLessThanOrEqual(1)
-    expect(diverts(two)).toBeLessThanOrEqual(1)
-    // A second linked strip takes its own bank. Stand turnaround still caps
-    // both fields, so the gain is real and smaller than an empty-runway 2×.
-    expect(two.flightsDone, `one ${oneFlights} two ${two.flightsDone}`).toBeGreaterThan(oneFlights)
+    expect(oneDiverts).toBe(0)
+    expect(diverts(two)).toBe(0)
+    // The opening headway is one shared gap, so both fields turn alike until
+    // minute ten. After that each strip runs its own bank.
+    const oneGain = oneRun.done - oneRun.atOpening
+    const twoGain = twoRun.done - twoRun.atOpening
+    expect(twoRun.done, `one ${oneRun.done} two ${twoRun.done}`).toBeGreaterThan(oneRun.done)
+    expect(twoGain, `after opening one ${oneGain} two ${twoGain}`).toBeGreaterThanOrEqual(oneGain * 1.6)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {
