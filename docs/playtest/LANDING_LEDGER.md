@@ -147,16 +147,25 @@ Quality: every graphics tier keeps the photo set (skies, foliage, props, colour 
 
 Gaps still flat: `docs/playtest/ART_GAPS.md`.
 
-Gate, preview, and fast-forward of `main` are recorded below when they finish.
-
 ## Gate
 
-Pending.
+Quick PASS on `296990215af6` (781s, Node v22.14.0). 2953 tests passed, 0 failed, 9 skipped (453 files). 30-day soak reached day 30, end cash $4,602,889, stuck 0, 22 recoveries. Draw-call budgets passed. Careful bots, 15 days, passed. Report: `docs/devlog/gate/296990215af65c3fa3bfb8db0fe8e3aa1a2bda1e.md`.
+
+`main` moved twice while that gate ran: first to `4bd73e2f` (carbon tracking), then to `79712692` (captain ledger, shell floors, Tower III copy). The art renderer and `public/art` rebased cleanly both times. The captain's classification above is unchanged.
 
 ## Preview
 
-Pending. Deploy target is Cloudflare Pages branch `progress` only.
+`npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset in this environment. `--branch main` was not used.
+
+Stills are from the local dev server of this tree, graphics preset high:
+
+- `docs/devlog/media/landing/runway-close.png`
+- `docs/devlog/media/landing/terrain-wide.png`
+- `docs/devlog/media/landing/sky-dawn.png`
+- `docs/devlog/media/landing/sky-night.png`
+- `docs/devlog/media/landing/terminal-exterior.png`
+- `docs/devlog/media/landing/interior-props.png`
 
 ## Main
 
-Pending.
+Rebased onto `79712692`. The fast-forward push is the commit that records this ledger. If that push is rejected, the branch still holds the green gate and these stills.

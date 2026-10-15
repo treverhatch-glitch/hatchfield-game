@@ -6,6 +6,7 @@ Order is the producer queue. A row lands only after the rows above it are on `ma
 | --- | --- | --- | --- | --- |
 | P0 | Resume play audio on the first canvas or key gesture | `6fba6893` | quick, recorded on main before this port | production, not this preview |
 | P1 | Building rounds 4–9 (fuel farm, real-size hangars, truck-fit bays, rounded non-terminal buildings) plus aircraft pass 5 logic, with jumbo spawn gated by airline size and relationship growth | `8c0e21d699afefa9c636f4de6fa2751eb63e2584` | quick PASS, 2943 tests, 30-day soak, Careful bot. `docs/devlog/gate/8c0e21d699afefa9c636f4de6fa2751eb63e2584.md` | https://progress.hatchfield.pages.dev (deployment https://f86833a1.hatchfield.pages.dev) |
+| P1 | Full-resolution art landing: runway and apron plates, seasonal terrain and foliage, six skies plus the noon light hint, terminal and hotel facades, interior props. Gap list in `docs/playtest/ART_GAPS.md` | `cursor/art-landing-p1-9acb` | quick PASS, 2953 tests, 30-day soak, Careful bot, on `296990215af6`, then rebased. `docs/devlog/gate/296990215af65c3fa3bfb8db0fe8e3aa1a2bda1e.md` | wrangler `--branch progress` did not upload: `CLOUDFLARE_API_TOKEN` unset. Stills in `docs/devlog/media/landing/` |
 
 ## P1 notes
 
