@@ -32,7 +32,7 @@ const MESSAGE_KINDS = new Set([
   'emergency',
 ])
 
-/** Letter-stack ids that move onto the phone on desktop. Emergencies and threats stay off it. */
+/** Letter-stack ids that move onto the phone on desktop, including threat and divert. */
 const OWNED_LETTER_IDS = new Set([
   'contract',
   'layover',
@@ -63,7 +63,7 @@ export function isPhoneExcluded(kind: string): kind is PhoneExcludedKind {
 
 /**
  * Where a kind sits. A contract letter is a message: its card carries Sign and Decline.
- * Signed deals sit on the Contracts tab. Hints, tips, alerts, and emergencies return null.
+ * Signed deals sit on the Contracts tab. Hints, tips, and alerts return null.
  */
 export function classifyPhoneKind(kind: string): PhoneTab | null {
   if (isPhoneExcluded(kind)) return null

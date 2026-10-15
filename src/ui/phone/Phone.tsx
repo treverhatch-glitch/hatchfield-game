@@ -23,7 +23,7 @@ import './phone.css'
 const SWIPE_PX = 48
 const FLASH_MS = 4500
 
-export function Phone({ game, desktop }: { game: Game; desktop?: boolean }) {
+export function Phone({ game, desktop, openSignal = 0 }: { game: Game; desktop?: boolean; openSignal?: number }) {
   const detected = useDesktop()
   const show = desktop ?? detected
   const cards = show ? readPhoneCards(game) : []
@@ -34,6 +34,11 @@ export function Phone({ game, desktop }: { game: Game; desktop?: boolean }) {
     setSynced(keyJoin)
     setShell((cur) => phoneSync(cur, keyJoin ? keyJoin.split('\n') : []))
   }
+
+  useEffect(() => {
+    if (!show || openSignal <= 0) return
+    setShell((cur) => phoneOpen(cur, 'messages'))
+  }, [show, openSignal])
 
   useEffect(() => {
     if (!show || !shell.flashKey) return

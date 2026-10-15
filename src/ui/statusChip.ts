@@ -91,12 +91,17 @@ export function dockHasRows(game: Game): boolean {
   return game.alerts.ranked().some((row) => row.severity === 'critical' || row.severity === 'warning')
 }
 
-/** A letter scrolls the stack. Anything else expands the dock when it has rows. Never a phone card. */
+/** A letter names the stack id. On desktop the HUD opens that card on the phone instead. */
 export function statusChipTarget(phrases: readonly StatusPhrase[], dockOpen: boolean): StatusChipTarget | null {
   const letter = phrases[0]?.letter
   if (letter) return { kind: 'letter', id: letter }
   if (dockOpen) return { kind: 'dock' }
   return null
+}
+
+/** Desktop threat and divert cards live on the phone. The chip must not open a covering letter. */
+export function statusChipOpensPhone(desktopPhone: boolean, target: StatusChipTarget): boolean {
+  return desktopPhone && target.kind === 'letter'
 }
 
 export function runStatusChipAction(

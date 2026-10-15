@@ -6,6 +6,7 @@ import {
   runStatusChipAction,
   statusChipFromGame,
   statusChipPhrases,
+  statusChipOpensPhone,
   statusChipTarget,
   type StatusChipInput,
 } from './statusChip.ts'
@@ -77,7 +78,18 @@ describe('status chip', () => {
     expect(statusChipTarget(phrases, true)).toEqual({ kind: 'letter', id: 'threat' })
   })
 
-  it('names an emergency letter and a click reveals it without a phone card', () => {
+  it('opens the phone for a threat or divert on desktop, and the letter only on the narrow layout', () => {
+    const threat = statusChipTarget(
+      statusChipPhrases({ ...quiet, threat: 'hard' }),
+      false,
+    )
+    const divert = statusChipTarget(statusChipPhrases({ ...quiet, emergency: true }), false)
+    expect(threat && statusChipOpensPhone(true, threat)).toBe(true)
+    expect(divert && statusChipOpensPhone(true, divert)).toBe(true)
+    expect(divert && statusChipOpensPhone(false, divert)).toBe(false)
+  })
+
+  it('names an emergency letter and a click reveals it on the narrow layout', () => {
     const phrases = statusChipPhrases({ ...quiet, emergency: true })
     expect(phrases).toEqual([{ text: 'Emergency', letter: 'emergency' }])
     expect(statusChipTarget(phrases, false)).toEqual({ kind: 'letter', id: 'emergency' })

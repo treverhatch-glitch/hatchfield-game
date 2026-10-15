@@ -21,7 +21,7 @@ import { BuildTray } from './nav/BuildTray.tsx'
 import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
 import { StatusChip } from './StatusChip.tsx'
 import { ApronFlightCard, FlightCard } from './inspector/FlightCard.tsx'
-import { dockHasRows, runStatusChipAction, statusChipFromGame } from './statusChip.ts'
+import { dockHasRows, runStatusChipAction, statusChipFromGame, statusChipOpensPhone } from './statusChip.ts'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
 import { ScenarioPanel } from './nav/ScenarioPanel.tsx'
 import type { UnlockLink } from './nav/stampFacts.ts'
@@ -133,6 +133,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const manageTab = game.sidePanel === 'hints' ? null : panelPick
   const panel = manageTab ? sheetFor(manageTab) : null
   const [openLetter, setOpenLetter] = useState<string | null>(null)
+  const [phoneOpenSignal, setPhoneOpenSignal] = useState(0)
   const [hoverLetter, setHoverLetter] = useState<string | null>(null)
   // Desktop reads those letters on the phone, which holds them itself.
   const desktopPhone = useDesktop()
@@ -428,7 +429,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <StatusChip
           phrases={chipPhrases}
           dockHasRows={chipDock}
-          onAct={(target) =>
+          onAct={(target) => {
+            if (statusChipOpensPhone(desktopPhone, target)) {
+              setPhoneOpenSignal((n) => n + 1)
+              return
+            }
             runStatusChipAction(target, {
               openLetter: setOpenLetter,
               scrollLetter: (id) => {
@@ -437,7 +442,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               },
               expandDock: () => game.minimiseAlerts(false),
             })
-          }
+          }}
         />
         <div
           className="stat"
@@ -581,7 +586,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onDismiss={() => game.dismissYearReport()}
         />
       ) : null}
-      <Phone game={game} desktop={desktopPhone} />
+      <Phone game={game} desktop={desktopPhone} openSignal={phoneOpenSignal} />
       <AlertStackView game={game} />
       {levelUp != null ? (
         <LevelUpCard
