@@ -2,7 +2,7 @@
 
 Objects that still draw as a flat colour, a shared generic plate, or a coloured box. Generate one file per row. Black background on sprite sheets (same treatment as `tree_sprites` / `bush_sprites`). Seamless tiles should tile. Elevations and vehicle sides should not.
 
-Already in the store and wired, so do not regenerate: runway paint, wet asphalt, threshold bars, dirt shoulder, spring grass, autumn grass, farmland, snow grass / apron / asphalt, river, tree and bush sheets, dawn / noon / dusk / night skies, terminal elevation, hotel elevation, queue tape, carousel belt, chainlink.
+Already in the store and wired, so do not regenerate: runway paint, wet asphalt, threshold bars, dirt shoulder, spring grass, autumn grass, farmland, snow grass / apron / asphalt, river, tree and bush sheets, dawn / noon / dusk / night / overcast / storm skies, the noon HDRI hint (lighting only), terminal elevation, hotel elevation, queue tape, carousel belt, chainlink, window glow, apron flood glow, and the nav-light sprite sheet.
 
 People reference sheets already live in `assets/people/originals/` (`pax_*`, `crew_*`, `luggage_set.jpg`, `pax_body_atlas.jpg`). The figures in the hall and on the apron are still solid-colour primitives. Those sheets are not sampled onto the mesh. A new file is only useful if you want a wrap that fits the primitive (see the people row).
 
