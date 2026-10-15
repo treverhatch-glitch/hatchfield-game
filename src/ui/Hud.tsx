@@ -8,6 +8,7 @@ import { GameTimetable } from './timetable/GameTimetable'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
 import { HubProgress } from './hub/HubPanels.tsx'
+import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
@@ -621,6 +622,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             left: (() => number) | null
             live?: boolean
             cardData?: StandingAdvisorCard
+            locked?: boolean
           }
           const letters: Letter[] = []
           if (game.offer && offerAirline) {
@@ -682,14 +684,17 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             })
           }
           if (game.hubOffer && hubAirline) {
+            const tier = game.hubOffer.tier ?? 'hub'
+            const list = game.hubChecklistFor(game.hubOffer.airline)
             letters.push({
               id: 'hub',
               kind: 'Hub',
               from: hubAirline.name,
-              title: `${hubAirline.name} Hub plaque`,
-              blurb: `${money(game.hubOffer.fee)} · denser slots, brand lounge, persona reward. Fail a layover and the ban is harsher.`,
+              title: `${hubAirline.name} · ${HUB_TIER_LABEL[tier]} offer`,
+              blurb: `${money(game.hubOffer.fee)}. ${list.rewards[0] ?? 'The next step on their ladder.'}`,
               tone: 'good',
               left: () => Math.ceil(game.hubOffer?.deadline ?? 0),
+              locked: !(list.eligible && list.next === tier),
             })
           }
           if (game.mxOffer && mxAirline) {
@@ -924,8 +929,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     ) : null}
                     {letter.id === 'hub' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.acceptHub()}>
-                          Take Hub
+                        <button type="button" className="on" disabled={letter.locked} onClick={() => game.acceptHub()}>
+                          Accept
                         </button>
                         <button type="button" onClick={() => game.declineHub()}>
                           Decline
