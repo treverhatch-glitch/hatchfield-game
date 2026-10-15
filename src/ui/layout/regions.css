@@ -141,6 +141,15 @@
   top: calc(var(--hud-top) + 88px);
 }
 
+/* In the terminal the build menu owns that band, and it grows with pickers and checks. */
+body:has(.view-layer.live .hall-wrap .interior-bar) .feedback-toasts {
+  top: calc(var(--hud-interior-bottom, calc(var(--hud-top) + 160px)) + var(--region-gap));
+}
+
+body:has(.view-layer.live .hall-wrap .interior-bar) .feedback-banner {
+  top: calc(var(--hud-interior-bottom, calc(var(--hud-top) + 160px)) + var(--region-gap) + 44px);
+}
+
 .left-dock-note {
   margin: 8px;
   color: #cbd5e1;
@@ -375,6 +384,9 @@
   padding: 8px;
   color: #e7eee9;
   font-size: 13px;
+  background: rgb(10 16 30 / 0.82);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 10px;
 }
 
 .relations-tab button {
@@ -460,6 +472,23 @@ body:has(.facility-card) .hall-build,
 body:has(.hud .chrome.has-panel) .hall-build,
 body:has(.hud .chrome.has-panel) .guest-card,
 body:has(.hud .chrome.has-panel) .facility-card {
+  display: none;
+}
+
+/* The ?playtest=1 year report places itself inline; it waits in the inspector slot. */
+[data-testid='playtest-year-report'] {
+  top: var(--region-inspector-top) !important;
+  right: var(--region-gap) !important;
+  width: var(--region-inspector) !important;
+  max-height: calc(100vh - var(--region-inspector-top) - var(--region-build) - var(--region-gap) * 2) !important;
+}
+
+body:has(.hud .chrome.has-panel) [data-testid='playtest-year-report'],
+body:has(.hud .flight-card) [data-testid='playtest-year-report'],
+body:has(.hud .assign-panel) [data-testid='playtest-year-report'],
+body:has(.guest-card) [data-testid='playtest-year-report'],
+body:has(.facility-card) [data-testid='playtest-year-report'],
+body:has(.hall-build) [data-testid='playtest-year-report'] {
   display: none;
 }
 
