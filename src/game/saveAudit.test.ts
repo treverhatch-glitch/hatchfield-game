@@ -94,6 +94,6 @@ describe('save audit for the playtest field', () => {
     expect(loaded.spotOffer).toEqual({ flightNo: 'NL220', flightId: 'spot-1', expiresAt: 900 })
     expect(loaded.spotInbound).toEqual({ litres: 12_000, perLitre: 0.9, minutesLeft: 14, waitNoted: false })
     expect(loaded.paxDesks).toBe(6)
-    expect(loaded.dedicatedDesks).toEqual([{ deskId: 'desk-1', airlineId: 'northline' }])
+    expect(loaded.dedicatedDesks).toEqual([{ deskId: 'desk-1', airlineId: 'northline', mode: 'dedicated' }])
   })
 })
