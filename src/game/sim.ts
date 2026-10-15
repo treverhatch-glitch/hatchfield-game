@@ -621,7 +621,7 @@ import {
   SIM_MINUTES_PER_REAL_SECOND,
   SimClock,
 } from '../core/clock.ts'
-import { formatFaceDate } from '../core/faceClock.ts'
+import { clockForFaceHour, formatFaceDate } from '../core/faceClock.ts'
 import {
   TycoonEngine,
   type CampaignKind,
@@ -1925,7 +1925,8 @@ export class Game {
     this.site = null
     this.tiles = emptyTiles()
     this.fits = []
-    this.clock = 0
+    // Face hour 0 is midnight and the sky follows that clock. Open on the morning the economy already calls day.
+    this.clock = clockForFaceHour(0, 8)
     this.speed = 0
     this.tool = 'pan'
     this.facing = 'h'

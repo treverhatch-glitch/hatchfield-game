@@ -62,9 +62,11 @@ describe('day/night hooks', () => {
     const morning = skyState(FIXED_DAY_HOUR)
     expect(night.lights).toBe(1)
     expect(morning.lights).toBe(0)
-    expect(night.sunIntensity).toBeLessThan(0.08)
-    expect(night.exposure).toBeLessThan(0.75)
-    expect(morning.sunIntensity).toBeGreaterThan(night.sunIntensity * 20)
+    // Night is a dim moon, not a black field. Noon still leads.
+    expect(night.sunIntensity).toBeGreaterThan(0.2)
+    expect(night.sunIntensity).toBeLessThan(0.6)
+    expect(night.exposure).toBeGreaterThan(0.8)
+    expect(morning.sunIntensity).toBeGreaterThan(night.sunIntensity * 8)
   })
 
   it('holds noon when the cycle is off, and still lets a photo hour win', () => {

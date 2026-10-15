@@ -49,12 +49,13 @@ function firstLandingSec(seed: number, focus: 'pax' | 'cargo'): number | null {
     expect(game.startChosenKit(site, focus)).toBe(true)
     expect(game.starterKitStamped).toBe(true)
     game.speed = 1
+    const opened = game.clock
     for (let t = 0; t < FIRST_LANDING_LIMIT_SEC; t += 0.5) {
       if (game.offer && game.signed.length === 0) game.acceptNegotiation()
       game.tick(0.5)
       const down = game.flights.some((f) => game.signed.includes(f.airline) && LANDED.has(f.phase))
       if (down) {
-        landed = game.clock
+        landed = game.clock - opened
         break
       }
     }
