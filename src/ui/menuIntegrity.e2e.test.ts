@@ -187,7 +187,9 @@ describe('every menu opens, has content, and closes', () => {
     } finally {
       vite.kill('SIGTERM')
     }
-  }, 360_000)
+    // Full exterior meshes make this SwiftShader walk ~5 min alone. Two gate workers
+    // pushed the old 6 min cap over the line; the walk itself still finishes.
+  }, 600_000)
 })
 
 async function assertNamedButtons(root: Locator, where: string) {
