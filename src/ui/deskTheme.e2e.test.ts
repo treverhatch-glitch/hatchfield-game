@@ -75,11 +75,10 @@ describe('check-in desk themes', () => {
         expect(first.brands).toContain('harbor')
         expect(first.brands).not.toContain('northline')
         expect(first.live).toBe(true)
-        await page.evaluate(() => {
-          const game = (window as unknown as { __hatch: Hatch }).__hatch
-          ;(window as unknown as { __hall: HallCam }).__hall.render(game)
-        })
-        expect(await aim(page, 'harbor')).toBe(true)
+        const harborShot = await aim(page, 'harbor')
+        expect(harborShot.ok).toBe(true)
+        expect(harborShot.rgb[1]).toBeGreaterThan(harborShot.rgb[0] + 30)
+        expect(harborShot.rgb[1]).toBeGreaterThan(harborShot.rgb[2])
         mkdirSync('docs/screens/checkin', { recursive: true })
         await page.screenshot({ path: 'docs/screens/checkin/desk-harbor.png' })
 
@@ -93,11 +92,10 @@ describe('check-in desk themes', () => {
         expect(second.brands).toContain('northline')
         expect(second.brands).not.toContain('harbor')
         expect(second.why).not.toBe('short of desks')
-        await page.evaluate(() => {
-          const game = (window as unknown as { __hatch: Hatch }).__hatch
-          ;(window as unknown as { __hall: HallCam }).__hall.render(game)
-        })
-        expect(await aim(page, 'northline')).toBe(true)
+        const northShot = await aim(page, 'northline')
+        expect(northShot.ok).toBe(true)
+        expect(northShot.rgb[2]).toBeGreaterThan(northShot.rgb[0] + 30)
+        expect(northShot.rgb[2]).toBeGreaterThan(northShot.rgb[1])
         await page.screenshot({ path: 'docs/screens/checkin/desk-northline.png' })
       } finally {
         await browser.close()
@@ -128,33 +126,83 @@ interface Hatch {
   showStarterKit: () => boolean
 }
 
-async function aim(page: Page, brand: string): Promise<boolean> {
+async function aim(page: Page, brand: string): Promise<{ ok: boolean; rgb: number[] }> {
   return page.evaluate((id) => {
     const hall = (window as unknown as { __hall: HallCam }).__hall
-    const sign = hall.scene.getObjectByName(`desk-sign:${id}`)
-    if (!sign) return false
-    const game = (window as unknown as { __hatch: unknown }).__hatch
-    hall.dist = 3
-    hall.pitch = 0.18
-    hall.yaw = sign.rotation.y + Math.PI
-    hall.pivot.set(sign.position.x, sign.position.y, sign.position.z)
-    hall.placeCam()
+    const game = (window as unknown as { __hatch: { camGoal: unknown } }).__hatch
+    // Rebuild the signs for the current allocation before looking them up.
     hall.render(game)
-    return true
+    // A facility select eases the orbit camera. A grab cancels that ease so
+    // the framed render keeps the lens parked on the sign.
+    hall.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 4, clientY: 4, button: 0 }))
+    game.camGoal = null
+    const sign = hall.scene.getObjectByName(`desk-sign:${id}`)
+    if (!sign) return { ok: false, rgb: [0, 0, 0] }
+    sign.updateWorldMatrix(true, false)
+    const normal = sign.position.clone()
+    sign.getWorldDirection(normal)
+    const eye = sign.position.clone().addScaledVector(normal, 5)
+    hall.camera.position.copy(eye)
+    hall.camera.up.set(0, 1, 0)
+    hall.camera.lookAt(sign.position)
+    hall.render(game)
+    const gl = hall.renderer.getContext()
+    function signPaint(mesh: Sign): number[] {
+      const canvas = mesh.material?.map?.image
+      const ctx = canvas?.getContext('2d')
+      const px = ctx?.getImageData(8, 8, 1, 1).data
+      return px ? [px[0], px[1], px[2]] : [0, 0, 0]
+    }
+    const paint = signPaint(sign)
+    const w = gl.drawingBufferWidth
+    const h = gl.drawingBufferHeight
+    const pix = new Uint8Array(4)
+    let best = [0, 0, 0]
+    let bestD = 1e9
+    for (let y = (h * 0.3) | 0; y < h * 0.7; y += 6) {
+      for (let x = (w * 0.3) | 0; x < w * 0.7; x += 6) {
+        gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pix)
+        const d = Math.abs(pix[0] - paint[0]) + Math.abs(pix[1] - paint[1]) + Math.abs(pix[2] - paint[2])
+        if (d < bestD) {
+          bestD = d
+          best = [pix[0], pix[1], pix[2]]
+        }
+      }
+    }
+    return { ok: bestD < 90, rgb: best }
   }, brand)
 }
 
 interface HallCam {
-  dist: number
-  pitch: number
-  yaw: number
-  pivot: { set: (x: number, y: number, z: number) => void }
-  placeCam: () => void
   render: (game: unknown) => void
-  scene: {
-    traverse: (fn: (obj: { name: string }) => void) => void
-    getObjectByName: (name: string) => { position: { x: number; y: number; z: number }; rotation: { y: number } } | undefined
+  renderer: {
+    domElement: HTMLCanvasElement
+    getContext: () => WebGL2RenderingContext
   }
+  camera: {
+    position: { copy: (v: Vec3) => void }
+    up: { set: (x: number, y: number, z: number) => void }
+    lookAt: (v: Vec3) => void
+  }
+  scene: {
+    getObjectByName: (name: string) => Sign | undefined
+  }
+}
+
+interface Vec3 {
+  x: number
+  y: number
+  z: number
+  clone: () => Vec3
+  copy: (v: Vec3) => Vec3
+  addScaledVector: (v: Vec3, s: number) => Vec3
+}
+
+interface Sign {
+  position: Vec3
+  material?: { map?: { image?: HTMLCanvasElement } }
+  updateWorldMatrix: (updateParents: boolean, updateChildren: boolean) => void
+  getWorldDirection: (target: Vec3) => Vec3
 }
 
 function viteBin(): string {
