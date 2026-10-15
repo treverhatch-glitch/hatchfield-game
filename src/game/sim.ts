@@ -15968,8 +15968,9 @@ export class Game {
         (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
         !this.slotUsesPad(s),
     )
-    for (let guard = 0; guard < 32; guard++) {
+    for (let guard = 0; guard < 48; guard++) {
       const blocker = open
+        .filter((s) => this.stripsConflict(this.slotStripIndex(s.runwayPref), mine))
         .map((s) => s.eta)
         .filter((at) => Math.abs(at - t) < gap - 1e-6)
         .sort((a, b) => b - a)[0]
@@ -15988,9 +15989,8 @@ export class Game {
         (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
         this.slotUsesPad(s),
     )
-    for (let guard = 0; guard < 48; guard++) {
+    for (let guard = 0; guard < 32; guard++) {
       const blocker = open
-        .filter((s) => this.stripsConflict(this.slotStripIndex(s.runwayPref), mine))
         .map((s) => s.eta)
         .filter((at) => Math.abs(at - t) < gap - 1e-6)
         .sort((a, b) => b - a)[0]

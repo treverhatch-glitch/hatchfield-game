@@ -16,9 +16,9 @@ The Airfield numbers panel for a deferred bank is `docs/playtest/runway_capacity
 | Deferred slots (run total) | 42 | 41 | 26 |
 | Day strip 2 opened | 24 | 26 | not built |
 
-Connection diverts are passengers whose connection was judged a divert. They are not the runway go-around divert. The eight-day runway tests on this branch finish with no runway divert on one strip, and one on the two-strip field.
+Connection diverts are passengers whose connection was judged a divert. They are not the runway go-around divert. The eight-day runway tests on this branch finish with no runway divert on one strip or on two.
 
-These rows were remeasured after the belt-cart gate. Pushback waits for a cart to dock, so every persona finishes fewer flights than the table from before that gate. Careful and Greedy both stamp the second strip once the Airfield figure shows deferred demand and cash clears the $38,000 stamp plus a $30,000 reserve. Careful opened it on day 24. Greedy opened it on day 26. All three finish above $0. Greedy is thin at $13,513 with six stands and the second strip. Chaotic is not one of the two personas the strip rule applies to. Chaotic finished at $5,926 with 17 stands and did not stamp a strip.
+These rows were measured before helicopter carriers and the fuel pipeline landed on main. The eight-day counts below were remeasured after that rebase. The day-60 cash and flight totals will move again once those systems are in the run. Pushback waits for a cart to dock, so every persona finishes fewer flights than the table from before that gate. Careful and Greedy both stamp the second strip once the Airfield figure shows deferred demand and cash clears the $38,000 stamp plus a $30,000 reserve. Careful opened it on day 24. Greedy opened it on day 26. All three finish above $0. Greedy is thin at $13,513 with six stands and the second strip. Chaotic is not one of the two personas the strip rule applies to. Chaotic finished at $5,926 with 17 stands and did not stamp a strip.
 
 ## Prefab strain
 
@@ -36,8 +36,8 @@ Booked movements on one strip are 12 a day. The retired 150-second gap booked 4.
 
 On seed `0x5171`, eight days, farm stocked so an empty rack is not the bottleneck, and cart depots stamped so the two starter bag carts are not the bottleneck either. Pushback waits for a cart to dock at the belt, and two carts finish fewer flights than the old 150-second bank.
 
-- One strip and four stands, Harbor only, six depots: 20 flights, 0 runway diverts. The 150-second gap turned 15 on that shape.
-- Two linked strips against one, six stands four cells apart, Harbor and Northline, eight depots: 26 and 18 flights. One runway divert on the two-strip field. The opening headway is shared. After it, the two-strip field completed 17 flights and the one-strip field completed 12, about 1.4×. One strip is already finishing the flights its 32-second gap booked. The second strip adds the flights the airline spacing (about 18–28 seconds) can place on the other strip. Booked movements stay two strips to one.
+- One strip and four stands, Harbor only, six depots: 19 flights, 0 runway diverts. The 150-second gap turned 15 on that shape.
+- Two linked strips against one, six stands four cells apart, Harbor and Northline, eight depots: 23 and 17 flights, 0 runway diverts on both. The opening headway is shared. After it, the two-strip field completed 14 flights and the one-strip field completed 11, about 1.3×. One strip is already finishing the flights its 32-second gap booked. The second strip adds the flights the airline spacing (about 18–28 seconds) can place on the other strip. Booked movements stay two strips to one.
 
 Guard and ambulance, same seed, starter kit plus a hangar stand, eight days, auto timetable:
 

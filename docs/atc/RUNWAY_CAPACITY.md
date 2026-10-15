@@ -51,15 +51,15 @@ On seed `0x5171`, speed 5, 0.25-second steps, eight days:
 
 | Field | Completed flights | Diverts |
 | --- | ---: | ---: |
-| One strip, starter plus two grass stands (four stands), Harbor, six cart depots | 20 | 0 |
-| One strip, six stands four cells apart, Harbor and Northline, eight cart depots | 18 | 0 |
-| Two linked strips, same six stands, airlines, and depots | 26 | 1 |
+| One strip, starter plus two grass stands (four stands), Harbor, six cart depots | 19 | 0 |
+| One strip, six stands four cells apart, Harbor and Northline, eight cart depots | 17 | 0 |
+| Two linked strips, same six stands, airlines, and depots | 23 | 0 |
 
 The farm is stocked in that harness. The starter tank is one load, and the spot offer expires, so an unstocked field grounds the bank for lack of fuel rather than lack of runway. Pushback also waits until a bag cart has docked at the belt. The starter fleet is two carts, and that fleet finishes fewer flights than the old 150-second bank. Depots are the player's cart bay, so the harness stamps them the way it stocks the farm. The count is then the strip's.
 
-The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. The stocked four-stand field finishes 20. It does not finish 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints.
+The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. The stocked four-stand field finishes 19. It does not finish 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints.
 
-The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field completed 17 and the one-strip field completed 12 (`src/game/runwayCapacity.test.ts`). That is about 1.4×. It is not 1.6×. With the carts stocked, one strip finishes the flights its 32-second gap booked (one slot was still overdue at the end). A second strip does not copy that bank. The next flight uses the other strip at the airline's own spacing, about 18–28 seconds, so the extra flights are the ones that spacing can place beside the gap. Booked movements are still two strips to one.
+The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field completed 14 and the one-strip field completed 11 (`src/game/runwayCapacity.test.ts`). That is about 1.3×. It is not 1.6×. With the carts stocked, one strip finishes the flights its 32-second gap booked. A second strip does not copy that bank. The next flight uses the other strip at the airline's own spacing, about 18–28 seconds. Helicopter banks and the shorter narrowbody turns on this tip of main take some of the window, so the live ratio is lower than the 17-against-12 measured before those commits. Booked movements are still two strips to one. Both fields finished with 0 runway diverts.
 
 ## Special flights
 
