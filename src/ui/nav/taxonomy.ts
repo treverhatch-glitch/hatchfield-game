@@ -252,6 +252,7 @@ export type ManageTabId =
   | 'commercial'
   | 'roster'
   | 'letters'
+  | 'relations'
   | 'hubs'
   | 'rival'
   | 'negotiation'
@@ -305,6 +306,7 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
     tabs: [
       { id: 'roster', label: 'Roster', tip: 'Signed and available carriers', sheet: 'airlines' },
       { id: 'letters', label: 'Letters', tip: 'Standing, contracts, and diplomacy', sheet: 'airlines' },
+      { id: 'relations', label: 'Airlines hub', tip: 'Relationship, hub tier, checklist, rivals, and dedicated assets', sheet: 'airlines' },
       { id: 'hubs', label: 'Hubs', tip: 'Carriers based at this field', sheet: 'airlines' },
       { id: 'rival', label: 'Rival', tip: 'Bellwater Intl fees, roster, and catchment', sheet: 'rival' },
       { id: 'negotiation', label: 'Negotiation', tip: 'Counter the open offer', sheet: 'airlines' },

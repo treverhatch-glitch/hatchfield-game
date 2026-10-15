@@ -14,6 +14,7 @@ function host(): PhoneCommandHost {
     acceptHub: vi.fn(),
     declineHub: vi.fn(),
     openAirlines: vi.fn(),
+    openAssign: vi.fn(),
     laterNudge: vi.fn(),
     declineNudge: vi.fn(),
     acceptMxOffer: vi.fn(),
@@ -62,5 +63,11 @@ describe('phone commands', () => {
     expect(desk.declineFieldTask).toHaveBeenCalledOnce()
     expect(desk.dismissAdvisor).toHaveBeenCalledWith('advisor-standing-northline-1')
     expect(desk.emit).toHaveBeenCalledOnce()
+  })
+
+  it('opens the desk assign picker from a warmth text', () => {
+    const desk = host()
+    dispatchPhoneAction(desk, { type: 'open-assign', airlineId: 'brisa' })
+    expect(desk.openAssign).toHaveBeenCalledWith('brisa')
   })
 })

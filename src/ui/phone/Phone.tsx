@@ -30,9 +30,14 @@ export function Phone({ game, desktop }: { game: Game; desktop?: boolean }) {
   const keyJoin = arrivalKeys(cards).join('\n')
   const [shell, setShell] = useState(createPhoneShell)
   const [synced, setSynced] = useState('')
+  const [folded, setFolded] = useState(game.phoneFold)
   if (show && synced !== keyJoin) {
     setSynced(keyJoin)
     setShell((cur) => phoneSync(cur, keyJoin ? keyJoin.split('\n') : []))
+  }
+  if (show && folded !== game.phoneFold) {
+    setFolded(game.phoneFold)
+    if (game.phoneFold > folded) setShell((cur) => phoneClose(cur))
   }
 
   useEffect(() => {

@@ -22,6 +22,7 @@ export type PhoneAction =
   | { type: 'accept-hub' }
   | { type: 'decline-hub' }
   | { type: 'open-airlines'; airlineId: string }
+  | { type: 'open-assign'; airlineId: string }
   | { type: 'later-nudge'; airlineId: string }
   | { type: 'decline-nudge'; airlineId: string }
   | { type: 'sign-mx' }
@@ -94,6 +95,7 @@ export interface PhoneCommandHost {
   acceptHub(): void
   declineHub(): void
   openAirlines(airlineId: string): void
+  openAssign(airlineId: string): void
   laterNudge(airlineId: string): void
   declineNudge(airlineId: string): void
   acceptMxOffer(): void

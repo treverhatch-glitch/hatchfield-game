@@ -3668,6 +3668,21 @@ h1.game-title::after {
   padding: 2px 0;
 }
 
+.airline-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.airline-hub-card {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.airline-hub-card h4 {
+  margin: 0;
+}
+
 .hub-profile {
   margin-top: 8px;
   padding-top: 6px;

@@ -46,6 +46,12 @@ export function openHubAssign(id: string) {
   emit()
 }
 
+/** A phone jump opens the picker. It does not toggle a panel that is already open. */
+export function showHubAssign(id: string) {
+  assignAirline = id
+  emit()
+}
+
 export function closeHubAssign() {
   if (assignAirline == null) return
   assignAirline = null
