@@ -24,17 +24,23 @@ export function useHudBandVar(
       root.style.setProperty(name, `${Math.ceil(px)}px`)
     }
     write()
+    let live = true
+    const cleanups: (() => void)[] = []
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', write)
-      return () => {
-        window.removeEventListener('resize', write)
-        root.style.removeProperty(name)
-      }
+      cleanups.push(() => window.removeEventListener('resize', write))
+    } else {
+      const observer = new ResizeObserver(write)
+      observer.observe(el)
+      for (const child of el.children) observer.observe(child)
+      cleanups.push(() => observer.disconnect())
     }
-    const observer = new ResizeObserver(write)
-    observer.observe(el)
+    void document.fonts?.ready.then(() => {
+      if (live) write()
+    })
     return () => {
-      observer.disconnect()
+      live = false
+      for (const cleanup of cleanups) cleanup()
       root.style.removeProperty(name)
     }
   }, [ref, name, edge, gap])
