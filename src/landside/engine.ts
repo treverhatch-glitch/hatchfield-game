@@ -1,3 +1,4 @@
+import type { Body, BodySource } from '../bodies/index.ts'
 import { LANDSIDE } from './config.ts'
 import { buildNetwork, cellId } from './network.ts'
 import type { LandsideField, LandsideView, ModeSplit, Network, SegmentRead } from './types.ts'
@@ -244,8 +245,10 @@ function segmentsFor(net: Network, sample: Sample, queue: number, curbBusy: numb
  * vehicles arrive at the same per-kind rates and use the real stalls, but
  * never feed back into the numbers.
  * Rendering reads {@link LandsideTraffic.snapshot} and does not feed back.
+ * The drawn vehicles are also bodies on the shared {@link BodySource} list.
  */
-export class LandsideTraffic {
+export class LandsideTraffic implements BodySource {
+  readonly bodyOwner = 'landside'
   private queue = 0
   private delaySec = 0
   private curbBusy = 0
@@ -264,6 +267,25 @@ export class LandsideTraffic {
 
   snapshot(): LandsideView {
     return this.view
+  }
+
+  /** The vehicles as last drawn, in metres on the site grid. */
+  bodies(): Body[] {
+    const cellM = LANDSIDE.cellM
+    return this.view.vehicles.map((car) => {
+      const body = LANDSIDE.bodies[car.kind]
+      return {
+        id: `${this.bodyOwner}:${car.id}`,
+        owner: this.bodyOwner,
+        kind: car.kind,
+        x: car.c * cellM,
+        y: car.r * cellM,
+        heading: car.heading,
+        halfLength: body.lengthM / 2,
+        halfWidth: body.widthM / 2,
+        speed: car.speed,
+      }
+    })
   }
 
   tick(dtSec: number, field: LandsideField): LandsideView {

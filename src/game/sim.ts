@@ -863,6 +863,7 @@ import {
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
+import { BodyList } from '../bodies/index.ts'
 import {
   BAG_CART_WAIT,
   CART_TUNING,
@@ -1397,6 +1398,8 @@ export class Game {
   landsideUses = 0
   /** Capacity model for the public curb. Rendering reads the snapshot. */
   private landsideTraffic = new LandsideTraffic()
+  /** Shared body list. Landside road vehicles are on it; apron trucks, aircraft and buildings join in turnaround run 5. */
+  readonly bodies = new BodyList([this.landsideTraffic])
   landsideOpen = false
   landsideFocus: string | null = null
   private landsideNewsCool = 0
