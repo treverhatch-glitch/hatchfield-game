@@ -899,6 +899,8 @@ class GamePlayer implements PlayerCommands {
     this.game.setView('apron')
     this.game.setTool('pan')
     this.game.clickTile(terminals[0]!)
+    // A player click starts the roof beat. Bots finish it immediately.
+    if (this.game.viewCue === 'hall') this.game.setView('hall')
     if (this.game.view === 'hall' && this.game.selectedTerminalOrigin()) {
       return result(true, 'selectTerminal', `${terminals[0]!.c},${terminals[0]!.r}`)
     }

@@ -498,6 +498,7 @@ export class TerminalBuilding {
         skyGeo.deleteAttribute('color')
         this.owned.geos.push(skyGeo)
         const sky = new THREE.Mesh(skyGeo, this.skyMat)
+        sky.name = `terminal-sky-${i}`
         sky.renderOrder = 3
         this.roofSections[i].add(sky)
       }
