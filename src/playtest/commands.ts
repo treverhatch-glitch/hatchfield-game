@@ -706,7 +706,6 @@ class GamePlayer implements PlayerCommands {
         : null,
       runwayOver: game.runwayLoad().overbooked,
       standPressure: standPressure(game),
-      runwayCost: RUNWAY_PREFAB_COST,
       standCost: STAND_COST,
       researcherCost: game.staffHireCost(RESEARCHER_HIRE),
       researchers: game.researchers,
