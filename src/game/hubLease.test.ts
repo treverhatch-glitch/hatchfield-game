@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { HALL_AMENITY_EXPENSE } from './catalog.ts'
 import { readHubLeaseWarnings, readHubLeases } from './hubProgress.ts'
+import { SMALL_FIELD_UPKEEP_FACTOR } from './economyTuning.ts'
 import { Game } from './sim.ts'
 import { LOUNGE_COFUND_SHARE, LEASE_SCORE_CAP } from '../hubprogress/config.ts'
 import { RELATION_PART_LABELS } from '../wave3/relations.ts'
@@ -54,7 +55,7 @@ describe('lounge, gate, and hangar leases', () => {
     expect(parts.dedicated).toBe(LEASE_SCORE_CAP)
     expect(RELATION_PART_LABELS.dedicated).toBe('Dedicated leases')
     expect(game.wave3.feeLine('brisa').match(/×/g)).toHaveLength(1)
-    expect(game.hubLoungeShare()).toBe(Math.round((HALL_AMENITY_EXPENSE.lounge ?? 0) * LOUNGE_COFUND_SHARE))
+    expect(game.hubLoungeShare()).toBe(Math.round((HALL_AMENITY_EXPENSE.lounge ?? 0) * SMALL_FIELD_UPKEEP_FACTOR * LOUNGE_COFUND_SHARE))
   })
 
   it('warns for 30 days when a gating lounge is released and leaves the flight card alone', () => {

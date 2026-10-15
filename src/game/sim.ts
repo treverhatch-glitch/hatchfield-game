@@ -3944,6 +3944,9 @@ export class Game {
     const dedicated = this.hubDedicated[id] ?? {}
     const leased = this.liveHubLeases(id)
     const desks = this.liveDeskLeases(id)
+    const standLeases = leased.filter((lease) => lease.kind === 'gate')
+    const pitStands = standLeases.filter((lease) => this.standPits[lease.id.slice('stand:'.length)] != null).length
+    const fuelTrucks = this.liveHubVehicles(id).filter((lease) => lease.role === 'fuelTruck').length
     return {
       id,
       name: airline.name,
@@ -3961,12 +3964,12 @@ export class Game {
       hubBlockers: recorded && engine ? engine.hubBlockers(id) : undefined,
       stands: tilesOf(this.tiles, 'stand').length,
       pads: tilesOf(this.tiles, 'helipad').length,
-      overnight: dedicated.overnight ?? 0,
+      overnight: (dedicated.overnight ?? 0) + standLeases.length,
       lounges: (dedicated.lounges ?? 0) + leased.filter((lease) => lease.kind === 'lounge').length,
       hangars: (dedicated.hangars ?? 0) + leased.filter((lease) => lease.kind === 'hangar').length,
-      fuel: dedicated.fuel ?? 0,
-      pier: (dedicated.pier ?? 0) + leased.filter((lease) => lease.kind === 'gate').length,
-      ramp: dedicated.ramp ?? 0,
+      fuel: (dedicated.fuel ?? 0) + fuelTrucks + pitStands,
+      pier: (dedicated.pier ?? 0) + standLeases.length,
+      ramp: (dedicated.ramp ?? 0) + standLeases.length,
       dedicatedPads: dedicated.pads ?? null,
       dedicatedDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'dedicated').length,
       preferredDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'preferred').length,
@@ -4478,6 +4481,18 @@ export class Game {
     }
   }
 
+  /** A carrier that leaves gives back its tier and every lease, so trucks and Primary free up. */
+  private releaseHubCarrier(id: string) {
+    delete this.hubTiers[id]
+    delete this.hubTierSince[id]
+    delete this.hubLeaseWarnings[id]
+    delete this.hubOffered[id]
+    this.hubLeases = this.hubLeases.filter((lease) => lease.airlineId !== id)
+    this.hubVehicleLeases = this.hubVehicleLeases.filter((lease) => lease.airlineId !== id)
+    this.hubNudges = this.hubNudges.filter((row) => row.airlineId !== id)
+    this.stampHubVehicleLeases()
+  }
+
   private stampHubVehicleLeases() {
     const sim = this.ground?.sim
     if (!sim) return
@@ -4548,7 +4563,7 @@ export class Game {
 
   /** Half of each dedicated lounge room's daily upkeep. The full room bill still posts. */
   hubLoungeShare(): number {
-    const rate = HALL_AMENITY_EXPENSE.lounge ?? 0
+    const rate = (HALL_AMENITY_EXPENSE.lounge ?? 0) * siteUpkeepMultiplier(this.specPaths.length) * this.upkeepRelief()
     const share = Math.round(rate * LOUNGE_COFUND_SHARE)
     if (share <= 0) return 0
     let rooms = 0
@@ -4741,6 +4756,7 @@ export class Game {
     }
     if (this.signed.includes(id)) return
     this.signed.push(id)
+    this.hubTierSince[id] = this.gameDay()
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.pullCarrierFromRival(id, rel.name)
     this.seedScheduleForAirline(id, 3)
@@ -5088,6 +5104,7 @@ export class Game {
     this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    this.releaseHubCarrier(id)
     delete this.airlineReward[id]
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
@@ -5266,6 +5283,7 @@ export class Game {
     this.pushNews(result.text, result.won ? 'good' : 'bad')
     if (result.won && !this.signed.includes(id)) {
       this.signed.push(id)
+      this.hubTierSince[id] = this.gameDay()
       if (this.airlineHeat[id] == null) this.airlineHeat[id] = 64
       this.seedScheduleForAirline(id, 2)
     }
@@ -5281,6 +5299,7 @@ export class Game {
     this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    this.releaseHubCarrier(id)
     delete this.airlineReward[id]
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
@@ -7701,6 +7720,7 @@ export class Game {
       this.hubLeaseWarnings = readHubLeaseWarnings(s.hubLeaseWarnings)
       this.hubOffered = readHubOffered(s.hubOffered) as Record<string, HubOfferTier[]>
       this.hubTierSince = readHubDayMap(s.hubTierSince)
+      for (const id of this.signed) this.hubTierSince[id] ??= this.gameDay()
       this.hubVehicleLeases = readHubVehicleLeases(s.hubVehicleLeases)
       this.hubRivalRefuse = readHubDayMap(s.hubRivalRefuse)
       this.hubRivalQuiet = readHubDayMap(s.hubRivalQuiet)
@@ -17498,7 +17518,7 @@ export class Game {
     this.hubOfferCool = Math.max(0, this.hubOfferCool - dt)
     if (this.hubOffer) {
       this.hubOffer.age += dt
-      this.hubOffer.deadline -= dt
+      if (!this.letterHeld('hub')) this.hubOffer.deadline -= dt
       if (this.hubOffer.deadline <= 0) this.expireHub()
     }
   }
@@ -18975,11 +18995,22 @@ export class Game {
     if (!tier) return
     const relation = list.lines.find((line) => line.id === 'relation')
     const band = list.lines.find((line) => line.id === 'band')
-    if (relation?.status !== 'ok') return
-    if (band && band.status !== 'ok') return
-    if (list.lines.find((line) => line.id === 'tenure')?.status !== 'ok') return
-    if (list.lines.find((line) => line.id === 'onTime')?.status !== 'ok') return
-    if (this.rivalRefuses(airlineId)) return
+    const tenure = list.lines.find((line) => line.id === 'tenure')
+    const onTime = list.lines.find((line) => line.id === 'onTime')
+    const gate = [relation, band, tenure, onTime].find((line) => line && line.status !== 'ok')
+    const blocked = relation?.status !== 'ok' || tenure?.status !== 'ok' || onTime?.status !== 'ok' || Boolean(gate)
+    if (blocked || this.rivalRefuses(airlineId)) {
+      if (announce) {
+        const why = gate
+          ? `${a.name}: ${gate.detail || gate.label}`
+          : this.rivalRefuses(airlineId)
+            ? `${a.name} is holding off while a rival objects.`
+            : `${a.name} is not ready for ${HUB_TIER_LABEL[tier]}.`
+        this.pushNews(why, 'bad')
+        this.emit()
+      }
+      return
+    }
     const offered = this.hubOffered[airlineId] ?? []
     if (!announce && offered.includes(tier)) return
     const fee = HUB_OFFER_FEE[tier]

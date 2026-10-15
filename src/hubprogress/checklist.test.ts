@@ -81,7 +81,7 @@ describe('hub checklist', () => {
     expect(list.eligible).toBe(false)
     const desk = list.lines.find((line) => line.id === 'desk')
     expect(desk?.status).toBe('waiting')
-    expect(desk?.label).toBe('Preferred desk or kiosk')
+    expect(desk?.label).toBe('Preferred desk')
     expect(desk?.detail).toBe(ALLOCATOR_WAIT)
     expect(list.lines.some((line) => line.id === 'lounge')).toBe(false)
     expect(list.rewards).toContain('One guaranteed rotation on top of the Preferred extra slot.')

@@ -17,7 +17,6 @@ import {
   HUB_TIERS,
   HUB_TIER_GATE,
   HUB_TIER_LABEL,
-  KIOSK_ARCHETYPES,
   LEASE_KEY_ORDER,
   LEASE_NEED,
   MIN_DAYS_AT_TIER,
@@ -167,21 +166,18 @@ function bandNeeded(type: HubArchetype, tier: HubOfferTier): HubBand {
   return HUB_TIER_GATE[tier].minBand
 }
 
-function deskLabel(type: HubArchetype, tier: HubOfferTier): string {
-  if (DESK_ASK[tier] === 'preferred') {
-    return (KIOSK_ARCHETYPES as readonly string[]).includes(type) ? 'Preferred desk or kiosk' : 'Preferred desk'
-  }
-  return 'Dedicated desks'
+function deskLabel(tier: HubOfferTier): string {
+  return DESK_ASK[tier] === 'preferred' ? 'Preferred desk' : 'Dedicated desks'
 }
 
 function facilityLabel(type: HubArchetype, tier: HubOfferTier, key: LeaseKey, need: number): string {
-  if (key === 'desk') return deskLabel(type, tier)
+  if (key === 'desk') return deskLabel(tier)
   const one = need === 1
   switch (key) {
     case 'lane':
       return one ? 'Fast-track lane' : 'Fast-track lanes'
     case 'overnight':
-      return 'Overnight parking'
+      return 'Overnight parking (lease a stand)'
     case 'lounge':
       return one ? 'Branded lounge' : 'Branded lounges'
     case 'stand':
@@ -189,11 +185,11 @@ function facilityLabel(type: HubArchetype, tier: HubOfferTier, key: LeaseKey, ne
     case 'pier':
       return one ? 'Pier stand' : 'Pier stands'
     case 'fuel':
-      return one ? 'Fuel hook' : 'Fuel hooks'
+      return one ? 'Fuel hook (fuel truck or pitted stand)' : 'Fuel hooks (fuel trucks or pitted stands)'
     case 'hangar':
       return one ? 'Hangar bay' : 'Hangar bays'
     case 'ramp':
-      return 'Dedicated ramp'
+      return 'Dedicated ramp (lease a stand)'
     case 'pad':
       return one ? 'Helipad' : 'Helipads'
     default:
