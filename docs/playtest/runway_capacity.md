@@ -28,7 +28,7 @@ Careful first had 4 or more people waiting at check-in on day 42. Greedy did on 
 
 ## Idle soak
 
-`npm run soak:150` on this tip, starter kit, auto timetable, no rendering, farm stocked by that harness: **312** flights in 150 days. Heap growth **14.3%** (cap 15%). Coordinate jumps **0**. Outstanding stalls empty. The same soak on `origin/main` at `820e03b` (48-second shared headway, same belt-cart gate) finished **289** flights and **14.6%** heap. Both are under the 330 line. That line was measured before pushback started waiting on the belt cart, and before the passenger starter dropped the police post Harbor requires, so the harness no longer signs Harbor. The earlier run of this gap, before those commits, finished 426.
+`npm run soak:150` on `17ac92b`, starter kit, auto timetable, no rendering, farm stocked by that harness: **329** flights in 150 days. Heap growth **10.5%** (cap 15%). Coordinate jumps **0**. Outstanding stalls empty. The two commits after that tip do not change the sim. The same soak on `820e03b` (48-second shared headway, same belt-cart gate) finished **289** flights and **14.6%** heap. This gap on that belt-cart tip, before the helicopter banks, the fuel pipeline, and the barge berth, finished **312**. All of those are under the 330 line. That line was measured before pushback started waiting on the belt cart, and before the passenger starter dropped the police post Harbor requires, so the harness no longer signs Harbor. The earlier run of this gap, before the cart gate, finished 426.
 
 ## What the runway tests show
 
