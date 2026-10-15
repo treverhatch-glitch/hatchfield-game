@@ -32,6 +32,13 @@ describe('check-in contract demand', () => {
     expect(zoom.ok).toBe(true)
     expect(zoom.line).toContain('Zoomjet')
 
+    game.placeHallItem('bag_drop')
+    game.tickHallNav(0)
+    expect(game.activeHall()?.items?.some((item) => item.def === 'bag_drop')).toBe(true)
+    const withDrop = game.checkinSignReport('zoomjet')
+    expect(withDrop.capacity).toBe(zoom.capacity)
+    expect(withDrop.ok).toBe(true)
+
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
     const harbor = game.checkinSignReport('harbor')
     expect(harbor.ok).toBe(true)

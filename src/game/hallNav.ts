@@ -505,6 +505,12 @@ function isKioskDef(defId: string): boolean {
   return Boolean(def && def.room === 'checkin' && def.servers > 0 && def.staff <= 0)
 }
 
+/** A bag drop on the walk. It is not a check-in desk and not a kiosk. */
+export function isBagDropFacility(facilityId: string, items: readonly StaffItemRef[]): boolean {
+  const it = itemForDesk(facilityId, items)
+  return Boolean(it && itemDef(it.def)?.room === 'bagdrop')
+}
+
 /**
  * Check-in desks and security lanes on the walk, in facility order.
  * A bundle piece is part of the building. A def with no staff serves itself.

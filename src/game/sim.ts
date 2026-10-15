@@ -214,7 +214,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallBaseLayout, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
+import { HallNav, hallBaseLayout, hallClaimHall, hallNavLayout, hallSignage, isBagDropFacility, openCheckinCount, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
 import {
   applyInterior,
   assignRoom,
@@ -3345,6 +3345,8 @@ export class Game {
     let kiosks = 0
     for (const desk of desks) {
       if (!desk.staffed) continue
+      // A bag drop runs itself, so it looks like a kiosk. It moves bags, not the letter's passengers.
+      if (fit && isBagDropFacility(desk.id, fit.items ?? [])) continue
       if (desk.kiosk) {
         kiosks += 1
         continue
