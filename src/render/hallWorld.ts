@@ -934,12 +934,7 @@ export class HallWorld {
       }
       this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
       this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
-      // Living-interior columns stay up while the nav shell is drawn.
-      for (const x of [-16, -4, 8, 18]) {
-        for (const z of [-11, 11]) {
-          this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
-        }
-      }
+      // No fixed concourse columns: at real size they ran through the carousel and the kit.
       if (rooms) this.buildSecureWalls(zones)
       return
     }

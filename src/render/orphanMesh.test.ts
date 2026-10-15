@@ -22,6 +22,9 @@ describe('hall orphan meshes v1', () => {
     expect(drawn.has('jet_bridge')).toBe(false)
     expect(drawn.has('baggage_trolley')).toBe(false)
     expect(drawn.has('lounge_cluster')).toBe(false)
+    const shell = HALL_SRC.slice(HALL_SRC.indexOf('private buildShell('), HALL_SRC.indexOf('private buildSecureWalls('))
+    const live = shell.slice(0, shell.indexOf('return\n'))
+    expect(live, 'the walk shell draws no fixed concourse columns through placed kit').not.toContain('0.42, h, 0.42')
   })
 
   it('keeps security props out of shops, including Runway Burger', () => {
