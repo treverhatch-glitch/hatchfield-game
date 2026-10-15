@@ -76,6 +76,7 @@ import { LineChart } from './LineChart'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
+import { CouncilPanel } from '../council/CouncilPanel.tsx'
 import { StaffHousingPanel } from './StaffHousingPanel'
 import { AchievementToast, type AchievementDef } from '../achievements'
 
@@ -184,6 +185,7 @@ type PanelId =
   | 'settings'
   | 'premium'
   | 'tycoon'
+  | 'council'
   | 'rival'
   | 'staff'
   | null
@@ -253,6 +255,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'settings', label: 'Settings', tip: 'Sound, graphics, hints, and game options' },
   { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
   { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
+  { id: 'council', label: 'Council', tip: 'Regional requests, votes, standing, and prestige' },
   { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
 ]
 
@@ -290,6 +293,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   }
   useEffect(() => {
     game.pokeTycoon()
+    game.pokeCouncil()
   }, [game, panel])
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
@@ -2137,6 +2141,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     game.dismissYearReport()
                     setTycoonTab('shops')
                   }}
+                />
+              ) : null}
+              {panel === 'council' ? (
+                <CouncilPanel
+                  view={game.councilView()}
+                  onVote={(requestId, choiceId) => game.answerCouncilRequest(requestId, choiceId)}
                 />
               ) : null}
               {panel === 'staff' ? <StaffHousingPanel game={game} /> : null}

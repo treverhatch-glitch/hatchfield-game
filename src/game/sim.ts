@@ -499,6 +499,14 @@ import {
   type TycoonPulse,
   type TycoonView,
 } from '../tycoon/index.ts'
+import {
+  CouncilEngine,
+  type CouncilBooks,
+  type CouncilChoiceId,
+  type CouncilContext,
+  type CouncilNote,
+  type CouncilView,
+} from '../council/index.ts'
 import { PLAYTEST_YEAR_DAYS } from '../reports/config.ts'
 import { YearPlaytestBook } from '../reports/book.ts'
 import type { YearAwardInput } from '../reports/sources.ts'
@@ -1134,6 +1142,8 @@ export class Game {
   feeStandingApplied = 0
   /** Tenant leases, ad campaigns, year report, and awards. */
   tycoon = new TycoonEngine()
+  /** Late-game regional governance; kept independent from renderer state. */
+  council = new CouncilEngine()
   simClock = new SimClock()
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
@@ -1517,6 +1527,7 @@ export class Game {
     this.commercialLead = {}
     this.feeStandingApplied = 0
     this.tycoon.reset(1)
+    this.council.reset()
     this.simClock = new SimClock()
     this.economy = null
     this.economyState = null
@@ -4968,6 +4979,7 @@ export class Game {
       feeStandingApplied: this.feeStandingApplied,
       premium: this.premium,
       tycoon: this.tycoon.snapshot(),
+      council: this.council.snapshot(),
       rival: this.rival?.serialize(),
       disruptions: this.disruptions.save(),
       playtestYear: this.playtestYear.save(),
@@ -5020,6 +5032,7 @@ export class Game {
       this.feeStandingApplied = s.feeStandingApplied ?? 0
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
       this.tycoon.restore(s.tycoon, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
+      this.council.restore(s.council, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
       this.economy = null
       this.economyState = null
       this.economyView = null
@@ -19201,6 +19214,7 @@ export class Game {
     this.tickPayroll(step)
     this.tickScaleFuel(step)
     this.pokeTycoon()
+    this.pokeCouncil()
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
@@ -20019,6 +20033,61 @@ export class Game {
   dismissYearReport() {
     this.tycoon.dismissReport()
     this.emit()
+  }
+
+  private councilContext(): CouncilContext {
+    return {
+      day: this.gameDayIndex(),
+      fieldLevel: this.fieldLevel(),
+      prestige: this.tycoon.view(this.gameDayIndex()).prestige,
+      cash: this.cash,
+    }
+  }
+
+  private councilBooks(): CouncilBooks {
+    return {
+      balance: () => this.cash,
+      spend: (amount, label) => {
+        const cost = Math.max(0, Math.round(amount))
+        if (!cost || this.cash < cost) return cost === 0
+        this.cash -= cost
+        this.noteExpense(cost)
+        this.bank.post('civic_programs', -cost, {
+          simMinutes: this.simMinutes(),
+          source: 'council',
+          sourceId: label,
+          label,
+        })
+        return true
+      },
+    }
+  }
+
+  private applyCouncil(notes: CouncilNote[], forceEmit: boolean) {
+    for (const note of notes) {
+      this.pushNews(note.text, note.tone)
+      if (note.reputation) {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + note.reputation))
+      }
+      if (note.prestige) this.tycoon.addPrestige(note.prestige)
+    }
+    if (notes.length || forceEmit) this.emit()
+  }
+
+  /** Open a due request. Safe to call from a paused side panel. */
+  pokeCouncil() {
+    this.applyCouncil(this.council.advance(this.councilContext()), false)
+  }
+
+  councilView(): CouncilView {
+    return this.council.view(this.councilContext())
+  }
+
+  answerCouncilRequest(requestId: string, choiceId: CouncilChoiceId) {
+    this.applyCouncil(
+      this.council.vote(requestId, choiceId, this.councilContext(), this.councilBooks()),
+      true,
+    )
   }
 }
 

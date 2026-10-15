@@ -115,6 +115,7 @@ bindLiveHud(() => game.speed, hudFastKey)
 
 /** Discrete HUD state: a change here re-renders the chrome straight away. */
 function hudSnapshot(): string {
+  const council = game.councilView()
   return [
         game.speed,
         game.tool,
@@ -214,6 +215,9 @@ function hudSnapshot(): string {
         Math.floor(game.researchPoints),
         Math.round(game.tycoonDemand() * 100),
         Math.round(game.tycoonAirlineInterest() * 100),
+        council.standing,
+        council.pending?.id ?? '',
+        council.votes.length,
       ].join('|')
 }
 
