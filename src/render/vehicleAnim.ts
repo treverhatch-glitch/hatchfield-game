@@ -102,6 +102,7 @@ const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   gpu: ['cable_reel', 'cable'],
   stairs: ['stair', 'canopy'],
   k_loader: ['front_platform', 'rear_platform'],
+  uld_dolly: ['cargo'],
   lavatory_truck: ['hose_reel', 'hose'],
   water_truck: ['hose_reel', 'hose'],
   police: ['lightbar'],

@@ -8,6 +8,7 @@
  * light bars) are tagged `lit` and drawn unlit so they read as glowing.
  */
 import * as THREE from 'three'
+import { PROP_LOOK } from './look'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
 export type VehicleModel =
@@ -275,7 +276,7 @@ export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
   gpu: ['wheels_front', 'wheels_rear', 'cable_reel', 'cable'],
   stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy', 'reverse', 'beam'],
   k_loader: ['wheels_front', 'wheels_front_2', 'wheels_rear', 'wheels_rear_2', 'beacon', 'front_platform', 'rear_platform', 'reverse'],
-  uld_dolly: ['wheels_front', 'wheels_rear', 'rollers'],
+  uld_dolly: ['wheels_front', 'wheels_rear', 'rollers', 'cargo'],
   lavatory_truck: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
   water_truck: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
   police: ['wheels_front', 'wheels_rear', 'lightbar', 'reverse', 'beam'],
@@ -1135,6 +1136,10 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       k.box(LIVERY.diamond, pl, 0.24, W * 0.96, x, y, 0, name)
       for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.07, W * 0.9, x - pl / 2 + pl * (i + 0.5) / 8, y + 0.14, 0, 'z', name, 6)
       for (const s of [1, -1]) k.box(LIVERY.gseYellow, pl, 0.22, 0.12, x, y + 0.24, s * W * 0.47, name)
+      if (name === 'rear_platform') {
+        k.box(PROP_LOOK.uld, pl * 0.62, 0.16, W * 0.62, x, y + 0.22, 0, name)
+        k.box(PROP_LOOK.palletNet, pl * 0.6, 0.03, W * 0.6, x, y + 0.32, 0, name)
+      }
       if (name === 'front_platform') {
         for (const s of [1, -1]) {
           k.slab(LIVERY.chassis, pl * 0.9, 0.1, 0.1, x, r + 0.7, s * W * 0.4, 0.15, name)
@@ -1161,6 +1166,17 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (let i = 0; i < 10; i++) k.cyl(LIVERY.hub, 0.04, W * 0.9, -L * 0.45 + (L * 0.9 * (i + 0.5)) / 10, H - 0.04, 0, 'z', 'rollers', 6)
     for (const s of [1, -1]) k.box(LIVERY.gseYellow, 0.08, 0.2, 0.08, -L / 2 + 0.1, H + 0.05, s * W * 0.44, 'rollers')
     k.box(LIVERY.steel, 1.0, 0.05, 0.05, L / 2 + 0.1 - 0.5, r + 0.1, 0)
+    // LD3 on the deck. Named so the dolly envelope stays the roller height.
+    const deck = H
+    const cl = L * 0.72
+    const cw = W * 0.82
+    const ch = 1.05
+    k.box(PROP_LOOK.uld, cl, ch * 0.55, cw, 0, deck + ch * 0.62, 0, 'cargo')
+    const slope = new THREE.BoxGeometry(cl * 0.98, 0.06, cw * 0.5)
+    slope.rotateX(0.6)
+    k.add(slope, PROP_LOOK.uld, 0, deck + ch * 0.28, cw * 0.18, 'cargo')
+    k.box(PROP_LOOK.uldPanel, cl * 0.22, ch * 0.28, 0.02, cl * 0.22, deck + ch * 0.72, cw / 2 + 0.01, 'cargo')
+    k.box(LIVERY.chassis, cl * 0.9, 0.05, 0.05, 0, deck + 0.06, cw * 0.4, 'cargo')
   },
 
   /** Blue honey-wagon: waste tank, hose reel, hi-vis. */
@@ -1257,9 +1273,16 @@ function cart(k: Kit, cx: number, cL: number, W: number, H: number, name: string
     k.box(LIVERY.steel, cL * 0.9, 0.045, 0.045, cx, y, -W / 2 + 0.04, name || 'curtain')
     k.box(LIVERY.steel, cL * 0.9, 0.045, 0.045, cx, y, W / 2 - 0.04, name || 'curtain')
   }
+  const curtainName = name || 'curtain'
+  const clothH = (H - r) * 0.36
+  k.box(PROP_LOOK.curtain, cL * 0.86, clothH, 0.02, cx, r + 0.28 + clothH / 2, W / 2 - 0.02, curtainName)
+  k.box(PROP_LOOK.curtain, cL * 0.86, clothH, 0.02, cx, r + 0.28 + clothH / 2, -(W / 2 - 0.02), curtainName)
+  k.box(PROP_LOOK.curtainTape, cL * 0.86, 0.035, 0.025, cx, r + 0.3, W / 2, curtainName)
+  k.box(PROP_LOOK.curtainTape, cL * 0.86, 0.035, 0.025, cx, r + 0.3, -W / 2, curtainName)
+  if (!name) k.box(LIVERY.steel, 0.22, 0.05, 0.05, cx + cL / 2 + 0.08, r + 0.28, 0)
   // bags
   const bags = ['#6a5340', '#2f4a6a', '#8c2f2f', '#3e5a3a', '#55595f']
-  for (let i = 0; i < 5; i++) k.box(bags[i], cL * 0.17, 0.42, W * 0.55, cx - cL * 0.4 + i * cL * 0.2, r + 0.46, W * 0.1, name)
+  for (let i = 0; i < 5; i++) k.box(bags[i], cL * 0.17, 0.32, W * 0.5, cx - cL * 0.4 + i * cL * 0.2, r + 0.72, W * 0.08, name)
 }
 
 /**

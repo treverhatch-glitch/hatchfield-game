@@ -45,6 +45,50 @@ export const VEHICLE_LOOK = {
   hose: '#22262b',
 } as const
 
+/**
+ * Apron prop colours sampled from the Gemini orthographic sheets
+ * (jet bridge, carts, ULDs, fence, lights, benches, windsock, stand hatch).
+ * sRGB hex. Sizes stay in the builders; these are only the paints.
+ */
+export const PROP_LOOK = {
+  /** Corrugated tunnel skin. */
+  bridge: '#c5c9ce',
+  /** Rubber bellows and the drive bogie. */
+  bellows: '#2c3138',
+  /** Yellow cab stripe along the tunnel skirt. */
+  bridgeStripe: '#f0c020',
+  /** Galvanised chain-link and posts. */
+  chainlink: '#b7bec4',
+  /** Barbed strands above the mesh. */
+  wire: '#8e969e',
+  /** Roll-up cart curtain. */
+  curtain: '#d8d2c4',
+  /** Hi-vis tape on the cart rail. */
+  curtainTape: '#f2bf1f',
+  /** LD3 aluminium. */
+  uld: '#c5ccd1',
+  /** Fictional green ULD panel. No stencil text. */
+  uldPanel: '#7dba78',
+  /** Pallet net. */
+  palletNet: '#3d4a38',
+  /** Bench slats, stained timber. */
+  benchWood: '#8a5a32',
+  /** Bench frame. */
+  benchSteel: '#8d949c',
+  /** Litter bin shell. */
+  bin: '#d5d8dc',
+  /** Bin lid band. */
+  binBand: '#2f6fbe',
+  /** Windsock cloth. */
+  sockOrange: '#ff6a1a',
+  sockWhite: '#f4f6f8',
+  /** Rotating aerodrome beacon. */
+  beaconRed: '#d01218',
+  beaconGlass: '#9fd4d4',
+  /** Stand safety hatch. */
+  hatchRed: '#c42828',
+} as const
+
 /** Procedural ground palette (sRGB hex). */
 export const GROUND_LOOK = {
   grassDark: 0x5a6a46,

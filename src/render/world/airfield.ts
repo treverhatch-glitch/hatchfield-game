@@ -3,7 +3,9 @@
  * points), apron flood masts with ground light pools, windsocks, jet bridges.
  */
 import * as THREE from 'three'
-import { BLOOM_LOOK } from '../look'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { BLOOM_LOOK, PROP_LOOK } from '../look'
+import { propTexture } from './propArt'
 import type { AirfieldLevels } from './dayNight'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
@@ -36,6 +38,7 @@ export class AirfieldLights {
   private glowGroup: Uint8Array | null = null
   private glowSplit = false
   private fixMat: THREE.MeshBasicMaterial
+  private lensMat: THREE.MeshBasicMaterial
   private mastHeads: THREE.InstancedMesh | null = null
   private headMat: THREE.MeshBasicMaterial
   private pools: THREE.InstancedMesh | null = null
@@ -71,6 +74,7 @@ export class AirfieldLights {
     this.glowMat.userData.noGrade = true
     this.haloMat.userData.noGrade = true
     this.fixMat = new THREE.MeshBasicMaterial({ color: 0x777777 })
+    this.lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
     this.headMat = new THREE.MeshBasicMaterial({ color: 0x8a8a80 })
     this.poolMat = new THREE.MeshBasicMaterial({
       map: textures.pool,
@@ -82,23 +86,40 @@ export class AirfieldLights {
       polygonOffset: true,
       polygonOffsetFactor: -4,
     })
-    this.mats.push(this.glowMat, this.haloMat, this.fixMat, this.headMat, this.poolMat)
+    this.mats.push(this.glowMat, this.haloMat, this.fixMat, this.lensMat, this.headMat, this.poolMat)
   }
 
   build(spots: LightSpot[], masts: Mast[], runways: Runway[], withPools: boolean, bloom = false) {
     this.clear()
     this.count = spots.length
-    const fixGeo = new THREE.CylinderGeometry(0.07, 0.09, 0.14, 6)
-    fixGeo.translate(0, 0.07, 0)
-    this.geos.push(fixGeo)
-    if (spots.length) {
-      this.fixtures = instanced(
-        fixGeo,
-        this.fixMat,
-        spots.map((s) => trs(s.x, 0, s.z)),
-        spots.map((s) => LIGHT_RGB[s.kind]),
+    const elevated = spots.filter((s) => s.kind !== 'rwCenter' && s.kind !== 'twCenter')
+    const inset = spots.filter((s) => s.kind === 'rwCenter' || s.kind === 'twCenter')
+    const bodyGeo = elevatedLightGeo()
+    const lensGeo = elevatedLensGeo()
+    const insetGeo = insetLightGeo()
+    this.geos.push(bodyGeo, lensGeo, insetGeo)
+    if (elevated.length) {
+      const body = instanced(bodyGeo, this.fixMat, elevated.map((s) => trs(s.x, 0, s.z)))
+      const lens = instanced(
+        lensGeo,
+        this.lensMat,
+        elevated.map((s) => trs(s.x, 0, s.z)),
+        elevated.map((s) => LIGHT_RGB[s.kind]),
       )
-      this.root.add(this.fixtures)
+      this.fixtures = lens
+      this.root.add(body, lens)
+    }
+    if (inset.length) {
+      const discs = instanced(
+        insetGeo,
+        this.lensMat,
+        inset.map((s) => trs(s.x, 0, s.z)),
+        inset.map((s) => LIGHT_RGB[s.kind]),
+      )
+      if (!this.fixtures) this.fixtures = discs
+      this.root.add(discs)
+    }
+    if (spots.length) {
       const pos = new Float32Array(spots.length * 3)
       const col = new Float32Array(spots.length * 3)
       const c = new THREE.Color()
@@ -164,22 +185,7 @@ export class AirfieldLights {
   }
 
   private addWindsock(rw: Runway) {
-    const g = new THREE.Group()
-    const pole = new THREE.CylinderGeometry(0.05, 0.06, 2.6, 6)
-    pole.translate(0, 1.3, 0)
-    const sock = new THREE.ConeGeometry(0.22, 1.1, 8, 1, true)
-    sock.rotateZ(Math.PI / 2)
-    sock.translate(0.55, 0, 0)
-    const pm = new THREE.MeshLambertMaterial({ color: 0xd8dde2 })
-    const sm = new THREE.MeshLambertMaterial({ color: 0xff6a1a, side: THREE.DoubleSide })
-    this.geos.push(pole, sock)
-    this.mats.push(pm, sm)
-    const p = new THREE.Mesh(pole, pm)
-    p.castShadow = true
-    const s = new THREE.Mesh(sock, sm)
-    s.position.y = 2.5
-    s.name = 'sock'
-    g.add(p, s)
+    const g = makeWindsock(this.geos, this.mats)
     if (rw.axis === 'h') g.position.set(rw.x0 + 6, 0, rw.z0 - 3.5)
     else g.position.set(rw.x0 - 3.5, 0, rw.z0 + 6)
     this.socks.push(g)
@@ -227,9 +233,12 @@ export class AirfieldLights {
     }
     for (const g of this.socks) {
       const s = g.getObjectByName('sock')
-      if (!s) continue
-      s.rotation.y = 0.6 + Math.sin(this.time * 0.7) * 0.25 * (0.3 + wind)
-      s.rotation.z = -0.9 * (1 - Math.min(1, wind + 0.15)) + Math.sin(this.time * 3.1) * 0.05 * wind
+      if (s) {
+        s.rotation.y = 0.6 + Math.sin(this.time * 0.7) * 0.25 * (0.3 + wind)
+        s.rotation.z = -0.9 * (1 - Math.min(1, wind + 0.15)) + Math.sin(this.time * 3.1) * 0.05 * wind
+      }
+      const lamp = g.getObjectByName('beacon-lamp')
+      if (lamp) lamp.rotation.y = this.time * 2.4
     }
   }
 
@@ -257,7 +266,7 @@ export class AirfieldLights {
     for (const g of this.geos) g.dispose()
     this.geos = []
     // Mast pole / windsock materials are rebuilt each layout.
-    this.mats.splice(5).forEach((m) => m.dispose())
+    this.mats.splice(6).forEach((m) => m.dispose())
     this.fixtures = null
     this.glow = null
     this.halo = null
@@ -281,6 +290,7 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
   const body: THREE.Matrix4[] = []
   const dark: THREE.Matrix4[] = []
   const glass: THREE.Matrix4[] = []
+  const stripe: THREE.Matrix4[] = []
   const rotunda: THREE.Matrix4[] = []
   for (const b of list) {
     const dx = b.cab.x - b.root.x
@@ -301,6 +311,8 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
     const outer = at(0.7 + span * 0.72)
     body.push(trs(inner.x, baseY, inner.z, yaw, cabW * 0.92, cabH * 0.86, span * 0.6))
     body.push(trs(outer.x, baseY - 0.04, outer.z, yaw, cabW, cabH * 0.92, span * 0.5))
+    stripe.push(trs(inner.x, baseY - cabH * 0.42, inner.z, yaw, cabW * 0.98, 0.05, span * 0.58))
+    stripe.push(trs(outer.x, baseY - cabH * 0.46, outer.z, yaw, cabW * 1.02, 0.05, span * 0.48))
     // Window strips both sides.
     for (const s of [-1, 1]) {
       const wx = -uz * s * cabW * 0.52
@@ -316,10 +328,13 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
     dark.push(trs(col.x + uz * 0.25, 0, col.z - ux * 0.25, yaw, 0.12, baseY, 0.12))
     dark.push(trs(col.x, 0, col.z, yaw + Math.PI / 2, Math.max(0.7, cabW), 0.22, 0.3))
   }
-  const bodyM = new THREE.MeshLambertMaterial({ color: 0xc9cfd6 })
-  const darkM = new THREE.MeshLambertMaterial({ color: 0x2c3138 })
+  const ribs = propTexture('corrugation')
+  if (ribs) ribs.repeat.set(3, 14)
+  const bodyM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridge, map: ribs ?? undefined })
+  const darkM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bellows })
   const glassM = new THREE.MeshBasicMaterial({ color: 0x9cc8e6 })
   const rotM = new THREE.MeshLambertMaterial({ color: 0xaab2bb })
+  const stripeM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridgeStripe })
   const rotGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.6, 12)
   rotGeo.translate(0, 0.8 + 0.22, 0)
   if (list.length) {
@@ -328,13 +343,96 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
       instanced(beam, darkM, dark),
       instanced(beam, glassM, glass),
       instanced(rotGeo, rotM, rotunda),
+      instanced(beam, stripeM, stripe),
     ]
     meshes[0].castShadow = true
     meshes[3].castShadow = true
     group.add(...meshes)
   }
   group.userData.geos = [rotGeo]
-  return { group, mats: [bodyM, darkM, glassM, rotM] }
+  return { group, mats: [bodyM, darkM, glassM, rotM, stripeM] }
+}
+
+/** Elevated edge light: base, frangible stem, and can. The lens is a second draw so it can take the lamp colour. */
+export function elevatedLightGeo(): THREE.BufferGeometry {
+  const base = new THREE.BoxGeometry(0.16, 0.028, 0.16)
+  base.translate(0, 0.014, 0)
+  const stem = new THREE.CylinderGeometry(0.022, 0.028, 0.1, 6)
+  stem.translate(0, 0.078, 0)
+  const head = new THREE.CylinderGeometry(0.048, 0.05, 0.06, 8)
+  head.translate(0, 0.15, 0)
+  const g = mergeGeometries([base, stem, head], false)
+  base.dispose()
+  stem.dispose()
+  head.dispose()
+  if (!g) throw new Error('edge light merge failed')
+  return g
+}
+
+export function elevatedLensGeo(): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(0.032, 8, 6)
+  g.translate(0, 0.188, 0)
+  return g
+}
+
+/** Flush centreline light. */
+export function insetLightGeo(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.055, 0.055, 0.02, 8)
+  g.translate(0, 0.012, 0)
+  return g
+}
+
+/** Banded windsock plus a rotating aerodrome beacon. The sock group keeps the name `sock`. */
+export function makeWindsock(geos: THREE.BufferGeometry[], mats: THREE.Material[]): THREE.Group {
+  const g = new THREE.Group()
+  g.name = 'windsock'
+  const pole = new THREE.CylinderGeometry(0.045, 0.055, 3.1, 6)
+  pole.translate(0, 1.55, 0)
+  const pm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
+  geos.push(pole)
+  mats.push(pm)
+  const p = new THREE.Mesh(pole, pm)
+  p.castShadow = true
+  g.add(p)
+  const sock = new THREE.Group()
+  sock.name = 'sock'
+  sock.position.y = 3
+  const bands = [PROP_LOOK.sockOrange, PROP_LOOK.sockWhite, PROP_LOOK.sockOrange, PROP_LOOK.sockWhite]
+  bands.forEach((hex, i) => {
+    const r0 = 0.2 - i * 0.035
+    const geo = new THREE.CylinderGeometry(Math.max(0.04, r0 - 0.03), r0, 0.26, 8, 1, true)
+    geo.rotateZ(Math.PI / 2)
+    geo.translate(0.16 + i * 0.24, 0, 0)
+    const m = new THREE.MeshLambertMaterial({ color: hex, side: THREE.DoubleSide })
+    geos.push(geo)
+    mats.push(m)
+    sock.add(new THREE.Mesh(geo, m))
+  })
+  const hoop = new THREE.TorusGeometry(0.2, 0.015, 6, 12)
+  hoop.rotateY(Math.PI / 2)
+  const hm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.benchSteel })
+  geos.push(hoop)
+  mats.push(hm)
+  sock.add(new THREE.Mesh(hoop, hm))
+  g.add(sock)
+  const bPole = new THREE.CylinderGeometry(0.04, 0.05, 2.4, 6)
+  bPole.translate(0, 1.2, 0)
+  const glass = new THREE.CylinderGeometry(0.09, 0.09, 0.28, 8)
+  glass.translate(0, 2.45, 0)
+  const lamp = new THREE.SphereGeometry(0.06, 8, 6)
+  lamp.translate(0, 2.45, 0)
+  const bm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
+  const gm = new THREE.MeshLambertMaterial({ color: PROP_LOOK.beaconGlass, transparent: true, opacity: 0.45 })
+  const lm = new THREE.MeshBasicMaterial({ color: PROP_LOOK.beaconRed })
+  geos.push(bPole, glass, lamp)
+  mats.push(bm, gm, lm)
+  const beacon = new THREE.Group()
+  beacon.position.set(1.4, 0, 0.4)
+  const lampMesh = new THREE.Mesh(lamp, lm)
+  lampMesh.name = 'beacon-lamp'
+  beacon.add(new THREE.Mesh(bPole, bm), new THREE.Mesh(glass, gm), lampMesh)
+  g.add(beacon)
+  return g
 }
 
 export function setBridgeNight(mats: THREE.Material[], lights: number) {
