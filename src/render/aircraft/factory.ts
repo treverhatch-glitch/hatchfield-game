@@ -160,9 +160,14 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
   return root
 }
 
-/** Gear state read by the LOD on the next rendered frame. */
-export function updateAircraft(root: THREE.Object3D, gearDown: boolean, motion?: AircraftMotion) {
+/**
+ * Gear state read by the LOD on the next rendered frame.
+ * `bridged` is true while a jet bridge is off its rotunda toward this airframe.
+ * The fuselage then stays on opaque materials, so the bridge never shows through a fading skin.
+ */
+export function updateAircraft(root: THREE.Object3D, gearDown: boolean, motion?: AircraftMotion, bridged = false) {
   root.userData.gearDown = gearDown
+  root.userData.bridged = bridged
   if (motion) root.userData.motion = motion
 }
 

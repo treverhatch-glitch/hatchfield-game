@@ -1670,7 +1670,8 @@ export class World {
       if (pose.visible) {
         mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
         orientAircraft(mesh, pose.heading, pose.pitch)
-        updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }))
+        const bridged = !!f.stand && game.boughtBridges(f.stand) > 0 && game.bridgeExtend(f.id) > 0
+        updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }), bridged)
       }
       const stuck = mesh.getObjectByName('bridges')
       if (stuck) mesh.remove(stuck)

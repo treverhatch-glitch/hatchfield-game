@@ -220,6 +220,12 @@ export class CrossfadeLOD extends THREE.LOD {
       const gTarget = gearDown ? 1 : 0
       this.gearT += (gTarget - this.gearT) * gK
     }
+    if (this.parent?.userData.bridged === true) {
+      // Whole levels only: every visible mesh draws its opaque material.
+      this.wHigh = target.high >= 0.5 ? 1 : 0
+      this.wLow = target.low >= 0.5 ? 1 : 0
+      this.wMid = 1 - this.wLow
+    }
 
     buckets.lowGroup.visible = this.wLow > 0.02
     buckets.midGroup.visible = this.wMid > 0.02
