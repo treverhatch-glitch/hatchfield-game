@@ -892,7 +892,10 @@ import { PIPELINE, pipelineIntervalMinutes, qualityHoldMinutes, supplyCut } from
 import { BARGE, bargeLeadMinutes, bargeParcelLitres, cellOnWater, cellPlotId, siteHasWater } from '../fuel/barge.ts'
 import {
   astar,
+  bowserPass,
+  bowserPath,
   farmBesidePavement,
+  farmDocks,
   hasBeltNetwork,
   inBounds,
   neighbors,
@@ -12338,7 +12341,8 @@ export class Game {
     const s = Math.sin(h)
     const dx = (dock.localX * c - dock.localY * s) / METERS_PER_CELL
     const dy = (dock.localX * s + dock.localY * c) / METERS_PER_CELL
-    const shown = shownPhase(dock.phase, dock.u)
+    // Hose, lift and belt deploy only at an aircraft. A farm or kitchen load keeps its own phase.
+    const shown = dock.owner === 'stand' ? shownPhase(dock.phase, dock.u) : null
     // x/y stay on the service road. drawX/drawY are the bay the mesh and the camera use.
     return {
       ...pose,
@@ -12595,10 +12599,14 @@ export class Game {
    */
   private turnaroundClocks(existing: CrewClock[]): CrewClock[] {
     const clocks: CrewClock[] = []
-    const has = (service: CrewClock['service'], x: number, y: number) =>
-      existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
     for (const flight of this.flights) {
       if (!flight.stand || flight.cargo || flight.kind === 'military') continue
+      // GPU and tug the module owns on this stand are its own vehicles, wherever they are right now.
+      // Cleaning stays: the module has no van to draw.
+      const owned = flight.groundTurn ? this.ground?.sim.turnaroundAt(flight.groundTurn)?.services : undefined
+      const has = (service: CrewClock['service'], x: number, y: number) =>
+        ((service === 'gpu' || service === 'pushback') && owned?.[service] !== undefined) ||
+        existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
       const pace = this.rampPace(flight.airframeId, false, flight.airline)
       const door = this.paxDoor(flight)
       const origin = { x: flight.x, y: flight.y, heading: flight.heading }
@@ -12944,10 +12952,10 @@ export class Game {
     if (this.trucks.some((t) => t.flightId === f.id && t.kind === 'fuel')) return
     const farms = tilesOf(this.tiles, 'fuel').filter((p) => farmBesidePavement(this.tiles, p))
     if (!farms.length) return
-    const path = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
-    if (!path) return
+    const route = bowserPath(this.tiles, farms[0], [f.stand])
+    if (!route) return
     f.waitingOn.fuel = true
-    this.spawnTruck('fuel', f, path, 'fuel', farms[0])
+    this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
   }
 
   /** Carrier shape the hub share formula reads. Cargo stays at zero. */
@@ -25167,13 +25175,12 @@ export class Game {
         !f.groundTurn &&
         this.fuelBrand &&
         this.fuelLoads > 0 &&
-        farmsQuick.length &&
-        nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
+        farmsQuick.length
       ) {
-        const p = nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
-        if (p) {
+        const route = bowserPath(this.tiles, farmsQuick[0], [f.stand])
+        if (route) {
           f.waitingOn.fuel = true
-          this.spawnTruck('fuel', f, p, 'fuel', farmsQuick[0])
+          this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
         }
       }
       return
@@ -25242,13 +25249,12 @@ export class Game {
       !f.groundTurn &&
       this.fuelBrand &&
       this.fuelLoads > 0 &&
-      farms.length &&
-      nearestPath(this.tiles, farms[0], [f.stand], 'truck')
+      farms.length
     ) {
-      const p = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
-      if (p) {
+      const route = bowserPath(this.tiles, farms[0], [f.stand])
+      if (route) {
         f.waitingOn.fuel = true
-        this.spawnTruck('fuel', f, p, 'fuel', farms[0])
+        this.spawnTruck('fuel', f, route.path, 'fuel', route.dock)
       }
     }
 
@@ -25776,13 +25782,20 @@ export class Game {
         !f.posted.fuel,
     )
     if (!next?.stand) return false
+    if (this.tiles[t.home.r]?.[t.home.c] === 'fuel') {
+      // Saves from before the farm dock parked the bowser on the tank yard.
+      const docked = bowserPath(this.tiles, t.home, [next.stand])
+      if (!docked) return false
+      t.home = docked.dock
+    }
     const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const pass = bowserPass(this.tiles, from)
     const atFarm =
       Math.abs(from.c - t.home.c) + Math.abs(from.r - t.home.r) <= 1
 
     // After a delivery, prefer farm reload then roll (real bowser cycle).
     if (!atFarm && t.mission === 'fuel_reload') {
-      const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+      const homePath = nearestPath(this.tiles, from, [t.home], 'truck', pass)
       if (!homePath || homePath.length < 2) return false
       t.flightId = next.id
       t.mission = 'fuel_reload'
@@ -25795,7 +25808,7 @@ export class Game {
       return true
     }
     if (atFarm || t.mission === 'fuel_reload') {
-      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck')
+      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck', pass)
       if (!path || path.length < 2) return false
       t.flightId = next.id
       t.mission = 'fuel'
@@ -25808,7 +25821,7 @@ export class Game {
       return true
     }
     // Still have product — continue apron-to-apron (hydrant-style multi-stop).
-    const path = nearestPath(this.tiles, from, [next.stand], 'truck')
+    const path = nearestPath(this.tiles, from, [next.stand], 'truck', pass)
     if (!path || path.length < 2) return false
     t.flightId = next.id
     t.mission = 'fuel'
@@ -27663,7 +27676,9 @@ export class Game {
             t.mission = 'fuel_reload'
             t.returning = true
             if (t.home) {
-              const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+              const goals = this.tiles[t.home.r]?.[t.home.c] === 'fuel' ? farmDocks(this.tiles, t.home) : [t.home]
+              const homePath = nearestPath(this.tiles, from, goals, 'truck', bowserPass(this.tiles, from))
+              if (homePath && homePath.length > 1) t.home = homePath[homePath.length - 1]
               t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
             } else {
               t.path = [...t.path].reverse()

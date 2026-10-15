@@ -28,7 +28,7 @@ import {
 import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimeline } from './flightPose'
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
-import { orbitFromLook } from '../camera/orbit.ts'
+import { ORBIT_DEFAULT_DIST, orbitFromLook } from '../camera/orbit.ts'
 import { zoomToCursorShift } from '../camera/zoom.ts'
 import { APRON_MAX_DIST, noteMaxZoomFrame } from './viewBudget'
 import { TRANSITION_SEC, beginCue, clearCue, cueCanSkip, sectionWeights } from './viewCue'
@@ -267,7 +267,7 @@ export class World {
   pivot = new THREE.Vector3(0, 0, 0)
   yaw = 0.72
   pitch = 0.68
-  dist = 88
+  dist = ORBIT_DEFAULT_DIST
   private cueKind: 'apron' | 'hall' | '' = ''
   private cueT = 0
   private cueFromDist = 88

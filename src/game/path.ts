@@ -209,11 +209,39 @@ export function nearestPath(
   start: Vec,
   goals: Vec[],
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  pass?: (c: number, r: number) => boolean,
 ): Vec[] | null {
   let best: Vec[] | null = null
   for (const goal of goals) {
-    const p = astar(tiles, start, goal, kind)
+    const p = astar(tiles, start, goal, kind, pass)
     if (p && (!best || p.length < best.length)) best = p
+  }
+  return best
+}
+
+/**
+ * Bowser walk: any truck cell except a fuel farm. The farm cell is the tank yard.
+ * `from` stays open so a bowser already standing on a farm (old saves) can drive off it.
+ */
+export function bowserPass(tiles: Tile[][], from?: Vec): (c: number, r: number) => boolean {
+  return (c, r) => tiles[r][c] !== 'fuel' || (!!from && c === from.c && r === from.r)
+}
+
+/** Truck cells beside a farm where a bowser waits and bottom-loads. */
+export function farmDocks(tiles: Tile[][], farm: Vec): Vec[] {
+  return neighbors(farm.c, farm.r).filter((n) => {
+    const tile = tiles[n.r][n.c]
+    return tile !== 'fuel' && walkableFor('truck', tile)
+  })
+}
+
+/** Shortest bowser route to the goals from a dock beside the farm. Null when no dock reaches them. */
+export function bowserPath(tiles: Tile[][], farm: Vec, goals: Vec[]): { dock: Vec; path: Vec[] } | null {
+  const pass = bowserPass(tiles)
+  let best: { dock: Vec; path: Vec[] } | null = null
+  for (const dock of farmDocks(tiles, farm)) {
+    const path = nearestPath(tiles, dock, goals, 'truck', pass)
+    if (path && (!best || path.length < best.path.length)) best = { dock, path }
   }
   return best
 }

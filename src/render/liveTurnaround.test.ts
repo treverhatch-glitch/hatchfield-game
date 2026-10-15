@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
+import { WORLD_PER_METER } from './aircraft/specs.ts'
 import { LiveTurnaround, socketWorld, type TurnaroundStand, type TurnaroundTruck } from './liveTurnaround.ts'
 
 function stand(over: Partial<TurnaroundStand> = {}): TurnaroundStand {
@@ -57,14 +58,41 @@ describe('live turnaround uses the stand modules', () => {
     layer.dispose()
   })
 
-  it('spawns a locked hose and belt when the stand is in service and no truck has arrived', () => {
+  it('draws no stand-in tanker or belt loader while the real trucks are still away', () => {
     const root = new THREE.Group()
     const layer = new LiveTurnaround(root)
-    const drawn = layer.sync([stand({ t: 20 })], [], 3, null, 0.016)
-    expect(drawn.spawned).toBe(2)
-    expect(drawn.hoses).toBe(1)
-    expect(drawn.bags).toBe(3)
+    const farAway: TurnaroundTruck = { id: 'fuel-1', kind: 'fuel', x: 80, y: 0, z: 60, yaw: 0, ext: 0, moving: true }
+    const drawn = layer.sync([stand({ t: 20 })], [farAway], 3, null, 0.016)
+    expect(drawn.hoses).toBe(0)
+    expect(drawn.bags).toBe(0)
     expect(drawn.crew).toBeGreaterThan(0)
+    const rigs: string[] = []
+    root.traverse((obj) => {
+      if (obj.name.startsWith('rig:')) rigs.push(obj.name)
+    })
+    expect(rigs).toEqual([])
+    layer.dispose()
+  })
+
+  it('builds stand crew at apron scale, not one world unit per metre', () => {
+    const root = new THREE.Group()
+    const layer = new LiveTurnaround(root)
+    layer.sync([stand({ t: 4 })], [], 3, null, 0.016)
+    const m = new THREE.Matrix4()
+    const at = new THREE.Vector3()
+    let top = 0
+    let drawn = 0
+    root.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh
+      if (!mesh.isInstancedMesh || !mesh.name.startsWith('people-')) return
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m)
+        top = Math.max(top, at.setFromMatrixPosition(m).y)
+        drawn += 1
+      }
+    })
+    expect(drawn).toBeGreaterThan(0)
+    expect(top).toBeLessThan(2 * WORLD_PER_METER)
     layer.dispose()
   })
 })

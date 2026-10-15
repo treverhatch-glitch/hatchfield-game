@@ -1,7 +1,7 @@
 import { DEFAULT_HOLD, DEFAULT_PAX, DEFAULT_VEHICLE_SPECS } from '../logistics/defaults.ts'
 import type { DelayCause, LogisticsConfig, StandAccess as RampAccess, VehicleType } from '../logistics/types.ts'
 import { DEPOT_GRANT } from '../scale/data.ts'
-import { neighbors, tilesOf, walkableFor } from './path.ts'
+import { farmDocks, neighbors, tilesOf, walkableFor } from './path.ts'
 import type { StandAccess, Tile } from './types.ts'
 
 /**
@@ -121,10 +121,12 @@ export function buildLogisticsConfig(
   }
 
   const depotId = `${depots[0].c},${depots[0].r}`
-  const farmId = `${farms[0].c},${farms[0].r}`
-  if (!onRoad.has(depotId) || !onRoad.has(farmId)) return null
-
+  if (!onRoad.has(depotId)) return null
   const reach = reachable(depotId, edges)
+  // Tankers load at a bay beside the farm. The farm cell itself is the tank yard.
+  const farmCellId = `${farms[0].c},${farms[0].r}`
+  const docks = farmDocks(tiles, farms[0]).map((d) => `${d.c},${d.r}`).filter((id) => reach.has(id))
+  const farmId = docks[0] ?? farmCellId
   if (!reach.has(farmId)) return null
 
   const kitchens = tilesOf(tiles, 'kitchen')

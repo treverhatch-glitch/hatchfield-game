@@ -9,14 +9,16 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | | |
 | --- | --- |
 | Seed | 1 |
-| First red line | in-game day 6 |
-| Clock | 932 sim seconds (the opening ends at 600) |
+| First red line | in-game day 7 |
+| Clock | 1215 sim seconds (the opening ends at 600) |
 | Facility | check-in desk |
-| Queue | 2 waiting |
-| Estimated wait | 380 nav seconds |
+| Queue | 1 waiting |
+| Estimated wait | 418 nav seconds |
 | Signed | `air_regional_1` only |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
+
+The line moved from day 6 (clock 932) to day 7 when the starter bowser started loading beside the farm instead of on the tank cell. Its route is one cell shorter, so the seeded run diverges.
 
 ## What changed
 
@@ -25,4 +27,4 @@ The same seed used to never raise the flag. One regional wave is spread across t
 1. Check-in `bottleneckSec` in `src/game/hallNavData.ts`, from 900 to 360 nav seconds. 360 sits above the opening peak. Security stays at 600. The first red line is the desks.
 2. `STARTER_CHECKIN_PACE` in `src/game/openingData.ts`, set to 3. Prefab I check-in keeps the normal pace through the opening. Once the clock passes 600 seconds, those desks take three times as long. The same short queue then waits about 380 nav seconds. An expanded hall goes back to pace 1.
 
-Day 6 is past the opening and in the band the hall pacing note already described. Another desk or a security lane clears the line. Prefab II is what opens a third carrier.
+Day 7 is past the opening and in the band the hall pacing note already described. Another desk or a security lane clears the line. Prefab II is what opens a third carrier.

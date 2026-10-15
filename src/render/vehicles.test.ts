@@ -18,8 +18,11 @@ import {
   vehicleModel,
   vehiclePartGeometry,
   vehicleRig,
+  vehicleIsFar,
   ANIM_PARTS,
 } from './vehicles'
+import { ORBIT_DEFAULT_DIST } from '../camera/orbit'
+import { WORLD_PER_METER } from './aircraft/specs'
 
 afterAll(() => disposeVehicleLibrary())
 
@@ -224,6 +227,17 @@ describe('ground vehicle models', () => {
     fleet.sync(list.slice(0, 4))
     expect(far.every((mesh) => mesh.count === 0)).toBe(true)
     fleet.dispose()
+  })
+
+  it('keeps the full rig on a truck a few cells from the pivot at the default orbit', () => {
+    const pitch = 0.68
+    const camera = { x: 0, y: Math.sin(pitch) * ORBIT_DEFAULT_DIST, z: Math.cos(pitch) * ORBIT_DEFAULT_DIST }
+    const cell = 9.9
+    for (const [dc, dr] of [[0, 0], [4, 0], [-4, -3], [3, 4]]) {
+      const truck = { x: dc * cell, y: 0, z: dr * cell, scale: WORLD_PER_METER }
+      expect(vehicleIsFar(truck, camera)).toBe(false)
+    }
+    expect(vehicleIsFar({ x: 0, y: 0, z: -40 * cell, scale: WORLD_PER_METER }, camera)).toBe(true)
   })
 })
 

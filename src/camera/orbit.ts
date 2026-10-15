@@ -2,6 +2,9 @@ import { FOLLOW_PRESETS, followStep, type FollowParams } from '../features/camer
 import { cellToWorld, simHeadingToChase } from './space.ts'
 import type { CameraPose, FieldLayout, Trackable, Vec3 } from './types.ts'
 
+/** Orbit distance the apron camera boots at, in world units. */
+export const ORBIT_DEFAULT_DIST = 88
+
 export interface OrbitLimits {
   minDist: number
   maxDist: number
