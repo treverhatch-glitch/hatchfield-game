@@ -21,7 +21,10 @@ export interface TierDemand {
   bagsPerMin: number
   /** Usable uplift the tank and the contract must cover, litres. */
   fuelLitres: number
-  /** Jet-bridge doors on the stand. */
+  /**
+   * Jet-bridge doors the turn requires.
+   * Small metal walks or rides a bus. A bridge is faster, not a gate.
+   */
   bridges: number
   /** Carts in the train. A small tug is not a substitute for a heavy one. */
   bagCarts: number
@@ -41,7 +44,7 @@ export const SIZE_TIERS: Record<SizeTier, TierDemand> = {
     paxPerMin: 14,
     bagsPerMin: 12,
     fuelLitres: 16_000,
-    bridges: 1,
+    bridges: 0,
     bagCarts: 2,
     supply: 'road',
     hydrant: false,

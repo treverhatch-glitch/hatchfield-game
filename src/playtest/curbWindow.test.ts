@@ -6,7 +6,7 @@ import { TIP_PERSONAS, runHeadless } from './run.ts'
 /**
  * The starter curb stays under pressure 1 through day 10. Helicopter turns
  * push it over 1 on day 11, once about 80 flights have landed, and the
- * eighth carrier is on the books between day 15 and 35. Careful's curb
+ * eighth carrier is on the books between day 14 and 35. Careful's curb
  * stamp is left off, and the tip policy leaves the second strip off, so the
  * reading is the starter curb alone. The bay that
  * brings it back under 1 is pinned in src/landside/landside.test.ts.
@@ -84,7 +84,7 @@ describe('starter curb pressure window', () => {
       return row.carriers >= 8 && row.flights >= 80
     })
     expect(grown, `days ${days.length} last ${JSON.stringify(peaks.get(days.at(-1)!))}`).toBeDefined()
-    expect(grown!).toBeGreaterThanOrEqual(15)
+    expect(grown!).toBeGreaterThanOrEqual(14)
     expect(grown!).toBeLessThanOrEqual(35)
     const at = peaks.get(grown!)!
     expect(at.pressure, `day ${grown} carriers ${at.carriers} flights ${at.flights}`).toBeGreaterThan(1)

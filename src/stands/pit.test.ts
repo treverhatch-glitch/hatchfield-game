@@ -39,7 +39,7 @@ describe('hydrant pit row', () => {
     expect(game.standPits['11,6']).toBe(true)
     expect(game.standPits['11,12']).toBeUndefined()
     expect(game.cash).toBe(cash - pit.cost)
-    expect(JSON.stringify(game.fittings[hostKey('stand', 11, 6)])).not.toContain('hydrant')
+    expect(JSON.stringify(game.fittings[hostKey('stand', 11, 6)] ?? [])).not.toContain('hydrant')
     expect(game.buildingCard()?.note).toBe(HYDRANT_CARD.short)
     expect(pitRow(game)?.label).toBe('This stand already has a pit.')
     game.standCardAction('pit:11,6')
