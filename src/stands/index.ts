@@ -21,5 +21,7 @@ export {
 } from './catalog.ts'
 export { letterOf, standAllows } from './fit.ts'
 export { rungRefusal, upgradeLabel } from './gates.ts'
+export { fittingRefusal } from './attach.ts'
+export type { FittingAsk } from './attach.ts'
 export { legacyFitting, migrateStand, readFittings, readStandRungs, readStandSizes } from './migrate.ts'
 export type { LegacyStand, MigratedStand } from './migrate.ts'

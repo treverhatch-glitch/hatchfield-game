@@ -55,8 +55,6 @@ import {
   money,
   parkTermLabel,
   personaBlurb,
-  STAND_JETWAY_MULT,
-  standAccessLabel,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   HEAT_ABANDON_THRESHOLD,
@@ -1811,7 +1809,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   <p className="muted">{game.campusLine()}</p>
                   <p className="muted">
                     {tilesOf(game.tiles, 'stand').length} stands · {game.jetwayCount()} jetway · {game.freeStands().length}{' '}
-                    free. Remote or jetway is chosen on the Airfield menu.
+                    free. A jet bridge is bought on the stand card.
                   </p>
                 </section>
               ) : null}
@@ -2403,26 +2401,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         onClick={() => game.setParkTerm('long')}
                       >
                         {parkTermLabel('long')}
-                      </button>
-                    </>
-                  ) : null}
-                  {buildMenu === 'airfield' ? (
-                    <>
-                      <button
-                        type="button"
-                        className={game.standAccessMode === 'remote' ? 'on' : ''}
-                        onClick={() => game.setStandAccessMode('remote')}
-                        title="Cheaper bay — terminal bus or walking pax"
-                      >
-                        {standAccessLabel('remote')}
-                      </button>
-                      <button
-                        type="button"
-                        className={game.standAccessMode === 'jetway' ? 'on' : ''}
-                        onClick={() => game.setStandAccessMode('jetway')}
-                        title={`Pre-attached gate · ×${STAND_JETWAY_MULT} cost · fast board, no apron walk`}
-                      >
-                        {standAccessLabel('jetway')} · ×{STAND_JETWAY_MULT}
                       </button>
                     </>
                   ) : null}

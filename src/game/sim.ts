@@ -369,8 +369,8 @@ import {
   tankDef,
   tickFuel,
 } from '../scale/logic.ts'
-import { aliasSize, footprintLetter, hostKey, legacyFitting, migrateStand, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, upgradeLabel, standAllows } from '../stands/index.ts'
-import type { Fitting, StandRung, StandSize } from '../stands/types.ts'
+import { aliasSize, FITTINGS, fittingDef, fittingRefusal, footprintLetter, hostKey, jetBridgeCost, jetBridgeUpkeep, legacyFitting, migrateStand, parseHostKey, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, standAllows, upgradeLabel } from '../stands/index.ts'
+import type { Fitting, FittingHost, FittingId, StandRung, StandSize } from '../stands/types.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
   CLOSED_NO_STAFF_LINE,
@@ -3353,9 +3353,7 @@ export class Game {
       return (this.fits[0]?.tier ?? 1) >= 3
     }
     if (id === 'jet_bridge') {
-      this.standAccessMode = 'jetway'
-      this.tool = 'stand'
-      this.pushNews('Jet bridge armed — stamp a stand to attach one gate.', 'ok')
+      this.pushNews('Buy the jet bridge on the stand card.', 'ok')
       this.emit()
       return true
     }
@@ -14469,7 +14467,7 @@ export class Game {
       if (scale === 'wide') wideStands += 1
       else if (scale === 'jumbo' || (!scale && this.standClass[key] === 'L')) jumboStands += 1
     }
-    return rungBill + pillarUpkeep(this.pillarState(), {
+    return rungBill + this.fittingUpkeepBill() + pillarUpkeep(this.pillarState(), {
       fuelFarms: tilesOf(this.tiles, 'fuel').length,
       hangars,
       fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
@@ -18476,7 +18474,7 @@ export class Game {
                   : cls === 'S'
                     ? 'Small stand'
                     : 'Medium stand'
-      const upkeep = size && rung != null ? rungUpkeep(size, rung) : 0
+      const upkeep = (size && rung != null ? rungUpkeep(size, rung) : 0) + this.fittingUpkeepAt(hostKey('stand', v.c, v.r))
       return { name, upkeep, tier, plan: 'stand' }
     }
     if (tile === 'hangar') {
@@ -18560,13 +18558,15 @@ export class Game {
     if (tile === 'mro') return this.attachVehicleQueue(this.mroReading(base))
     if (tile === 'nighthub') return this.attachVehicleQueue(this.nightHubReading(base))
     if (tile === 'stand') {
-      const upgrade = this.standUpgradeSection(v)
+      const sections = [this.standUpgradeSection(v), this.standFittingSection(v)].filter(
+        (section): section is CardSection => section != null,
+      )
       return this.withQueue(
         {
           ...base,
           demand: this.standOccupied(v) ? 1 : 0,
           note: this.standFuelNote(v),
-          sections: upgrade ? [upgrade] : undefined,
+          sections: sections.length ? sections : undefined,
           staffAssigned: this.crewOn(fleet, [
             'pushback_tug',
             'heavy_tug',
@@ -20334,7 +20334,154 @@ export class Game {
   }
 
   standCardAction(id: string) {
-    if (id.startsWith('rung:')) this.buyStandRung(id.slice('rung:'.length))
+    if (id.startsWith('rung:')) {
+      this.buyStandRung(id.slice('rung:'.length))
+      return
+    }
+    const fit = /^(fitbuy|fitdrop):((?:stand|fire|hangar|fuel):\d+,\d+):([a-z0-9_]+)$/.exec(id)
+    if (!fit) return
+    const fitting = this.asFittingId(fit[3] ?? '')
+    if (!fitting) return
+    if (fit[1] === 'fitbuy') this.buyFitting(fit[2] ?? '', fitting)
+    else this.removeFitting(fit[2] ?? '', fitting)
+  }
+
+  /** Fittings the card offers. Later tickets append rows here. */
+  private shownFittingIds(host: FittingHost): FittingId[] {
+    if (host === 'stand') return ['jet_bridge']
+    return []
+  }
+
+  private asFittingId(id: string): FittingId | null {
+    return FITTINGS.some((row) => row.id === id) ? (id as FittingId) : null
+  }
+
+  private hostPresent(host: FittingHost, c: number, r: number): boolean {
+    const tile = this.tile({ c, r })
+    if (host === 'stand') return tile === 'stand'
+    if (host === 'fire') return tile === 'fire'
+    if (host === 'hangar') return tile === 'hangar'
+    if (host === 'fuel') return tile === 'fuel'
+    return false
+  }
+
+  private fittingAsk(host: FittingHost, c: number, r: number, id: FittingId) {
+    const key = `${c},${r}`
+    const size = host === 'stand' ? (this.standSize[key] ?? null) : null
+    const rung = host === 'stand' ? (this.standRung[key] ?? 0) : 0
+    const list = this.fittings[hostKey(host, c, r)] ?? []
+    return {
+      id,
+      host,
+      size,
+      rung,
+      fieldLevel: this.fieldLevel(),
+      research: new Set(this.researchUnlocked),
+      hasDeice: tilesOf(this.tiles, 'deice').length > 0,
+      hallNear: this.hallNearStand(key),
+      count: list.filter((item) => item.id === id).length,
+      cash: this.cash,
+    }
+  }
+
+  /** Daily bill for every bought and legacy fitting. */
+  private fittingUpkeepBill(): number {
+    let bill = 0
+    for (const key of Object.keys(this.fittings)) bill += this.fittingUpkeepAt(key)
+    return bill
+  }
+
+  private fittingUpkeepAt(key: string): number {
+    const list = this.fittings[key]
+    if (!list?.length) return 0
+    const parsed = parseHostKey(key)
+    const size = parsed?.host === 'stand' ? this.standSize[`${parsed.c},${parsed.r}`] : undefined
+    let bill = 0
+    for (const item of list) {
+      if (item.id === 'jet_bridge') bill += size ? jetBridgeUpkeep(size) : fittingDef('jet_bridge').upkeepPerDay
+      else bill += fittingDef(item.id).upkeepPerDay
+    }
+    return bill
+  }
+
+  /** Buy one fitting. The first refusal is the news line. */
+  buyFitting(key: string, id: FittingId): boolean {
+    const parsed = parseHostKey(key)
+    if (!parsed || !this.hostPresent(parsed.host, parsed.c, parsed.r)) return false
+    const ask = this.fittingAsk(parsed.host, parsed.c, parsed.r, id)
+    const refusal = fittingRefusal(ask)
+    if (refusal) {
+      this.pushNews(refusal, 'bad')
+      this.emit()
+      return false
+    }
+    const cost = id === 'jet_bridge' && ask.size ? jetBridgeCost(ask.size) : fittingDef(id).cost
+    const name = fittingDef(id).name
+    if (!this.spend(cost, name)) return false
+    const list = this.fittings[key] ?? []
+    this.fittings[key] = [...list, { id }]
+    if (id === 'jet_bridge') this.standAccess[`${parsed.c},${parsed.r}`] = 'jetway'
+    this.bumpMap()
+    this.pushNews(`${name} fitted.`, 'good')
+    this.emit()
+    return true
+  }
+
+  /**
+   * Take off the last copy. A legacy grant was not bought, so it refunds nothing.
+   * The last jet bridge puts the stand back on remote boarding.
+   */
+  removeFitting(key: string, id: FittingId): boolean {
+    const parsed = parseHostKey(key)
+    if (!parsed) return false
+    const list = [...(this.fittings[key] ?? [])]
+    let index = -1
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i]?.id === id) {
+        index = i
+        break
+      }
+    }
+    if (index < 0) return false
+    const removed = list[index]
+    list.splice(index, 1)
+    if (list.length) this.fittings[key] = list
+    else delete this.fittings[key]
+    if (removed && removed.granted !== 'legacy') {
+      const size = this.standSize[`${parsed.c},${parsed.r}`]
+      const cost = id === 'jet_bridge' && size ? jetBridgeCost(size) : fittingDef(id).cost
+      this.credit(Math.round(cost * BULLDOZE_REFUND), 'refunds', fittingDef(id).name)
+    }
+    if (id === 'jet_bridge' && !list.some((item) => item.id === 'jet_bridge')) {
+      this.standAccess[`${parsed.c},${parsed.r}`] = 'remote'
+    }
+    this.bumpMap()
+    this.pushNews(`${fittingDef(id).name} removed.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  private standFittingSection(v: Vec): CardSection | null {
+    const key = `${v.c},${v.r}`
+    if (!this.standSize[key] || this.standRung[key] == null) return null
+    const host = hostKey('stand', v.c, v.r)
+    const rows: CardSection['rows'][number][] = []
+    for (const id of this.shownFittingIds('stand')) {
+      const ask = this.fittingAsk('stand', v.c, v.r, id)
+      const refusal = fittingRefusal(ask)
+      const price = id === 'jet_bridge' && ask.size ? jetBridgeCost(ask.size) : fittingDef(id).cost
+      const name = fittingDef(id).name
+      rows.push({
+        id: `fitbuy:${host}:${id}`,
+        label: refusal ?? `${name} · $${price.toLocaleString('en-US')}`,
+        disabled: refusal != null,
+      })
+      if (ask.count > 0) {
+        rows.push({ id: `fitdrop:${host}:${id}`, label: `Remove ${name.toLowerCase()}`, disabled: false })
+      }
+    }
+    if (!rows.length) return null
+    return { id: 'attachments', title: 'Attachments', rows }
   }
 
   private standUpgradeSection(v: Vec): CardSection | null {

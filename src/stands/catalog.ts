@@ -87,7 +87,7 @@ export const FITTINGS: readonly FittingDef[] = [
     name: 'Jet bridge',
     hosts: ['stand'],
     sizes: ['light', 'narrow', 'heavy'],
-    minRung: 1,
+    minRung: 0,
     cost: 5_000,
     upkeepPerDay: 45,
     minFieldLevel: 1,
