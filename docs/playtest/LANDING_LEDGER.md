@@ -254,3 +254,15 @@ Local dev server, graphics preset high:
 ## Preview
 
 `npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset in this environment. `--branch main` was not used. The previous progress deployment stays up.
+
+---
+
+# Seasonal missions
+
+Branch `cursor/seasonal-missions-9acb`. Amends the fuel-farm HUD note above.
+
+The seasonal goals card is off the main HUD. The status bar keeps `Temperate · Spring` (region and the live season from `calendar.ts`). The Airport Council board lists Seasonal missions for the current season only, plus one `Next:` preview line. Goals for other seasons stay hidden. When a later season begins, the missions arrive as a phone message from Airport Council. Dismiss clears it. There is no season popup.
+
+Quick PASS on `d988e2da155b287d085cd77ccb153b3bc177a29f` (713.3s, Node v22.14.0). 2986 tests passed, 0 failed, 9 skipped (462 files). 30-day soak reached day 30, end cash $4,559,895, stuck 0, 29 recoveries. Draw-call budgets passed. Careful bots, 15 days, passed. Report: `docs/devlog/gate/d988e2da155b287d085cd77ccb153b3bc177a29f.md`.
+
+`npx wrangler pages deploy dist --project-name hatchfield --branch progress` did not upload. Wrangler 4.151.0 stopped because `CLOUDFLARE_API_TOKEN` is unset. `--branch main` was not used.

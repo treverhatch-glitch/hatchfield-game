@@ -12,7 +12,7 @@ Order below is the old producer note. A row there is not a license to jump the p
 | P1 | Graphics day/night cycle holds noon, and apron flood pools stay on at 5× | `7a85bce864bfc7de5bc4719f46673a8955e0d01a` | quick, this landing | `progress` after deploy |
 | P1 | Fuel-farm depot matches the Gemini render (earth berms, canopy tankers, tire-track decal, painted lanes) and the HUD no longer stacks the climate card, phone, and hints | `9d01bf49768e72ba0e2d57f3077cfc6c82ef635d` | quick PASS on `14ae7aaf` (2977 tests, 30-day soak, Careful bot), then rebased onto `d1051d84`. `docs/devlog/gate/14ae7aaf4d32cb79a60d2204cec12fe1a0569bbc.md` | wrangler `--branch progress` did not upload: `CLOUDFLARE_API_TOKEN` unset. Stills in `docs/devlog/media/fuel-farm/` |
 | P1 | Schedule board reads contract windows, buffers, and the offer preview. Board and Timeline dock, clear of Planner and the phone | `ab5953ed` | quick, this landing | `progress` after deploy |
-| P1 | Seasonal goals leave the HUD. The status bar keeps `Temperate · Spring`. Current-season missions live on the Airport Council board, and a new season arrives on the phone | `cursor/seasonal-missions-9acb` | quick gate recorded on this branch | wrangler `--branch progress` recorded with the gate |
+| P1 | Seasonal goals leave the HUD. The status bar keeps `Temperate · Spring`. Current-season missions live on the Airport Council board, and a new season arrives on the phone | `d988e2da155b287d085cd77ccb153b3bc177a29f` | quick PASS, 2986 tests, 30-day soak, Careful bot, then rebased onto `28c5b5d3`. `docs/devlog/gate/d988e2da155b287d085cd77ccb153b3bc177a29f.md` | wrangler `--branch progress` did not upload: `CLOUDFLARE_API_TOKEN` unset |
 
 ## P1 notes
 
