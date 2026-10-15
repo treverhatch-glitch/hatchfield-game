@@ -18,3 +18,17 @@ export function nextEscape(state: {
   if (state.infoViewOpen) return 'close-info'
   return 'open-menu'
 }
+
+/** Which numbers surface Esc closes. Lines, then the More menu, then a map-view panel. */
+export type NumbersClose = 'lines' | 'menu' | 'detail'
+
+export function numbersToClose(state: {
+  infoLinesOpen: boolean
+  infoMenuOpen: boolean
+  infoDetailOpen: boolean
+}): NumbersClose | null {
+  if (state.infoLinesOpen) return 'lines'
+  if (state.infoMenuOpen) return 'menu'
+  if (state.infoDetailOpen) return 'detail'
+  return null
+}

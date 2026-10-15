@@ -785,6 +785,31 @@ button {
   margin-top: 4px;
 }
 
+/* Critical-alert pin on the apron cell. Not a letter and not a phone card. */
+.alert-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 18;
+}
+
+.alert-mark {
+  pointer-events: auto;
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff4e8;
+  background: #e0574a;
+  box-shadow: 0 0 0 4px rgba(224, 87, 74, 0.35);
+  transform: translate(-50%, -50%);
+}
+
+.shell.photo-mode .alert-marks {
+  display: none;
+}
+
 .alert-sev {
   display: inline-block;
   margin-right: 6px;

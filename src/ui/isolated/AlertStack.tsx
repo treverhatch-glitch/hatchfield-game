@@ -3,6 +3,7 @@ import type { Game } from '../../game/sim.ts'
 import type { Alert } from '../../game/alerts.ts'
 import { ALERT_TUNING } from '../../game/alertsData.ts'
 import { DISRUPTION_ALERT_PREFIX } from '../../disruptions/alertFeed.ts'
+import { AlertMarks } from '../alerts/AlertMark.tsx'
 
 /** The stack shows these two levels. Info notes stay in the sim and off this dock. */
 const STACK_SEVERITY = ['critical', 'warning'] as const
@@ -36,6 +37,15 @@ function keepClick(run: () => void) {
  * Emergencies are letters, not rows here, and they never go through the phone.
  */
 export function AlertStackView({ game }: { game: Game }) {
+  return (
+    <>
+      <AlertMarks game={game} />
+      <AlertDock game={game} />
+    </>
+  )
+}
+
+function AlertDock({ game }: { game: Game }) {
   const stack = game.alerts
   const rows = stack.ranked().filter(isStackAlert)
   if (!rows.length) return null

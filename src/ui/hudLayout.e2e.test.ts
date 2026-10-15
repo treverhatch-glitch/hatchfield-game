@@ -62,38 +62,41 @@ describe('HUD top band layout', () => {
           await page.getByTestId('coach').waitFor({ state: 'visible' })
           await expectNoOverlap(page, ['coach', 'photo-mode', 'info-strip', 'menu-money'], viewport)
 
-          // Widest chip row: a hall is down, and Connections / Links show from Field Lv 3.
+          // One info bar: five map pills and More. Connections shows from Field Lv 3.
           await page.evaluate(() => {
             const g = (window as unknown as { __hatch: HatchProbe }).__hatch
             g.fieldLevel = () => 3
-            g.toggleInfo('power')
           })
-          await page.getByTestId('info-panel').waitFor({ state: 'visible' })
-          const chipIds = await page
-            .locator('[data-testid^="info-hotspot-"]')
+          await page.getByTestId('info-view-bar').waitFor({ state: 'visible' })
+          const pillIds = await page
+            .locator('[data-testid^="info-view-"]')
             .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid') ?? ''))
-          expect(chipIds).toEqual(
+          expect(pillIds).toEqual(
             expect.arrayContaining([
-              'info-hotspot-queue',
-              'info-hotspot-lost',
-              'info-hotspot-bags',
-              'info-hotspot-retail',
-              'info-hotspot-connections',
-              'info-hotspot-links',
-              'info-hotspot-power',
+              'info-view-traffic',
+              'info-view-queues',
+              'info-view-bays',
+              'info-view-power',
+              'info-view-fuel',
+              'info-view-more',
             ]),
           )
+          expect(await page.locator('[data-testid^="info-hotspot-"]').count()).toBe(0)
+          await page.getByTestId('info-view-more').click()
+          await page.getByTestId('info-menu-checkin').waitFor({ state: 'visible' })
+          await page.getByTestId('info-menu-connections').waitFor({ state: 'visible' })
+          expect(await page.getByTestId('info-menu-power').count()).toBe(0)
+          expect(await page.getByTestId('info-menu-fuel').count()).toBe(0)
+          await page.getByTestId('info-menu-bags').click()
+          await page.getByTestId('info-view-panel').waitFor({ state: 'visible' })
+          expect(await page.getByTestId('info-panel').count()).toBe(0)
           await expectNoOverlap(
             page,
-            [...chipIds, 'flow-toggle', 'info-panel', 'coach', 'photo-mode', 'menu-money'],
+            ['info-view-bar', 'flow-toggle', 'info-view-panel', 'coach', 'photo-mode', 'menu-money'],
             viewport,
           )
-          // The chips are their own row: none of them overlaps the coach either.
-          const coach = await boxOf(page, 'coach')
-          for (const id of chipIds) {
-            const chip = await boxOf(page, id)
-            expect(overlaps(chip, coach), `${id} overlaps the coach at ${viewport.width}x${viewport.height}`).toBe(false)
-          }
+          await page.keyboard.press('Escape')
+          await page.getByTestId('info-view-panel').waitFor({ state: 'hidden' })
           await page.close()
         }
       } finally {

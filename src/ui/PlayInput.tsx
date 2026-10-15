@@ -3,8 +3,9 @@ import { simClockToHour } from '../render/world/daylight.ts'
 import { cameraSession } from '../camera/session.ts'
 import type { Game } from '../game/sim.ts'
 import type { Speed } from '../game/types.ts'
+import { moreMenuSnapshot, setMoreMenu } from '../info/moreMenu.ts'
 import { closeMapDetail, closeMapView, mapViewSnapshot } from '../info/session.ts'
-import { nextEscape } from '../input/escape.ts'
+import { nextEscape, numbersToClose } from '../input/escape.ts'
 import { cancelHallTool, hallToolActive, rotateHallTool } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
 import { pauseState } from './pauseState.ts'
@@ -25,11 +26,13 @@ export function PlayInput({ game }: { game: Game }) {
       }
       if (id === 'ui.back') {
         const view = mapViewSnapshot()
+        const linesOpen = game.infoOpen != null
+        const menuOpen = moreMenuSnapshot()
         const step = nextEscape({
           menuOpen: pauseState.open,
           cameraCaptured: cameraSession.frozen || cameraSession.following,
           toolActive: hallToolActive() || game.tool !== 'pan',
-          infoDetailOpen: view.detail,
+          infoDetailOpen: view.detail || linesOpen || menuOpen,
           infoViewOpen: view.active != null,
         })
         if (step === 'close-menu') pauseState.close()
@@ -38,9 +41,21 @@ export function PlayInput({ game }: { game: Game }) {
           if (hallToolActive()) cancelHallTool()
           else game.setTool('pan')
         } else if (step === 'close-info-detail') {
-          closeMapDetail()
-          if (view.active === 'traffic') game.closeLandside()
-          if (view.active === 'fuel') game.closeFuelFarm()
+          const which = numbersToClose({
+            infoLinesOpen: game.infoOpen != null,
+            infoMenuOpen: moreMenuSnapshot(),
+            infoDetailOpen: view.detail,
+          })
+          if (which === 'lines' && game.infoOpen) {
+            game.toggleInfo(game.infoOpen)
+            setMoreMenu(false)
+          } else if (which === 'menu') {
+            setMoreMenu(false)
+          } else if (which === 'detail') {
+            closeMapDetail()
+            if (view.active === 'traffic') game.closeLandside()
+            if (view.active === 'fuel') game.closeFuelFarm()
+          }
         } else if (step === 'close-info') {
           if (view.active === 'traffic') game.closeLandside()
           if (view.active === 'fuel') game.closeFuelFarm()

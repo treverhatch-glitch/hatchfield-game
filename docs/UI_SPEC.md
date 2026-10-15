@@ -121,7 +121,7 @@ Picking a pill desaturates the reading toward green / amber / red (`HEAT` in `sr
 
 Owner rule for anything added later: a new figure goes in the Numbers panel, not on the pill and not on the top bar. The short scores already on the legend stay; they are the headline, and each one already explains itself on hover.
 
-The older hotspot row is still there: Check-in, Security, Lost passengers, Bags, Shops, and, from field level 3, Connections and Links. Fuel farm, Maintenance, and Night hub appear when those buildings exist. Power is always on that row. Those chips open `infoLines` in a separate centred card. They are not the five map views. G5-3 folds the hotspot labels onto the info-view bar so the player has one info menu, the way Cities keeps one info-view list.
+Hotspot labels that are not already a map pill live in More on that same bar: Check-in, Security, Lost passengers, Bags, Shops, and, from field level 3, Connections and Links. Maintenance and Night hub appear when those buildings exist. Fuel farm and Power stay on the pills only. Choosing a More item opens its `infoLines` in the Numbers panel. The ground-stock line and the flow toggle stay on the strip. A visible critical alert with a cell draws one pin on that cell; warning and info alerts do not.
 
 ## Milestone bar and XP
 

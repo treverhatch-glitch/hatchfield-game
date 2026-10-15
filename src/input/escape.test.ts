@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextEscape } from './escape.ts'
+import { nextEscape, numbersToClose } from './escape.ts'
 
 describe('escape order', () => {
   const idle = { menuOpen: false, cameraCaptured: false, toolActive: false }
@@ -21,5 +21,12 @@ describe('escape order', () => {
     expect(nextEscape({ ...idle, infoDetailOpen: true, infoViewOpen: true })).toBe('close-info-detail')
     expect(nextEscape({ ...idle, infoViewOpen: true })).toBe('close-info')
     expect(nextEscape({ ...idle, toolActive: true, infoViewOpen: true })).toBe('cancel-tool')
+  })
+
+  it('closes hotspot lines, then the More menu, then a map numbers panel', () => {
+    expect(numbersToClose({ infoLinesOpen: true, infoMenuOpen: true, infoDetailOpen: true })).toBe('lines')
+    expect(numbersToClose({ infoLinesOpen: false, infoMenuOpen: true, infoDetailOpen: true })).toBe('menu')
+    expect(numbersToClose({ infoLinesOpen: false, infoMenuOpen: false, infoDetailOpen: true })).toBe('detail')
+    expect(numbersToClose({ infoLinesOpen: false, infoMenuOpen: false, infoDetailOpen: false })).toBeNull()
   })
 })

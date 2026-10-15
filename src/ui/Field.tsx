@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Camera } from 'three'
 import { snapshotFrom, tracksFrom } from '../camera/actors.ts'
 import { pngName, savePng } from '../camera/capture.ts'
 import { pickTrackable } from '../camera/pick.ts'
@@ -9,6 +10,9 @@ import { inputMap } from '../input/map.ts'
 import { toWorld, World } from '../render/world'
 import { mapViewSnapshot, openMapDetail } from '../info/session.ts'
 import { writeTipPoints, type TipPoint } from './tipScreen'
+import { writeAlertPoints, type AlertPoint } from './alerts/alertScreen'
+import { criticalAlertMarks } from './alerts/marks'
+import { ALERT_TUNING } from '../game/alertsData.ts'
 import { releaseApronAudio, syncApronAudio } from '../audio/stage'
 import type { QualityLevel } from '../render/world/quality.ts'
 
@@ -121,6 +125,7 @@ export function Field({ game }: { game: Game }) {
             tips.set(tip.id, { x: nx, y: ny, on })
           }
           writeTipPoints(tips)
+          writeAlertPoints(projectAlertMarks(game, cam))
           const e = cam.matrixWorld.elements
           syncApronAudio(game, {
             position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
@@ -163,6 +168,7 @@ export function Field({ game }: { game: Game }) {
         setPlaceReason((prev) => (prev === reason ? prev : reason))
       } else {
         releaseApronAudio()
+        writeAlertPoints(new Map())
         setPlaceReason((prev) => (prev === null ? prev : null))
       }
       raf = requestAnimationFrame(loop)
@@ -284,4 +290,23 @@ export function Field({ game }: { game: Game }) {
       ) : null}
     </div>
   )
+}
+
+/** One screen point per visible critical alert, on its first apron cell. */
+function projectAlertMarks(game: Game, cam: Camera): Map<string, AlertPoint> {
+  const next = new Map<string, AlertPoint>()
+  for (const mark of criticalAlertMarks(game.alerts.ranked(), ALERT_TUNING.visible)) {
+    if (mark.view !== 'apron') continue
+    const v = toWorld(mark.cell.c, mark.cell.r, 2)
+    v.project(cam)
+    const nx = v.x * 0.5 + 0.5
+    const ny = -v.y * 0.5 + 0.5
+    const on = v.z < 1 && nx >= -0.08 && nx <= 1.08 && ny >= -0.08 && ny <= 1.08
+    next.set(mark.id, {
+      x: Math.min(0.98, Math.max(0.02, nx)),
+      y: Math.min(0.96, Math.max(0.04, ny)),
+      on,
+    })
+  }
+  return next
 }

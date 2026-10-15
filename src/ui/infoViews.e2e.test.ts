@@ -83,6 +83,66 @@ describe('info view screenshots', () => {
           await page.keyboard.press('Escape')
         }
         expect(await page.getByTestId('info-view-legend').count()).toBe(0)
+
+        await page.evaluate(() => {
+          const game = (window as unknown as {
+            __hatch: {
+              fits: unknown[]
+              buildStarterKit: () => void
+              fieldLevel: () => number
+              raiseAlert: (input: unknown) => void
+              dismissAlert: (id: string) => void
+              alerts: { active: { id: string; key: string }[] }
+              panToAlert: (id: string) => void
+            }
+          }).__hatch
+          if (!game.fits.length) game.buildStarterKit()
+          game.fieldLevel = () => 3
+          game.raiseAlert({
+            key: 'cond:test-mark',
+            severity: 'critical',
+            title: 'Test mark',
+            detail: 'cell',
+            at: { view: 'apron', cells: [{ c: 16, r: 16 }] },
+          })
+          game.raiseAlert({
+            key: 'cond:test-warn',
+            severity: 'warning',
+            title: 'Test warn',
+            detail: 'cell',
+            at: { view: 'apron', cells: [{ c: 16, r: 17 }] },
+          })
+          const calls: string[] = []
+          const orig = game.panToAlert.bind(game)
+          game.panToAlert = (id: string) => {
+            calls.push(id)
+            orig(id)
+          }
+          ;(window as unknown as { __pans?: string[] }).__pans = calls
+        })
+        await page.getByTestId('info-view-more').click()
+        await page.getByTestId('info-menu-checkin').waitFor({ state: 'visible' })
+        await page.getByTestId('info-menu-connections').waitFor({ state: 'visible' })
+        await page.getByTestId('info-menu-bags').click()
+        await page.getByTestId('info-view-panel').waitFor({ state: 'visible' })
+        expect((await page.getByTestId('info-view-panel').innerText()).toLowerCase()).toContain('bag')
+        expect(await page.getByTestId('info-panel').count()).toBe(0)
+        await page.keyboard.press('Escape')
+        await page.getByTestId('info-view-panel').waitFor({ state: 'hidden' })
+
+        const mark = page.getByTestId('alert-mark-cond:test-mark')
+        await mark.waitFor({ state: 'visible' })
+        expect(await page.getByTestId('alert-mark-cond:test-warn').count()).toBe(0)
+        const alertId = await page.evaluate(() => {
+          const game = (window as unknown as { __hatch: { alerts: { active: { id: string; key: string }[] } } }).__hatch
+          return game.alerts.active.find((row) => row.key === 'cond:test-mark')?.id ?? ''
+        })
+        await mark.click()
+        await page.getByTestId('alert-cond:test-mark').locator('.alert-card-detail').click()
+        const pans = await page.evaluate(() => (window as unknown as { __pans?: string[] }).__pans ?? [])
+        expect(pans).toEqual([alertId, alertId])
+        await page.getByTestId('alert-dismiss-cond:test-mark').click()
+        await mark.waitFor({ state: 'detached' })
       } finally {
         await browser.close()
       }

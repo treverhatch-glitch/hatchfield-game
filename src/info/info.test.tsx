@@ -4,7 +4,9 @@ import { defaultConfig } from '../logistics/defaults.ts'
 import { Game } from '../game/sim.ts'
 import { tankDef } from '../scale/logic.ts'
 import { InfoViews } from '../ui/InfoViews.tsx'
+import { OwnerChrome } from '../ui/isolated/OwnerChrome.tsx'
 import { readMapView } from './read.ts'
+import { resetMoreMenu, setMoreMenu } from './moreMenu.ts'
 import { closeMapView, mapViewSnapshot, resetMapView, toggleMapView } from './session.ts'
 import { MAP_VIEWS, type MapViewId } from './types.ts'
 
@@ -36,7 +38,10 @@ function finger(game: Game) {
 }
 
 describe('info views', () => {
-  beforeEach(() => resetMapView())
+  beforeEach(() => {
+    resetMapView()
+    resetMoreMenu()
+  })
 
   it('toggles one view at a time and reads only snapshots', () => {
     const game = field()
@@ -120,6 +125,44 @@ describe('info views', () => {
     expect(html).toContain('Inputs:')
     expect(html).not.toContain('landside-flow-toggle')
     expect(html).not.toContain('fuel-farm-toggle')
+    expect(html).toContain('data-testid="info-view-more"')
+    expect(html).not.toContain('info-menu-power')
+    expect(html).not.toContain('info-menu-fuel')
+    vi.unstubAllGlobals()
+  })
+
+  it('puts hotspot lines in the numbers panel and leaves Fuel and Power on the pills', () => {
+    const game = field()
+    vi.stubGlobal('window', {
+      matchMedia: () => ({
+        matches: true,
+        addEventListener() {},
+        removeEventListener() {},
+      }),
+    })
+    vi.spyOn(game, 'fieldLevel').mockReturnValue(3)
+    setMoreMenu(true)
+    const html = renderToStaticMarkup(<InfoViews game={game} />)
+    expect(html).toContain('data-testid="info-view-bar"')
+    for (const id of MAP_VIEWS) expect(html).toContain(`data-testid="info-view-${id}"`)
+    expect(html).toContain('data-testid="info-menu-checkin"')
+    expect(html).toContain('data-testid="info-menu-connections"')
+    expect(html).toContain('>Check-in<')
+    expect(html).toContain('>Connections<')
+    expect(html).not.toContain('info-menu-power')
+    expect(html).not.toContain('info-menu-fuel')
+    expect(html).not.toContain('Fuel farm')
+    setMoreMenu(false)
+    game.toggleInfo('bags')
+    const open = renderToStaticMarkup(<InfoViews game={game} />)
+    expect(open).toContain('data-testid="info-view-panel"')
+    expect(open).toContain('turns still waiting on bags')
+    expect(open).not.toContain('data-testid="info-panel"')
+    const chrome = renderToStaticMarkup(<OwnerChrome game={game} />)
+    expect(chrome).not.toContain('data-testid="info-panel"')
+    expect(chrome).not.toContain('info-hotspot-')
+    expect(chrome).toContain('data-testid="info-strip"')
+    expect(chrome).toContain('data-testid="flow-toggle"')
     vi.unstubAllGlobals()
   })
 })

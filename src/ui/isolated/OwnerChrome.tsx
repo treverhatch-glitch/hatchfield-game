@@ -31,7 +31,7 @@ export function OwnerChrome({ game }: { game: Game }) {
       data-testid="owner-chrome"
       style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}
     >
-      {/* Own row under the top bar: ground stock · info-view chips · flow toggle. */}
+      {/* Own row under the top bar: ground stock on the left, flow toggle on the right. */}
       <div
         ref={strip}
         data-testid="info-strip"
@@ -61,36 +61,6 @@ export function OwnerChrome({ game }: { game: Game }) {
             </div>
           )}
         </div>
-        <div
-          data-testid="info-hotspots"
-          style={{
-            pointerEvents: 'auto',
-            flex: '0 1 auto',
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            gap: 6,
-          }}
-        >
-          {game.infoHotspots().map((spot) => (
-            <button
-              key={spot.id}
-              type="button"
-              data-testid={`info-hotspot-${spot.id}`}
-              onClick={() => game.toggleInfo(spot.id)}
-              style={{
-                background: game.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
-                color: game.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
-                border: '1px solid #c9a27a',
-                borderRadius: 999,
-                padding: '4px 10px',
-                font: '700 12px sans-serif',
-              }}
-            >
-              {spot.label}
-            </button>
-          ))}
-        </div>
         <div style={{ flex: '1 1 0', display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
           <label
             data-testid="flow-toggle"
@@ -117,47 +87,6 @@ export function OwnerChrome({ game }: { game: Game }) {
           </label>
         </div>
       </div>
-      {game.infoOpen ? (
-        <div
-          data-testid="info-panel"
-          style={{
-            position: 'absolute',
-            top: 'calc(var(--hud-top) + 4px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(12, 22, 28, 0.94)',
-            color: '#e7eee9',
-            border: '1px solid #c9a27a',
-            borderRadius: 8,
-            padding: '8px 12px',
-            font: '13px sans-serif',
-            minWidth: 220,
-            pointerEvents: 'auto',
-          }}
-        >
-          {game.infoLines(game.infoOpen).map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-          {game.infoOpen === 'links' && game.linkRepairOffer() ? (
-            <button
-              type="button"
-              data-testid="repair-link"
-              onClick={() => game.repairLink(game.linkRepairOffer()!.mode)}
-              style={{
-                marginTop: 8,
-                background: '#f0c14a',
-                color: '#1a2a32',
-                border: 0,
-                borderRadius: 6,
-                padding: '4px 8px',
-                font: '700 12px sans-serif',
-              }}
-            >
-              {game.linkRepairOffer()!.label}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       <HintPanel game={game} />
       <TipChips game={game} />
       {game.view !== 'hall' && (game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (

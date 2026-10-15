@@ -42,6 +42,28 @@
   color: #1a1408;
 }
 
+.info-more {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: min(560px, 72vw);
+}
+
+.info-more button {
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background: rgba(12, 22, 28, 0.9);
+  color: #e7eee9;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: 700 12px sans-serif;
+}
+
+.info-more button.on {
+  background: #f0c14a;
+  color: #1a2a32;
+}
+
 .info-legend {
   width: min(280px, 70vw);
   background: rgba(10, 20, 16, 0.9);
