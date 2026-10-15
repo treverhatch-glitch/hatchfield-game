@@ -30,7 +30,7 @@ function recovered(game: Game, flightNo: string, start: { x: number; y: number }
 }
 
 describe('scripted stuck-flight repros', () => {
-  it('recovers BU131, ZO116, and BU130 within five sim minutes', () => {
+  it('sends a blocked landing to the free exit and recovers ZO116 and BU130 within five sim minutes', () => {
     const game = field()
     const landing = applyStuckRepro(game, loadStuckFixture('bu131-landing'))
     const board = applyStuckRepro(game, loadStuckFixture('zo116-board'))
@@ -56,13 +56,17 @@ describe('scripted stuck-flight repros', () => {
     }
     expect(game.simMinutes() - startMin).toBeGreaterThanOrEqual(STUCK_WATCH.recoverWithinMin - 0.05)
     expect(recovered(game, 'BU131', starts.BU131)).toBe(true)
+    expect(landing.y).toBeGreaterThan(starts.BU131.y)
+    expect(landing.path.some((cell) => cell.c === 11 && cell.r === 25)).toBe(false)
+    expect(landing.path.filter((cell) => cell.r === 28).length).toBeGreaterThan(3)
+    expect(game.recoveryLog.some((entry) => entry.label === 'BU131')).toBe(false)
     expect(recovered(game, 'ZO116', starts.ZO116)).toBe(true)
     expect(recovered(game, 'BU130', starts.BU130)).toBe(true)
     expect(visited).toEqual([])
-    for (const flightNo of ['BU131', 'ZO116', 'BU130']) {
+    for (const flightNo of ['ZO116', 'BU130']) {
       expect(game.recoveryLog.some((entry) => entry.label === flightNo)).toBe(true)
     }
-    expect(game.recoveryCount).toBeGreaterThanOrEqual(3)
+    expect(game.recoveryCount).toBeGreaterThanOrEqual(2)
   })
 
   it('cancels a flight with no pavement and refunds the fees it collected', () => {
