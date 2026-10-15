@@ -291,6 +291,7 @@ import {
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
+import { fuelShortfall } from '../catering/fuelOutage.ts'
 import { cogsFor, stockoutChip, type HallCounterKind } from '../catering/hallShelf.ts'
 import { CargoBridge } from './cargoBridge.ts'
 import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
@@ -769,7 +770,12 @@ import {
   settleLoanTick,
   settlePayroll,
 } from './economy'
-import { SMALL_FIELD_FEE_FACTOR, SMALL_FIELD_MAX_CARRIERS, SMALL_FIELD_UPKEEP_FACTOR } from './economyTuning.ts'
+import {
+  GROUNDED_RETAIL_TAPER,
+  SMALL_FIELD_FEE_FACTOR,
+  SMALL_FIELD_MAX_CARRIERS,
+  SMALL_FIELD_UPKEEP_FACTOR,
+} from './economyTuning.ts'
 import {
   AIRFRAMES,
   type Airframe,
@@ -8193,7 +8199,8 @@ export class Game {
       this.dayExpense = 0
       this.dayMark = this.clock
       const retail = this.negotiationBridge?.rollDay() ?? 0
-      if (retail > 0) this.earn(retail, 'ULCC retail')
+      // Catalog daily pax, not the hall. Nobody boarded, so the spend report stays at zero.
+      if (retail > 0 && closedPax > 0) this.earn(retail, 'ULCC retail')
       this.advanceRivalDay()
       this.advancePriceWarDay()
       this.closeScenarioDay(closedDay, closedPax, profit)
@@ -9778,7 +9785,10 @@ export class Game {
 
   private flightBoardingCall(g: HallGuest): boolean {
     const f = this.linkedFlight(g)
-    if (f) return this.phaseIsBoarding(f.phase)
+    if (f) {
+      if (this.departureShortOfFuel(f)) return false
+      return this.phaseIsBoarding(f.phase)
+    }
     return this.departedFlights.has(g.flightId)
   }
 
@@ -12334,6 +12344,27 @@ export class Game {
   }
 
   /**
+   * This departure cannot lift with the litres on hand.
+   * Earlier departures keep a full load; a later one does not collect a slot fee
+   * while the farm is already spoken for.
+   */
+  private departureShortOfFuel(f: Flight): boolean {
+    if (!this.departureNeedsFuel(f) || f.posted.fuel) return false
+    if (this.fuelOutage(f)) return true
+    const litres = this.groundSnapshot() ? this.tankLitres : this.fuelOnHand() ? 1_000_000 : 0
+    const demands = []
+    for (const other of this.flights) {
+      if (other.phase === 'gone' || other.posted.fuel || !this.departureNeedsFuel(other)) continue
+      demands.push({
+        flightId: other.id,
+        litres: this.fuelNeedLitres(other),
+        departAt: other.fuelHeldSince ?? this.clock,
+      })
+    }
+    return fuelShortfall(litres, demands).groundedIds.includes(f.id)
+  }
+
+  /**
    * Pushback gate. An empty farm holds the aircraft.
    * Any other ramp gap may release once the safety timer runs out, with a Standing hit.
    */
@@ -12399,13 +12430,86 @@ export class Game {
     } else {
       this.adjustHeat(f.airline, -4.2)
     }
+    this.refundUnflownFees(f)
+    const refund = Math.round(f.unflownRefunded ?? 0)
+    const standing = Math.round(this.standingOf(f.airline))
     this.pushNews(
-      `${f.flightNo} cancelled — no fuel before the departure slot. Standing ${Math.round(this.standingOf(f.airline))}.`,
+      refund > 0
+        ? `${f.flightNo} cancelled — no fuel before the departure slot. Passenger fees and the slot fee refunded $${refund.toLocaleString('en-US')}. Standing ${standing}.`
+        : `${f.flightNo} cancelled — no fuel before the departure slot. Standing ${standing}.`,
       'bad',
     )
     this.noteDiplomacyCancel(f.airline, false)
     this.noteCargoCancel(f)
     this.noteWave3(f.id, f.airline, classifyTurn({ cancelled: true }))
+  }
+
+  /**
+   * Passenger fees and the landing or pad slot fee already taken.
+   * The airline withholds the slot fee, and passengers are refunded, when the flight does not leave.
+   * Both come back through the cancel-refund line on Penalties.
+   * Only the unpaid delta is charged, and only what cash actually returned is recorded,
+   * so a later call can finish a refund the debt floor clipped.
+   */
+  private refundUnflownFees(f: Flight): number {
+    let owed = 0
+    for (const line of f.ledger) {
+      if (!(line.amount > 0)) continue
+      if (this.unflownFeeLine(f, line.label)) owed += line.amount
+    }
+    const already = f.unflownRefunded ?? 0
+    const delta = Math.round(owed - already)
+    if (!(delta > 0)) return 0
+    const taken = this.charge(delta, 'penalties', this.simMinutes(), 'Cancel refund')
+    f.unflownRefunded = already + taken
+    return taken
+  }
+
+  /** True for a slot fee, passenger fee, pad fee, or ambulance host fee on this flight. */
+  private unflownFeeLine(f: Flight, label: string): boolean {
+    if (/passenger fees/i.test(label) || /\blanding\b/i.test(label) || /pad fee/i.test(label)) return true
+    return f.kind === 'air_ambulance' && label.startsWith(f.flightNo)
+  }
+
+  /**
+   * Hold passenger and slot fees while fuel is not on the wing.
+   * A farm that can still fuel this departure hands them straight back, so a
+   * working fuel contract does not sit without the fee. A short farm keeps them.
+   */
+  private settleUnflownFees(f: Flight) {
+    if (!this.unflownFeesOpen(f)) return
+    this.refundUnflownFees(f)
+    if (!this.departureShortOfFuel(f)) this.releaseUnflownFees(f)
+  }
+
+  /** Fuel is not on the wing yet, so passenger and slot fees are not the airline's to keep. */
+  private unflownFeesOpen(f: Flight): boolean {
+    return this.departureNeedsFuel(f) && !f.posted.fuel
+  }
+
+  /**
+   * The wing took fuel, or the flight is leaving. Hand back the fees withheld at the stand.
+   * The original income lines stay; the cancel-refund line is released so a fueled turn
+   * does not sit on Penalties.
+   */
+  private releaseUnflownFees(f: Flight) {
+    const held = Math.round(f.unflownRefunded ?? 0)
+    if (!(held > 0)) return
+    f.unflownRefunded = 0
+    this.cash += held
+    this.hourExpense = Math.max(0, this.hourExpense - held)
+    this.dayExpense = Math.max(0, this.dayExpense - held)
+    this.bank.releaseExpense('penalties', held, {
+      simMinutes: Math.max(0, this.simMinutes()),
+      source: 'sim',
+      label: 'Cancel refund',
+    })
+  }
+
+  /** Hall spend while this departure cannot leave. 1 when the tank can still fuel it. */
+  private groundedRetailFactor(flight: Flight | null | undefined): number {
+    if (!flight || !this.departureShortOfFuel(flight)) return 1
+    return GROUNDED_RETAIL_TAPER
   }
 
   /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
@@ -14142,6 +14246,7 @@ export class Game {
       if (flight) {
         flight.posted.fuel = true
         flight.fuelLevel = 1
+        this.releaseUnflownFees(flight)
         flight.waitingOn.fuel = false
         flight.posted.catering = true
         flight.caterLevel = 1
@@ -14910,6 +15015,11 @@ export class Game {
     desperate = false,
   ): { ok: boolean; why?: string } {
     if (pay <= 0) return { ok: true }
+    const retailFactor = this.groundedRetailFactor(this.linkedFlight(g))
+    if (retailFactor !== 1) {
+      pay = Math.round(pay * retailFactor)
+      if (!(pay > 0)) return { ok: true }
+    }
     const pref = g.prefs[kind] ?? 0
     const floor = 0.28 + this.specMods().tenantPref
     if (!desperate && pref < floor) {
@@ -15258,7 +15368,9 @@ export class Game {
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
       const called = this.flightBoardingCall(g)
-      const early = !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
+      const linked = this.linkedFlight(g)
+      const grounded = Boolean(linked && this.departureShortOfFuel(linked))
+      const early = !grounded && !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
       if (called || early) {
         g.needs.boarding = 0
         g.dead = true
@@ -18190,7 +18302,12 @@ export class Game {
       if (FINANCING_CATEGORIES.has(category) || !(amount && amount > 0)) continue
       income += amount
     }
-    return income
+    // Fees still withheld are not operating income. A release later the same day nets this to zero.
+    for (const entry of ledger.entries) {
+      if (entry.meta.unpaid) continue
+      if (entry.category === 'penalties' && entry.meta.label === 'Cancel refund') income += entry.amount
+    }
+    return Math.max(0, income)
   }
 
   /**
@@ -18750,10 +18867,15 @@ export class Game {
       const sens = this.airline(g.airlineId).heatSensitivity || 1
       this.adjustHeat(g.airlineId as AirlineId, row.standingDelta / sens)
     }
-    if (row.fee > 0) {
+      if (row.fee > 0) {
       this.cash += row.fee
       this.revenue += row.fee
       this.noteIncome(row.fee, 'passenger_fees')
+      const flight = this.linkedFlight(g)
+      if (flight) {
+        flight.ledger.push({ label: `${flight.flightNo} passenger fees`, amount: row.fee })
+        this.settleUnflownFees(flight)
+      }
     }
   }
 
@@ -23186,6 +23308,7 @@ export class Game {
         if (!f.posted.landing) {
           f.posted.landing = true
           this.earn(this.listed(HELO_LANDING, 'helicopterLanding'), `${f.flightNo} pad fee`, f, 'landside_fees')
+          this.settleUnflownFees(f)
           this.reputation = Math.min(100, this.reputation + 1)
         }
       } else if (f.phase === 'approach' && f.phaseTime > 1.2) {
@@ -23196,7 +23319,10 @@ export class Game {
     if (f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board') {
       f.phase = 'servicing'
       // A pad turn does not wait on a jet bowser. Fuel on the farm is enough to lift.
-      if (!f.posted.fuel && this.departureNeedsFuel(f) && this.fuelOnHand()) f.posted.fuel = true
+      if (!f.posted.fuel && this.departureNeedsFuel(f) && this.fuelOnHand()) {
+        f.posted.fuel = true
+        this.releaseUnflownFees(f)
+      }
       if (this.fuelOutage(f)) {
         f.fuelHeld = true
         if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
@@ -23222,6 +23348,7 @@ export class Game {
       f.x += Math.cos(f.heading) * step * 2.1
       f.y += Math.sin(f.heading) * step * 2.1
       if (f.phaseTime > 5 || f.z > 12) {
+        this.releaseUnflownFees(f)
         f.phase = 'gone'
         this.flightsDone += 1
         this.paxServed += f.pax
@@ -24165,6 +24292,7 @@ export class Game {
           'bad',
         )
       }
+      this.settleUnflownFees(f)
     }
 
     if (f.kind === 'military' || f.kind === 'air_ambulance') {
@@ -24662,6 +24790,7 @@ export class Game {
     }
     if (t.kind === 'fuel' && t.mission === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
       f.posted.fuel = true
+      this.releaseUnflownFees(f)
       f.fuelLevel = 1
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
@@ -26538,6 +26667,7 @@ export class Game {
         f.x += Math.cos(f.heading) * step * 2.6
         f.y += Math.sin(f.heading) * step * 2.6
         if ((hasLeftMap(f.x, f.y, SIZE) && f.z > 6) || f.phaseTime > 26) {
+          this.releaseUnflownFees(f)
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
@@ -26858,9 +26988,12 @@ export class Game {
       const f = this.flights.find((x) => x.id === p.flightId)
       const fit = this.roomsAt(f?.stand ?? null)
       const result = advancePaxItinerary(p, this.tiles, f?.stand ?? null, fit, (amount, kind) => {
-        this.cash += amount
-        this.revenue += amount
-        this.noteIncome(amount, 'retail_sales')
+        const factor = this.groundedRetailFactor(f)
+        const billed = factor === 1 ? amount : Math.round(amount * factor)
+        if (!(billed > 0)) return
+        this.cash += billed
+        this.revenue += billed
+        this.noteIncome(billed, 'retail_sales')
         if (kind === 'food') this.mealSold = true
       })
       if (result === 'done') {

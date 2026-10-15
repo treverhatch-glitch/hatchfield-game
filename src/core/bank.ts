@@ -176,6 +176,39 @@ export class Bank {
     return false
   }
 
+  /**
+   * Give back cash an expense line already took. The category total moves
+   * toward zero and the expense tally shrinks. Income is unchanged.
+   * Used when a fuel hold ends and a withheld slot fee is earned after all.
+   */
+  releaseExpense(category: MoneyCategory, magnitude: number, meta: BankPostMeta): BankEntry | null {
+    if (!MONEY_CATEGORIES.includes(category)) throw new Error(`Unknown money category: ${category}`)
+    if (moneyDirection(category) !== 'expense') {
+      throw new Error(`${category} is not an expense category`)
+    }
+    if (!Number.isFinite(magnitude) || magnitude <= 0) return null
+    if (!Number.isFinite(meta.simMinutes) || meta.simMinutes < 0) {
+      throw new Error('Bank post requires a non-negative simMinutes timestamp')
+    }
+    this.currentBalance += magnitude
+    this.expense = Math.max(0, this.expense - magnitude)
+    this.totals[category] = (this.totals[category] ?? 0) + magnitude
+    const entry: BankEntry = {
+      id: this.nextEntryId++,
+      category,
+      amount: magnitude,
+      direction: 'expense',
+      meta: cloneMeta(meta),
+      balanceAfter: this.currentBalance,
+    }
+    this.records.push(entry)
+    if (this.listeners.length > 0) {
+      const ledger = this.ledger()
+      for (const listener of this.listeners) listener(cloneEntry(entry), ledger)
+    }
+    return cloneEntry(entry)
+  }
+
   post(category: MoneyCategory, amount: number, meta: BankPostMeta): BankEntry {
     if (!Number.isFinite(amount) || amount === 0) throw new Error('Bank amount must be a finite, non-zero number')
     if (!Number.isFinite(meta.simMinutes) || meta.simMinutes < 0) {
