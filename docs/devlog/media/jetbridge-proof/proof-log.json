@@ -1,0 +1,1142 @@
+{
+  "bought": {
+    "ok": true,
+    "access": "jetway",
+    "bridges": 1
+  },
+  "moves": [],
+  "target": "flt-ffhmvy",
+  "stairFlight": "flt-v6s3cr",
+  "stand": {
+    "c": 11,
+    "r": 6
+  },
+  "other": {
+    "c": 11,
+    "r": 12
+  },
+  "board": [
+    {
+      "frame": 0,
+      "clock": 60.62,
+      "phase": "board",
+      "phaseTime": 6.43,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 1,
+      "clock": 60.92,
+      "phase": "board",
+      "phaseTime": 6.73,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 2,
+      "clock": 61.22,
+      "phase": "board",
+      "phaseTime": 7.03,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 3,
+      "clock": 61.49,
+      "phase": "board",
+      "phaseTime": 7.3,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 4,
+      "clock": 61.79,
+      "phase": "board",
+      "phaseTime": 7.6,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 5,
+      "clock": 62.09,
+      "phase": "board",
+      "phaseTime": 7.9,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 6,
+      "clock": 62.39,
+      "phase": "board",
+      "phaseTime": 8.2,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 7,
+      "clock": 62.69,
+      "phase": "board",
+      "phaseTime": 8.5,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 8,
+      "clock": 62.99,
+      "phase": "board",
+      "phaseTime": 8.8,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 9,
+      "clock": 63.29,
+      "phase": "board",
+      "phaseTime": 9.1,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 10,
+      "clock": 63.59,
+      "phase": "board",
+      "phaseTime": 9.4,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 11,
+      "clock": 63.89,
+      "phase": "board",
+      "phaseTime": 9.7,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 12,
+      "clock": 64.19,
+      "phase": "board",
+      "phaseTime": 10,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 13,
+      "clock": 64.49,
+      "phase": "board",
+      "phaseTime": 10.3,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 14,
+      "clock": 64.79,
+      "phase": "board",
+      "phaseTime": 10.6,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 15,
+      "clock": 65.09,
+      "phase": "board",
+      "phaseTime": 10.9,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 16,
+      "clock": 65.39,
+      "phase": "board",
+      "phaseTime": 11.2,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 17,
+      "clock": 65.69,
+      "phase": "board",
+      "phaseTime": 11.5,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 18,
+      "clock": 65.99,
+      "phase": "board",
+      "phaseTime": 11.8,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 19,
+      "clock": 66.29,
+      "phase": "board",
+      "phaseTime": 12.1,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 20,
+      "clock": 66.59,
+      "phase": "board",
+      "phaseTime": 12.4,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 21,
+      "clock": 66.89,
+      "phase": "board",
+      "phaseTime": 12.7,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 22,
+      "clock": 67.16,
+      "phase": "board",
+      "phaseTime": 12.97,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 23,
+      "clock": 67.51,
+      "phase": "board",
+      "phaseTime": 13.32,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 24,
+      "clock": 67.81,
+      "phase": "board",
+      "phaseTime": 13.62,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 25,
+      "clock": 68.11,
+      "phase": "board",
+      "phaseTime": 13.92,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 26,
+      "clock": 68.41,
+      "phase": "board",
+      "phaseTime": 14.22,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 27,
+      "clock": 68.71,
+      "phase": "board",
+      "phaseTime": 14.52,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 28,
+      "clock": 69.01,
+      "phase": "board",
+      "phaseTime": 14.82,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 29,
+      "clock": 69.31,
+      "phase": "board",
+      "phaseTime": 15.12,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 30,
+      "clock": 69.61,
+      "phase": "board",
+      "phaseTime": 15.42,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 31,
+      "clock": 69.91,
+      "phase": "board",
+      "phaseTime": 15.72,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": null
+    },
+    {
+      "frame": 32,
+      "clock": 70.14,
+      "phase": "board",
+      "phaseTime": 15.95,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 33,
+      "clock": 70.44,
+      "phase": "board",
+      "phaseTime": 16.25,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 34,
+      "clock": 70.74,
+      "phase": "board",
+      "phaseTime": 16.55,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 35,
+      "clock": 71.04,
+      "phase": "board",
+      "phaseTime": 16.85,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 36,
+      "clock": 71.34,
+      "phase": "board",
+      "phaseTime": 17.15,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 37,
+      "clock": 71.64,
+      "phase": "board",
+      "phaseTime": 17.45,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 38,
+      "clock": 71.94,
+      "phase": "board",
+      "phaseTime": 17.75,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 39,
+      "clock": 72.24,
+      "phase": "board",
+      "phaseTime": 18.05,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 40,
+      "clock": 72.54,
+      "phase": "board",
+      "phaseTime": 18.35,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 41,
+      "clock": 72.84,
+      "phase": "board",
+      "phaseTime": 18.65,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 42,
+      "clock": 73.14,
+      "phase": "board",
+      "phaseTime": 18.95,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 43,
+      "clock": 73.44,
+      "phase": "board",
+      "phaseTime": 19.25,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    },
+    {
+      "frame": 44,
+      "clock": 73.74,
+      "phase": "board",
+      "phaseTime": 19.55,
+      "extend": 1,
+      "stairs": 0,
+      "otherPhase": "cl415:approach"
+    }
+  ],
+  "retract": [
+    {
+      "frame": 0,
+      "clock": 99.78,
+      "phase": "board",
+      "phaseTime": 45.59,
+      "extend": 0.944,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 1,
+      "clock": 99.83,
+      "phase": "board",
+      "phaseTime": 45.64,
+      "extend": 0.887,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 2,
+      "clock": 99.87,
+      "phase": "board",
+      "phaseTime": 45.68,
+      "extend": 0.831,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 3,
+      "clock": 99.93,
+      "phase": "board",
+      "phaseTime": 45.74,
+      "extend": 0.766,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 4,
+      "clock": 99.97,
+      "phase": "board",
+      "phaseTime": 45.78,
+      "extend": 0.709,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 5,
+      "clock": 100.02,
+      "phase": "board",
+      "phaseTime": 45.83,
+      "extend": 0.653,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 6,
+      "clock": 100.06,
+      "phase": "board",
+      "phaseTime": 45.87,
+      "extend": 0.597,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 7,
+      "clock": 100.11,
+      "phase": "board",
+      "phaseTime": 45.92,
+      "extend": 0.541,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 8,
+      "clock": 100.15,
+      "phase": "board",
+      "phaseTime": 45.96,
+      "extend": 0.484,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 9,
+      "clock": 100.2,
+      "phase": "board",
+      "phaseTime": 46.01,
+      "extend": 0.428,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 10,
+      "clock": 100.24,
+      "phase": "board",
+      "phaseTime": 46.05,
+      "extend": 0.372,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 11,
+      "clock": 100.29,
+      "phase": "board",
+      "phaseTime": 46.1,
+      "extend": 0.316,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 12,
+      "clock": 100.33,
+      "phase": "board",
+      "phaseTime": 46.14,
+      "extend": 0.259,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 13,
+      "clock": 100.38,
+      "phase": "board",
+      "phaseTime": 46.19,
+      "extend": 0.203,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 14,
+      "clock": 100.42,
+      "phase": "board",
+      "phaseTime": 46.23,
+      "extend": 0.147,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 15,
+      "clock": 100.47,
+      "phase": "board",
+      "phaseTime": 46.28,
+      "extend": 0.091,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 16,
+      "clock": 100.51,
+      "phase": "board",
+      "phaseTime": 46.32,
+      "extend": 0.034,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 17,
+      "clock": 100.55,
+      "phase": "pushback",
+      "phaseTime": 0.01,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 18,
+      "clock": 100.59,
+      "phase": "pushback",
+      "phaseTime": 0.06,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 19,
+      "clock": 100.64,
+      "phase": "pushback",
+      "phaseTime": 0.1,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:landing"
+    },
+    {
+      "frame": 20,
+      "clock": 100.69,
+      "phase": "pushback",
+      "phaseTime": 0.15,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 21,
+      "clock": 100.74,
+      "phase": "pushback",
+      "phaseTime": 0.2,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 22,
+      "clock": 100.78,
+      "phase": "pushback",
+      "phaseTime": 0.24,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 23,
+      "clock": 100.82,
+      "phase": "pushback",
+      "phaseTime": 0.28,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 24,
+      "clock": 100.87,
+      "phase": "pushback",
+      "phaseTime": 0.33,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 25,
+      "clock": 100.91,
+      "phase": "pushback",
+      "phaseTime": 0.37,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 26,
+      "clock": 100.96,
+      "phase": "pushback",
+      "phaseTime": 0.42,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:taxi_in"
+    },
+    {
+      "frame": 27,
+      "clock": 101.01,
+      "phase": "pushback",
+      "phaseTime": 0.47,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 28,
+      "clock": 101.06,
+      "phase": "pushback",
+      "phaseTime": 0.52,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 29,
+      "clock": 101.1,
+      "phase": "pushback",
+      "phaseTime": 0.56,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 30,
+      "clock": 101.15,
+      "phase": "pushback",
+      "phaseTime": 0.61,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 31,
+      "clock": 101.28,
+      "phase": "pushback",
+      "phaseTime": 0.74,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 32,
+      "clock": 101.43,
+      "phase": "pushback",
+      "phaseTime": 0.89,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 33,
+      "clock": 101.59,
+      "phase": "pushback",
+      "phaseTime": 1.05,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 34,
+      "clock": 101.77,
+      "phase": "pushback",
+      "phaseTime": 1.23,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 35,
+      "clock": 101.92,
+      "phase": "pushback",
+      "phaseTime": 1.38,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 36,
+      "clock": 102.07,
+      "phase": "pushback",
+      "phaseTime": 1.53,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 37,
+      "clock": 102.22,
+      "phase": "pushback",
+      "phaseTime": 1.68,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 38,
+      "clock": 102.36,
+      "phase": "pushback",
+      "phaseTime": 1.82,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 39,
+      "clock": 102.49,
+      "phase": "pushback",
+      "phaseTime": 1.95,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 40,
+      "clock": 102.62,
+      "phase": "pushback",
+      "phaseTime": 2.08,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    },
+    {
+      "frame": 41,
+      "clock": 102.8,
+      "phase": "pushback",
+      "phaseTime": 2.26,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": "cl415:deboard"
+    }
+  ],
+  "stairCraft": {
+    "x": 11,
+    "y": 6,
+    "heading": 0,
+    "af": "atr72"
+  },
+  "soldBack": [
+    0,
+    0
+  ],
+  "stairs": [
+    {
+      "frame": 0,
+      "clock": 200.87,
+      "phase": "deboard",
+      "phaseTime": 0.5,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 1,
+      "clock": 200.94,
+      "phase": "deboard",
+      "phaseTime": 0.58,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 2,
+      "clock": 201.02,
+      "phase": "deboard",
+      "phaseTime": 0.65,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 3,
+      "clock": 201.09,
+      "phase": "deboard",
+      "phaseTime": 0.73,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 4,
+      "clock": 201.17,
+      "phase": "deboard",
+      "phaseTime": 0.8,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 5,
+      "clock": 201.24,
+      "phase": "deboard",
+      "phaseTime": 0.88,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 6,
+      "clock": 201.31,
+      "phase": "deboard",
+      "phaseTime": 0.95,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 7,
+      "clock": 201.38,
+      "phase": "deboard",
+      "phaseTime": 1.01,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 8,
+      "clock": 201.45,
+      "phase": "deboard",
+      "phaseTime": 1.09,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 9,
+      "clock": 201.53,
+      "phase": "deboard",
+      "phaseTime": 1.16,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 10,
+      "clock": 201.6,
+      "phase": "deboard",
+      "phaseTime": 1.24,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 11,
+      "clock": 201.68,
+      "phase": "deboard",
+      "phaseTime": 1.31,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 12,
+      "clock": 201.77,
+      "phase": "deboard",
+      "phaseTime": 1.4,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 13,
+      "clock": 201.84,
+      "phase": "deboard",
+      "phaseTime": 1.48,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 14,
+      "clock": 201.92,
+      "phase": "deboard",
+      "phaseTime": 1.55,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 15,
+      "clock": 201.99,
+      "phase": "deboard",
+      "phaseTime": 1.63,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 16,
+      "clock": 202.05,
+      "phase": "deboard",
+      "phaseTime": 1.69,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 17,
+      "clock": 202.13,
+      "phase": "deboard",
+      "phaseTime": 1.76,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 18,
+      "clock": 202.2,
+      "phase": "deboard",
+      "phaseTime": 1.84,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 19,
+      "clock": 202.28,
+      "phase": "deboard",
+      "phaseTime": 1.91,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 20,
+      "clock": 202.35,
+      "phase": "deboard",
+      "phaseTime": 1.99,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 21,
+      "clock": 202.42,
+      "phase": "deboard",
+      "phaseTime": 2.05,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 22,
+      "clock": 202.49,
+      "phase": "deboard",
+      "phaseTime": 2.13,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 23,
+      "clock": 202.57,
+      "phase": "deboard",
+      "phaseTime": 2.2,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 24,
+      "clock": 202.64,
+      "phase": "deboard",
+      "phaseTime": 2.28,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 25,
+      "clock": 202.72,
+      "phase": "deboard",
+      "phaseTime": 2.35,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 26,
+      "clock": 202.79,
+      "phase": "deboard",
+      "phaseTime": 2.43,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 27,
+      "clock": 202.87,
+      "phase": "deboard",
+      "phaseTime": 2.51,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 28,
+      "clock": 202.95,
+      "phase": "deboard",
+      "phaseTime": 2.58,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 29,
+      "clock": 203.02,
+      "phase": "deboard",
+      "phaseTime": 2.66,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 30,
+      "clock": 203.09,
+      "phase": "deboard",
+      "phaseTime": 2.72,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 31,
+      "clock": 203.17,
+      "phase": "deboard",
+      "phaseTime": 2.8,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 32,
+      "clock": 203.23,
+      "phase": "deboard",
+      "phaseTime": 2.87,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 33,
+      "clock": 203.31,
+      "phase": "deboard",
+      "phaseTime": 2.95,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 34,
+      "clock": 203.39,
+      "phase": "deboard",
+      "phaseTime": 3.02,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    },
+    {
+      "frame": 35,
+      "clock": 203.46,
+      "phase": "deboard",
+      "phaseTime": 3.1,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null
+    }
+  ],
+  "errors": []
+}
