@@ -190,7 +190,7 @@ export function addFuelFarm(g: THREE.Group) {
   const steel = plated('#8b949e', 'tank_steel', 0.4, 0.55)
   const dark = plated('#3a4048', 'tank_steel', 0.45, 0.5)
   const concrete = plated('#c9c6bf', 'apron_concrete', 0.82, 0.05)
-  const earth = plated('#8fa17a', 'gravel_yard', 0.95, 0.02)
+  const earth = plated('#a3b58c', 'gravel_yard', 0.95, 0.02)
   const canopyMat = plated('#c5ccd3', 'hangar_cladding', 0.55, 0.35)
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
@@ -220,7 +220,7 @@ export function addFuelFarm(g: THREE.Group) {
     body.castShadow = true
     if (name) body.name = name
     const phi = Math.PI * 0.16
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 8, 0, Math.PI * 2, 0, phi), shell)
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, name ? 32 : 16, name ? 8 : 5, 0, Math.PI * 2, 0, phi), shell)
     dome.position.set(x, 0.3 + h - r * Math.cos(phi), z)
     dome.castShadow = true
     const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.12, 18), bandMat)
@@ -239,13 +239,21 @@ export function addFuelFarm(g: THREE.Group) {
         step.rotation.y = -a
         g.add(step)
         if (i > 1) {
-          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 4, 10, Math.PI), dark)
+          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 5, 12, Math.PI), dark)
           hoop.rotation.order = 'YXZ'
           hoop.rotation.y = -a - Math.PI / 2
           hoop.rotation.x = Math.PI / 2
           hoop.position.set(px, py, pz)
           g.add(hoop)
         }
+      }
+      for (const da of [-0.4, 0, 0.4]) {
+        const railA = 0.4 + 3.5 * 0.45 + da
+        const railX = x + Math.cos(railA) * (r + 0.4)
+        const railZ = z + Math.sin(railA) * (r + 0.4)
+        const rail = based(0.04, (h / 6) * 4, 0.04, dark, railX, 0.3 + (h / 6) * 3.5, railZ)
+        rail.rotation.y = -railA
+        g.add(rail)
       }
     }
   }
