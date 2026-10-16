@@ -104,11 +104,6 @@ export const LANDSIDE = {
    * on the pavement.
    */
   loopInsetM: 4,
-  /**
-   * Fastest a drawn vehicle may yaw to follow its path, radians per second.
-   * High enough to track the loop. Low enough that heading cannot flip in one step.
-   */
-  maxYawRate: 1.6,
   /** Extra bumper gap on a tight radius, metres, so cars on the loop do not sit on each other. */
   curveGapM: 2,
   /** Start heading for the curb lane this far before the stall or the U-turn, metres. */

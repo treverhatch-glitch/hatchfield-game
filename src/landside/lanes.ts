@@ -299,13 +299,22 @@ export function pointAt(geo: LaneGeometry, x: number, lat: number): Vec2 {
   return { x: pxv + n.x * lat, y: pyv + n.y * lat }
 }
 
+function wrapHeading(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
+}
+
 /** Heading of travel at sample `x` in a lane `lat` metres off the centre, radians (atan2 of rows over columns). */
 export function headingAt(geo: LaneGeometry, x: number, lat: number): number {
   const cx = clampIndex(geo, x)
   const i = Math.min(geo.count - 2, Math.floor(cx))
+  const t = cx - i
   const a = pointAt(geo, i, lat)
   const b = pointAt(geo, i + 1, lat)
-  return Math.atan2(b.y - a.y, b.x - a.x)
+  const h0 = Math.atan2(b.y - a.y, b.x - a.x)
+  if (t < 1e-6 || i + 1 >= geo.count - 1) return h0
+  const c = pointAt(geo, i + 2, lat)
+  const h1 = Math.atan2(c.y - b.y, c.x - b.x)
+  return h0 + wrapHeading(h1 - h0) * t
 }
 
 /**
