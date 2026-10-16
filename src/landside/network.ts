@@ -174,7 +174,10 @@ export function countParkSpaces(parks: { kind: ParkKind }[]): number {
 
 export function buildNetwork(field: LandsideField): Network {
   const roads = uniq(field.roads)
-  const drive = uniq([...field.roads, ...(field.connectors ?? [])])
+  // The guard is a service gate. It is not part of the passenger road, even
+  // when a layout lists that cell as a connector or as a road.
+  const gate = new Set((field.connectors ?? []).map(cellId))
+  const drive = roads.filter((cell) => !gate.has(cellId(cell)))
   const terminals = uniq(field.terminals)
   const frontage = curbFrontage(roads, terminals)
   const entry = pickEntry(roads)
