@@ -354,34 +354,52 @@ export function beltReachable(tiles: Tile[][], start: Vec, goal: Vec): boolean {
   return false
 }
 
-/**
- * True when the hall reaches the stand on the belt graph, and that link
- * dies if the bag-sort cells are removed. A belt that runs hall → stand
- * without the sort returns false.
- */
-export function standBeltViaSort(tiles: Tile[][], stand: Vec): boolean {
-  if (!standBeltLinked(tiles, stand)) return false
-  const blocked = tiles.map((row) => row.slice())
-  for (const makeup of tilesOf(tiles, 'bags')) blocked[makeup.r][makeup.c] = 'grass'
-  const halls = tilesOf(tiles, 'terminal')
-  return !halls.some((hall) => beltReachable(blocked, hall, stand))
+/** Bag room sits on the terminal wall. Apron belts are not the link. */
+function bagRoomOnTerminal(tiles: Tile[][], room: Vec): boolean {
+  return neighbors(room.c, room.r).some((n) => tiles[n.r]?.[n.c] === 'terminal')
 }
 
-/** True when makeup can reach the stand and a terminal via belt tiles. */
+/**
+ * True when a bag room on the terminal can reach the stand by truck.
+ * Painted apron belts are not part of the link.
+ */
 export function standBeltLinked(tiles: Tile[][], stand: Vec): boolean {
-  const makeups = tilesOf(tiles, 'bags')
-  const halls = tilesOf(tiles, 'terminal')
-  if (!makeups.length || !halls.length) return false
-  for (const m of makeups) {
-    if (!beltReachable(tiles, m, stand)) continue
-    if (halls.some((h) => beltReachable(tiles, m, h))) return true
+  for (const room of tilesOf(tiles, 'bags')) {
+    if (!bagRoomOnTerminal(tiles, room)) continue
+    const path = nearestPath(tiles, room, [stand], 'truck')
+    if (path && path.length >= 2) return true
   }
   return false
 }
 
-/** Any belt tile stamped — once true, broken links start to hurt. */
+/**
+ * The link dies when the bag room is removed. A shortcut that never
+ * enters the bag room does not count.
+ */
+export function standBeltViaSort(tiles: Tile[][], stand: Vec): boolean {
+  if (!standBeltLinked(tiles, stand)) return false
+  const blocked = tiles.map((row) => row.slice())
+  for (const room of tilesOf(tiles, 'bags')) blocked[room.r][room.c] = 'grass'
+  return !standBeltLinked(blocked, stand)
+}
+
+/** A bag room is attached to the hall. Apron belt paint no longer opens the chain. */
 export function hasBeltNetwork(tiles: Tile[][]): boolean {
-  return tilesOf(tiles, 'belt').length > 0
+  return tilesOf(tiles, 'bags').some((room) => bagRoomOnTerminal(tiles, room))
+}
+
+/** Old apron belt cells become taxi so tugs still have a road and the belt mesh is gone. */
+export function retireApronBelts(tiles: Tile[][]): number {
+  let n = 0
+  for (const row of tiles) {
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] === 'belt') {
+        row[c] = 'taxi'
+        n += 1
+      }
+    }
+  }
+  return n
 }
 
 export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {
