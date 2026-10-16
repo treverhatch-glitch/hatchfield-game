@@ -1055,7 +1055,7 @@ function addFeatures(frame: Frame) {
       'mesh',
     ).name = 'hull'
   }
-  if (frame.tier === 'mid') {
+  if (frame.tier === 'mid' || frame.tier === 'low') {
     // Cheatline as paint on each flank, not a box around the tube.
     const lineY = 0.42
     const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.02
@@ -1068,6 +1068,8 @@ function addFeatures(frame: Frame) {
         'mesh',
       ).name = 'cheatline'
     }
+  }
+  if (frame.tier === 'mid') {
     if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) addBellyFairing(frame)
     if (spec.family === 'point') {
       const glass = new THREE.Mesh(smoothSphere())
