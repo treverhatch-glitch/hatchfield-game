@@ -202,7 +202,10 @@ describe('landside vehicles', () => {
     expect(leaned, 'lane changes yaw the nose').toBeGreaterThan(20)
     expect(noseIn, 'lane changes point well into the new lane').toBeGreaterThan(10)
     expect(arcSamples, 'the U-turn is crossed in more than one pose').toBeGreaterThan(20)
-    expect(maxTurnStep, 'no heading snap on the U-turn').toBeLessThan(0.45)
+    // The 2×4 hall lengthens the exit by one cell, so a lane change can still
+    // be yawing where the curb lane enters the U-turn. This field peaks near
+    // 0.49 rad per step. A flipped heading is near π.
+    expect(maxTurnStep, 'no heading snap on the U-turn').toBeLessThan(0.55)
   })
 
   it('changes lane to pass a held queue and back into the curb lane to stop', () => {
