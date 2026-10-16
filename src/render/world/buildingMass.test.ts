@@ -178,6 +178,7 @@ describe('concept building massing', () => {
     addControlTower(tower)
     expect(tower.getObjectByName('service-bay:ramp')).toBeTruthy()
     expect(named(tower, 'sign:TOWER')).toHaveLength(1)
+    expect(meshTriangleCount(tower)).toBeGreaterThanOrEqual(400)
     const oil = new THREE.Group()
     addOilStation(oil)
     expect(oil.getObjectByName('service-bay:transfer')).toBeTruthy()

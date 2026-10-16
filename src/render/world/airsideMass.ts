@@ -409,24 +409,72 @@ export function addDeicePad(g: THREE.Group) {
 export function addControlTower(g: THREE.Group) {
   const cabR = CELL * 0.42
   const shaft = new THREE.Mesh(
-    tankUv(new THREE.CylinderGeometry(cabR * 0.45, cabR * 0.72, CELL * 0.55, 10), SKIN_TILE_M.wall, WORLD_PER_METER),
+    metreUv(new THREE.CylinderGeometry(cabR * 0.45, cabR * 0.72, CELL * 0.55, 10), SKIN_TILE_M.wall, WORLD_PER_METER),
     wall('control_tower', 'wall'),
   )
   shaft.position.y = CELL * 0.28
   shaft.castShadow = true
   const cabMat = new THREE.MeshStandardMaterial({
-    color: '#c5d8e6',
-    roughness: 0.15,
-    metalness: 0.2,
-    emissive: '#1a3348',
-    emissiveIntensity: 0.25,
+    color: '#8cb8d9',
+    roughness: 0.1,
+    metalness: 0.5,
+    transparent: true,
+    opacity: 0.6,
   })
-  const curtain = exteriorTexture('curtain')
-  if (curtain) cabMat.map = curtain
   const cab = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12), 2.4, WORLD_PER_METER), cabMat)
   cab.position.y = CELL * 0.58
+
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2
+    const cabH = CELL * 0.12
+    const diffR = cabR - (cabR * 0.86)
+    const mullionH = Math.sqrt(cabH * cabH + diffR * diffR)
+    const mullion = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, mullionH, 4),
+      wall('control_tower', 'wall')
+    )
+
+    const bottomR = cabR * 0.86
+    const topR = cabR
+
+    const botX = Math.cos(angle) * bottomR
+    const botZ = Math.sin(angle) * bottomR
+    const botY = CELL * 0.58 - CELL * 0.06
+
+    const topX = Math.cos(angle) * topR
+    const topZ = Math.sin(angle) * topR
+    const topY = CELL * 0.58 + CELL * 0.06
+
+    const midX = (botX + topX) / 2
+    const midZ = (botZ + topZ) / 2
+    const midY = (botY + topY) / 2
+
+    mullion.position.set(midX, midY, midZ)
+    mullion.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(topX - botX, topY - botY, topZ - botZ).normalize())
+
+    g.add(mullion)
+  }
+
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(cabR * 0.7, cabR * 1.04, CELL * 0.04, 12), wall('control_tower', 'roof'))
   cap.position.y = CELL * 0.66
+
+  const roofBandMat = new THREE.MeshStandardMaterial({
+    color: '#2a323a',
+    roughness: 0.6,
+    metalness: 0.3
+  })
+  const roofBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(cabR * 0.72, cabR * 0.72, CELL * 0.02, 12),
+    roofBandMat
+  )
+  roofBand.position.y = CELL * 0.68
+
+  const antenna = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.01, 0.01, CELL * 0.15, 4),
+    wall('control_tower', 'wall')
+  )
+  antenna.position.set(0, CELL * 0.72, 0)
+
   const band = new THREE.Mesh(new THREE.CylinderGeometry(cabR * 0.88, cabR * 0.88, CELL * 0.025, 12, 1, true), wall('control_tower', 'trim'))
   band.position.y = CELL * 0.51
   const base = new THREE.Mesh(skinBox(CELL * 0.55, 1.15, CELL * 0.42, SKIN_TILE_M.wall, WORLD_PER_METER), wall('control_tower', 'wall'))
@@ -436,6 +484,6 @@ export function addControlTower(g: THREE.Group) {
   door.position.set(0, 0.5, CELL * 0.22 + CELL * 0.21)
   mountServiceBay(g, 'ramp', 1.6, 1.2, 0, CELL * 0.42 + 0.75, '#d7a21a')
   mountSign(g, 'TOWER', { w: 1.2, h: 0.26, x: 0, y: 1.25, z: CELL * 0.44 }, '#1c2830', '#f4f7fa')
-  g.add(shaft, cab, cap, band, base, door)
+  g.add(shaft, cab, cap, roofBand, antenna, band, base, door)
   softenBuilding(g)
 }
