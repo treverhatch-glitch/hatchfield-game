@@ -53,7 +53,7 @@ describe('hall orphan meshes v2', () => {
       if (!(obj as THREE.Mesh).isMesh) return
       let piece = obj.userData.piece as string | undefined
       for (let up = obj.parent; !piece && up; up = up.parent) piece = up.userData.piece as string | undefined
-      expect(allowed.has(piece), `${obj.name} piece ${piece}`).toBe(true)
+      expect(piece !== undefined && allowed.has(piece), `${obj.name} piece ${piece}`).toBe(true)
       if (piece === 'belt' && obj.userData.beltTile) expect(beltTiles.has(obj.userData.beltTile)).toBe(true)
       obj.updateWorldMatrix(true, false)
       const box = new THREE.Box3().setFromObject(obj)
