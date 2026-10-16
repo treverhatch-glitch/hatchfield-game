@@ -236,6 +236,19 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
   )
 }
 
+/**
+ * The booth sits in the middle of the guard cell. Shift the mesh toward the
+ * south edge of that cell so the body stays on the paved post and misses the booth.
+ * Sim x/y stay on the path; only the draw position moves.
+ */
+function guardBoothShift(tiles: readonly (readonly string[])[], x: number, y: number): number {
+  const c = Math.round(x)
+  const r = Math.round(y)
+  if (tiles[r]?.[c] !== 'guard') return 0
+  const edge = Math.max(Math.abs(x - c), Math.abs(y - r))
+  return 0.3 * Math.max(0, 1 - edge * 2)
+}
+
 function wu(meters: number): number {
   return meters * WORLD_PER_METER
 }
@@ -1881,7 +1894,7 @@ export class World {
       const size = vehicleMeters(t.kind)
       const docked = game.truckApronDraw(t)
       const drawX = docked?.x ?? t.x
-      const drawY = docked?.y ?? t.y
+      const drawY = docked?.y ?? t.y + (docked ? 0 : guardBoothShift(game.tiles, t.x, t.y))
       const pos = toWorld(drawX, drawY, 0)
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
