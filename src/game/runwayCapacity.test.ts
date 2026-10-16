@@ -142,9 +142,9 @@ describe('runway capacity', () => {
     // turnaround longer than the runway hole keep four stands from finishing
     // 45 flights in eight days. The 2×4 hall keeps the stands a bay apart, the
     // city road forks so airside trucks never queue at the guard, and passengers
-    // ride to the layby. Service roads beside the belts let the tugs and the
-    // bowser clear the stands without sitting on the jet taxi, so this seed
-    // finishes 17, above the 15-flight floor. Nothing diverts.
+    // ride to the layby. Bag tugs use the truck pavement and the bowser stays
+    // off the jet taxi, so this seed finishes 17, above the 15-flight floor.
+    // Nothing diverts.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
     expect(result.done, `diverts ${diverts(game)}`).toBe(17)
     expect(diverts(game)).toBe(0)
@@ -183,17 +183,16 @@ describe('runway capacity', () => {
     const twoRun = runDays(two, 8)
     Math.random = random
     // The city road forks, so apron trucks are not queued at the guard, and
-    // passengers ride to the layby. Service roads beside the belts keep the
-    // tugs off the jet taxi. On this seed the one-strip field finishes 20
-    // (13 of them after the opening) and the two-strip field finishes 23
-    // (17 after the opening). Nothing diverts. Both stay above the 15-flight floor.
+    // passengers ride to the layby. Bag tugs drive the truck pavement. On this
+    // seed the one-strip field finishes 13 (8 of them after the opening) and
+    // the two-strip field finishes 25 (17 after the opening). Nothing diverts.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
-    expect(oneRun.done).toBe(20)
-    expect(twoRun.done).toBe(23)
+    expect(oneRun.done).toBe(13)
+    expect(twoRun.done).toBe(25)
     expect(oneDiverts).toBe(0)
     expect(diverts(two)).toBe(0)
-    expect(oneGain).toBe(13)
+    expect(oneGain).toBe(8)
     expect(twoGain).toBe(17)
   }, 90_000)
 
