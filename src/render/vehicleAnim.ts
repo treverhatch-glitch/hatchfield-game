@@ -68,6 +68,8 @@ export interface PoseInput {
   steer?: number
   /** Headlight beams on. */
   beams?: boolean
+  /** Carts to show on a baggage train. Omitted keeps the old two-cart train. */
+  carts?: number
 }
 
 export function poseInput(ext = 0, clock = 0, active = false, odo = 0, reversing = false): PoseInput {
@@ -90,6 +92,7 @@ export function steerAngle(dHeading: number, dist: number, wheelbase: number): n
 const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   fuel_tanker: ['hose_reel', 'hose', 'grounding'],
   hydrant_cart: ['lift_platform', 'hose_reel', 'hose'],
+  baggage_train: ['cart_1', 'cart_2', 'cart_3', 'cart_4', 'cart_5', 'cart_6'],
   belt_loader: ['belt', 'belt_bags'],
   catering_hilift: ['scissor', 'box', 'deck'],
   arff: ['lightbar', 'roof_turret', 'bumper_turret', 'locker_doors', 'foam'],
@@ -182,6 +185,16 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     reset(out)
     if (!input.beams) out.sx = out.sy = out.sz = 0.0001
     return true
+  }
+  if (model === 'baggage_train' && part.startsWith('cart_')) {
+    const n = Number(part.slice(5))
+    const limit = input.carts == null ? 2 : input.carts
+    if (!(n >= 1 && n <= limit)) {
+      reset(out)
+      out.sx = out.sy = out.sz = 0.0001
+      return true
+    }
+    return false
   }
   if (part === 'reverse') {
     reset(out)

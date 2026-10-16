@@ -256,6 +256,8 @@ export interface VehicleInstance {
   steer?: number
   /** Headlight beams on (night / dusk, moving). */
   beams?: boolean
+  /** Baggage-train carts. Omitted draws the two-cart train. */
+  carts?: number
 }
 
 export class VehicleFleet {
@@ -389,6 +391,7 @@ export class VehicleFleet {
       inp.reversing = item.reversing ?? false
       inp.steer = item.steer ?? 0
       inp.beams = item.beams ?? false
+      inp.carts = item.carts
       if (model && part && partPose(model, part, inp, this.pose)) {
         this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
       }

@@ -63,8 +63,8 @@ export const CAUSE_FIXES: Record<StandingCauseCategory, CauseFix> = {
   },
   baggage: {
     category: 'baggage',
-    label: 'Baggage chain delays & broken belt connections',
-    fix: 'Link check-in ↔ makeup ↔ stand with baggage belts',
+    label: 'Baggage delays between the bag room and the stand',
+    fix: 'Keep a bag room on the terminal so tugs can reach the stand',
   },
   schedule: {
     category: 'schedule',

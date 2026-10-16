@@ -105,7 +105,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
     {
       id: 'processing',
       label: 'Processing',
-      tools: ['belt'],
+      tools: [],
       progression: ['checkin_hall', 'security_hall', 'remote_screening'],
       furnish: [
         { id: 'checkin', label: 'Check-in', kit: 'rooms' },

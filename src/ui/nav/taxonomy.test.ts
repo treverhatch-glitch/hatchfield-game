@@ -17,7 +17,6 @@ const EVERY_STAMP = {
   premade: true,
   snack: true,
   bags: true,
-  belt: true,
   fuel: true,
   fire: true,
   police: true,
@@ -69,7 +68,7 @@ const EVERY_STAMP = {
   cargo_hub_ii: true,
   cold_store: true,
   clear: true,
-} as const satisfies Record<Exclude<Tool, 'pan' | 'stand_s' | 'stand' | 'stand_w' | 'stand_l'>, true>
+} as const satisfies Record<Exclude<Tool, 'pan' | 'stand_s' | 'stand' | 'stand_w' | 'stand_l' | 'belt'>, true>
 
 const BANNED = /\b(todo|tbd|lorem|placeholder|click me|untitled|coming soon)\b/i
 const SHORT = /^(ops|specs|ads|late)$/i
@@ -88,7 +87,7 @@ describe('menu taxonomy', () => {
     }
     expect(BUILD_MENUS.map((menu) => menu.id)).not.toContain('late')
     expect([...seen.keys()].sort()).toEqual(Object.keys(EVERY_STAMP).sort())
-    expect(seen.get('belt')).toBe('terminal')
+    expect(seen.has('belt')).toBe(false)
     expect(seen.get('guard')).toBe('safety')
     expect(seen.get('fuel')).toBe('airside')
     expect(seen.get('saf_blending')).toBe('airside')
