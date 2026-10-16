@@ -53,9 +53,16 @@ export const TILE_TARGET: Partial<Record<string, BuildingTargetId>> = {
 const EXTERIOR: Partial<Record<BuildingTargetId, Partial<Record<SkinPart, ExteriorArtId>>>> = {
   terminal: { wall: 'curtain', roof: 'membrane' },
   hangar: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
-  fuel_farm: { wall: 'tank', roof: 'tank' },
+  fuel_farm: { wall: 'tank', roof: 'tank', door: 'tank' },
   fire_station: { wall: 'masonry', roof: 'membrane', door: 'bay' },
-  control_tower: { wall: 'shaft', roof: 'membrane' },
+  control_tower: { wall: 'shaft', roof: 'membrane', door: 'shaft' },
+  cargo_terminal: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  baggage_hall: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  warehouse: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  kiosk: { wall: 'masonry', roof: 'membrane', door: 'masonry' },
+  hotel: { wall: 'curtain', roof: 'membrane', door: 'curtain' },
+  parking_garage: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  transit_station: { wall: 'curtain', roof: 'membrane', door: 'curtain' },
 }
 
 const state = { photos: true, anisotropy: 4 }

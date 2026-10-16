@@ -56,8 +56,20 @@ export function artTexture(id: ArtTextureId, anisotropy = 4): THREE.Texture | nu
     tex.generateMipmaps = true
     cache.set(id, tex)
   }
-  tex.anisotropy = Math.max(tex.anisotropy, anisotropy)
+  raiseAnisotropy(tex, anisotropy)
   return tex
+}
+
+/** Full-res repeat plates. A later anisotropy bump has to re-upload or the GPU keeps the first value. */
+export function raiseAnisotropy(tex: THREE.Texture, anisotropy: number): void {
+  const next = Math.max(tex.anisotropy || 1, anisotropy)
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.generateMipmaps = true
+  if (tex.anisotropy === next && tex.userData.anisoStamped === next) return
+  tex.anisotropy = next
+  tex.userData.anisoStamped = next
+  tex.needsUpdate = true
 }
 
 export function disposeArtTextures() {

@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three'
 import { DEFAULT_TEXTURE_QUALITY, parseTextureQuality, TEXTURE_QUALITY_KEY, type TextureQuality } from '../aircraft/liveryFiles'
+import { raiseAnisotropy } from './textureRegistry'
 
 export const GROUND_DIR = 'art/textures/ground'
 
@@ -75,7 +76,7 @@ export function groundTexture(id: GroundArtId, anisotropy = 8): THREE.Texture | 
   const key = `${id}|${quality}`
   const hit = cache.get(key)
   if (hit) {
-    hit.anisotropy = Math.max(hit.anisotropy, anisotropy)
+    raiseAnisotropy(hit, anisotropy)
     return hit
   }
   const tex = new THREE.Texture()
@@ -83,11 +84,7 @@ export function groundTexture(id: GroundArtId, anisotropy = 8): THREE.Texture | 
   tex.colorSpace = THREE.SRGBColorSpace
   tex.wrapS = THREE.RepeatWrapping
   tex.wrapT = THREE.RepeatWrapping
-  tex.magFilter = THREE.LinearFilter
-  tex.minFilter = THREE.LinearMipmapLinearFilter
-  tex.generateMipmaps = true
-  tex.anisotropy = anisotropy
-  tex.needsUpdate = true
+  raiseAnisotropy(tex, anisotropy)
   const img = new Image()
   img.onload = () => {
     const edge = Math.max(img.naturalWidth, img.naturalHeight)

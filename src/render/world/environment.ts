@@ -68,7 +68,7 @@ export class SkyDome {
           float u = 1.0 - abs(1.0 - az);
           float e = clamp(asin(clamp(d.y, -1.0, 1.0)) / 1.5707963, 0.0, 1.0);
           float v = hz + (1.0 - hz) * e;
-          vec3 col = texture2D(tex, vec2(u, v)).rgb;
+            vec3 col = texture2D(tex, vec2(u, v)).rgb;
           float seam = smoothstep(0.14, 0.0, u);
           vec3 side = texture2D(tex, vec2(0.2, v)).rgb;
           return mix(col, side, seam * 0.85);
@@ -79,6 +79,9 @@ export class SkyDome {
           vec3 c = mix(horizon, top, pow(t, 0.7));
           if (photoAmount > 0.0) {
             vec3 p = mix(sampleSky(photoA, d, horizonA), sampleSky(photoB, d, horizonB), photoMix);
+            // Night plates average near RGB 40. Lift the dark texels so the sky stays dim, never a void.
+            vec3 nightFloor = vec3(0.09, 0.11, 0.18);
+            p = mix(p, max(p, nightFloor), stars);
             // Below the horizon the procedural haze takes over; the ground and fog cover it anyway.
             c = mix(c, p, photoAmount * smoothstep(-0.02, 0.05, d.y));
           }

@@ -5,6 +5,20 @@ import type { CameraPose, FieldLayout, Trackable, Vec3 } from './types.ts'
 /** Orbit distance the apron camera boots at, in world units. */
 export const ORBIT_DEFAULT_DIST = 88
 
+/**
+ * Keyboard pan at cameraSpeed 1, in world units per second, at the boot orbit distance.
+ * Speed 2 (the settings default) is about 44 m/s there: the starter apron in a few
+ * seconds, short of the old 124 m/s overshoot. `panZoomScale` slows that in close
+ * and speeds it up when the field is small in frame.
+ */
+export const PAN_BASE_WU = 10
+
+export function panZoomScale(dist: number): number {
+  const ref = ORBIT_DEFAULT_DIST
+  const safe = Number.isFinite(dist) && dist > 0 ? dist : ref
+  return Math.max(0.35, Math.min(2.6, safe / ref))
+}
+
 export interface OrbitLimits {
   minDist: number
   maxDist: number

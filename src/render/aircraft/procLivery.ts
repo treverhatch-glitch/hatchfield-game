@@ -318,7 +318,10 @@ function plate(w: number, h: number, paint: (ctx: Ctx, w: number, h: number) => 
   tex.colorSpace = THREE.SRGBColorSpace
   tex.wrapS = THREE.ClampToEdgeWrapping
   tex.wrapT = THREE.ClampToEdgeWrapping
-  tex.anisotropy = 8
+  tex.anisotropy = 16
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.generateMipmaps = true
   return tex
 }
 
