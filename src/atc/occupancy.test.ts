@@ -71,9 +71,10 @@ describe('measured strip occupancy', () => {
     expect(arrival).toBeGreaterThanOrEqual(8)
     expect(arrival).toBeLessThanOrEqual(ARRIVAL_OCCUPANCY_SEC + 1)
     expect(departure).toBeGreaterThanOrEqual(10)
-    // Seed 0x5171 on the four-stall hall holds the strip for 13.40s.
-    // The spacing constant stays 14s and still sizes the gap.
-    expect(departure).toBeCloseTo(13.4, 2)
+    // Seed 0x5171 on the four-stall hall holds the strip for 12.70s.
+    // Service roads beside the belts keep the bowser off the jet taxi, so the
+    // departure clears a little sooner. The spacing constant stays 14s and still sizes the gap.
+    expect(departure).toBeCloseTo(12.7, 2)
     expect(game.flightsDone).toBeGreaterThan(0)
     Math.random = random
   }, 20_000)
