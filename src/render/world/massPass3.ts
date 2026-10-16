@@ -90,7 +90,11 @@ export function addCateringKitchen(g: THREE.Group) {
   softenBuilding(g)
 }
 
-/** Bag sort hall: three roller doors under a sawtooth roof. */
+/**
+ * Bag sort hall: three roller doors under a closed gable.
+ * The two old slopes left a ridge gap, and the sky showed through as a blue line.
+ * Local +Z is the vehicle front. The world yaws that face toward the apron.
+ */
 export function addBagSort(g: THREE.Group) {
   const span = CELL * 0.84
   const depth = CELL * 0.44
@@ -100,13 +104,13 @@ export function addBagSort(g: THREE.Group) {
   body.position.set(0, wallH / 2, z)
   body.castShadow = true
   const roofMat = skinMaterial('baggage_hall', 'roof')
-  const slope = new THREE.Mesh(skinBox(span * 0.48, 0.1, depth + 0.16, SKIN_TILE_M.roof, WORLD_PER_METER), roofMat)
-  slope.position.set(-span * 0.22, wallH + 0.32, z)
-  slope.rotation.z = 0.22
-  slope.castShadow = true
-  const slopeR = slope.clone()
-  slopeR.position.x = span * 0.22
-  slopeR.rotation.z = -0.22
+  const roof = new THREE.Group()
+  roof.position.z = z
+  const rise = 0.48
+  mountGable(roof, roofMat, span + 0.3, depth + 0.24, wallH, rise)
+  const ridge = box(0.36, 0.14, depth + 0.36, roofMat, 0, wallH + rise + 0.02, 0)
+  ridge.name = 'bag-ridge'
+  roof.add(ridge)
   const front = z + depth / 2
   for (const x of [-2.15, 0, 2.15]) {
     const door = box(1.25, 1.45, 0.08, skinMaterial('baggage_hall', 'door'), x, 0.78, front + 0.04)
@@ -119,7 +123,7 @@ export function addBagSort(g: THREE.Group) {
     '2': { w: 1.45, d: wu(MODEL_SIZE.baggage_train[0]) },
     '3': { w: 1.45, d: wu(MODEL_SIZE.baggage_train[0]) },
   }, '#e0a21b')
-  g.add(body, slope, slopeR)
+  g.add(body, roof)
   softenBuilding(g)
 }
 

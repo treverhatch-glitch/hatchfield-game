@@ -5,7 +5,11 @@
 import * as THREE from 'three'
 import { landingTexture } from './landingArt'
 
-/** Buildings whose walls read as windows at night. Tanks and pads stay dark. */
+/**
+ * Buildings whose walls read as windows at night. Tanks, pads, and the bag
+ * sort stay dark: that hall is warehouse cladding, and the window mask
+ * drew a stripe across it.
+ */
 const WINDOW_WALLS = new Set([
   'terminal',
   'hotel',
@@ -18,7 +22,6 @@ const WINDOW_WALLS = new Set([
   'kiosk',
   'catering_kitchen',
   'transit_station',
-  'baggage_hall',
   'warehouse',
   'parking_garage',
   'maintenance_shed',

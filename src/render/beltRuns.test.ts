@@ -11,10 +11,9 @@ function grid(belts: [number, number][]): Tile[][] {
   return tiles
 }
 
-/** The two starter runs: stand (11,6) to the hall, and the sort to the south stand. */
+/** The starter belt: one run beside the sort, from the north stand to the south stand. */
 const STARTER: [number, number][] = [
-  [11, 7], [11, 8], [12, 8], [13, 8],
-  [12, 12], [13, 12], [13, 11], [13, 10],
+  [11, 7], [11, 8], [12, 8], [12, 9], [12, 10], [12, 11], [12, 12],
 ]
 
 function adjacent(a: BeltCell, b: BeltCell): boolean {
@@ -22,26 +21,32 @@ function adjacent(a: BeltCell, b: BeltCell): boolean {
 }
 
 describe('belt runs', () => {
-  it('splits the starter belts into two runs, end to end', () => {
+  it('walks the starter belt in one run from the north stand to the south stand', () => {
     const runs = beltRuns(grid(STARTER))
-    expect(runs).toEqual([
-      [{ c: 11, r: 7 }, { c: 11, r: 8 }, { c: 12, r: 8 }, { c: 13, r: 8 }],
-      [{ c: 13, r: 10 }, { c: 13, r: 11 }, { c: 13, r: 12 }, { c: 12, r: 12 }],
-    ])
+    expect(runs).toEqual([[
+      { c: 11, r: 7 },
+      { c: 11, r: 8 },
+      { c: 12, r: 8 },
+      { c: 12, r: 9 },
+      { c: 12, r: 10 },
+      { c: 12, r: 11 },
+      { c: 12, r: 12 },
+    ]])
   })
 
-  it('keeps every bag on a belt cell and never crosses the gap between (13,8) and (13,10)', () => {
+  it('reaches the deck into the sort building and keeps suitcases on belt cells', () => {
     const tiles = grid(STARTER)
+    tiles[9][13] = 'bags'
+    expect(beltArms(tiles, 12, 9).e).toBe(true)
     const runs = beltRuns(tiles)
     const share = bagsPerRun(runs.map((run) => run.length - 1), 8)
-    expect(share).toEqual([4, 4])
+    expect(share).toEqual([8])
     for (const run of runs) {
       const points = run.map((p) => ({ x: p.c, z: p.r }))
       for (let i = 0; i <= 200; i++) {
         const at = alongRun(points, i / 200)
         const cell = { c: Math.round(at.x), r: Math.round(at.z) }
-        expect(tiles[cell.r][cell.c]).toBe('belt')
-        expect(cell.c === 13 && cell.r === 9).toBe(false)
+        expect(tiles[cell.r][cell.c], `${cell.c},${cell.r}`).toBe('belt')
       }
     }
   })
@@ -152,8 +157,8 @@ describe('belt deck', () => {
     const tiles = grid(STARTER)
     expect(deckSides(beltArms(tiles, 11, 7)).sort()).toEqual(['n', 's'])
     expect(deckSides(beltArms(tiles, 11, 8)).sort()).toEqual(['e', 'n'])
-    expect(deckSides(beltArms(tiles, 12, 8)).sort()).toEqual(['e', 'w'])
-    expect(deckSides(beltArms(tiles, 13, 11)).sort()).toEqual(['n', 's'])
+    expect(deckSides(beltArms(tiles, 12, 8)).sort()).toEqual(['s', 'w'])
+    expect(deckSides(beltArms(tiles, 12, 9)).sort()).toEqual(['n', 's'])
     expect(deckSides(undefined).sort()).toEqual(['e', 'w'])
   })
 })

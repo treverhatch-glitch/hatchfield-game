@@ -28,12 +28,18 @@ function isBelt(tiles: readonly (readonly Tile[])[], c: number, r: number): bool
   return tiles[r]?.[c] === 'belt'
 }
 
+/** A belt deck reaches into the sort building. The suitcase run stays on belt cells. */
+function deckJoins(tiles: readonly (readonly Tile[])[], c: number, r: number): boolean {
+  const tile = tiles[r]?.[c]
+  return tile === 'belt' || tile === 'bags'
+}
+
 export function beltArms(tiles: readonly (readonly Tile[])[], c: number, r: number): BeltArms {
   return {
-    e: isBelt(tiles, c + 1, r),
-    w: isBelt(tiles, c - 1, r),
-    s: isBelt(tiles, c, r + 1),
-    n: isBelt(tiles, c, r - 1),
+    e: deckJoins(tiles, c + 1, r),
+    w: deckJoins(tiles, c - 1, r),
+    s: deckJoins(tiles, c, r + 1),
+    n: deckJoins(tiles, c, r - 1),
   }
 }
 

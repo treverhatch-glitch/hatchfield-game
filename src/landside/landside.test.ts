@@ -53,6 +53,22 @@ describe('curb network', () => {
     expect(net.edgeExit).toBe(false)
   })
 
+  it('keeps passenger cars off a guard that splits the public road', () => {
+    const roads: Cell[] = []
+    for (let r = 0; r <= 8; r++) {
+      if (r === 3) continue
+      roads.push({ c: 7, r })
+    }
+    const net = buildNetwork({
+      ...field(),
+      roads,
+      connectors: [{ c: 7, r: 3 }],
+    })
+    expect(net.path.some((cell) => cell.r === 3)).toBe(false)
+    expect(net.path.every((cell) => cell.r < 3)).toBe(true)
+    expect(net.exit.some((cell) => cell.c === 7 && cell.r >= 4)).toBe(false)
+  })
+
   it('counts a parallel road as a second lane only when it runs the whole approach', () => {
     const base = field()
     expect(approachLanes(buildNetwork(base).path, parallel(base.roads))).toBe(2)

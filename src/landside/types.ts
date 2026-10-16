@@ -7,7 +7,10 @@ export interface Cell {
 
 export interface LandsideField {
   roads: Cell[]
-  /** Cells cars may cross that are not themselves a road, such as the guard post. */
+  /**
+   * Service gates such as the guard post. Passenger cars do not enter them.
+   * Fuel tankers and other airport vehicles may.
+   */
   connectors?: Cell[]
   terminals: Cell[]
   busBays: Cell[]

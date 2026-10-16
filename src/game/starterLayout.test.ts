@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { nearestPath, runwayStrips, standBeltLinked, tilesOf } from './path'
+import { deliveryPath } from '../fuel/path.ts'
+import { buildNetwork } from '../landside/network.ts'
+import { starterField } from '../landside/fixtures.test-util.ts'
+import { bagSortYaw } from '../render/world/bagFacing.ts'
+import { nearestPath, runwayStrips, standBeltLinked, standBeltViaSort, tilesOf } from './path'
 import { clearanceIntrusions, runwayBoxes } from './runwayClearance'
 import { Game } from './sim'
 import { STARTER_KITS, stampStarterKit } from './starterLayout'
@@ -61,6 +65,9 @@ describe('starter kits', () => {
       expect(halls).toHaveLength(0)
       expect(first.fits).toHaveLength(0)
       expect(stands).toHaveLength(1)
+      expect(tilesOf(first.tiles, 'guard')).toEqual([{ c: 16, r: 10 }])
+      const inbound = nearestPath(first.tiles, { c: 17, r: 0 }, stands, 'truck')
+      expect(inbound?.some((cell) => cell.c === 16 && cell.r === 10)).toBe(true)
       return
     }
 
@@ -69,6 +76,40 @@ describe('starter kits', () => {
     expect(stands).toHaveLength(2)
     expect(standBeltLinked(first.tiles, stands[0])).toBe(true)
     expect(standBeltLinked(first.tiles, stands[1])).toBe(true)
+    expect(standBeltViaSort(first.tiles, stands[0])).toBe(true)
+    expect(standBeltViaSort(first.tiles, stands[1])).toBe(true)
+    const sort = tilesOf(first.tiles, 'bags')
+    expect(sort).toEqual([{ c: 13, r: 9 }])
+    expect(first.tiles[9][14]).toBe('terminal')
+    const hallsByKey = new Set(halls.map((p) => key(p.c, p.r)))
+    for (const belt of tilesOf(first.tiles, 'belt')) {
+      const touchesHall = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dc, dr]) => hallsByKey.has(key(belt.c + dc, belt.r + dr)))
+      expect(touchesHall, `belt ${belt.c},${belt.r} touches the hall`).toBe(false)
+    }
+    expect(bagSortYaw(first.tiles, 13, 9)).toBeCloseTo(-Math.PI / 2)
+    const guard = tilesOf(first.tiles, 'guard')
+    expect(guard).toEqual([{ c: 16, r: 4 }])
+    const curb = buildNetwork(starterField())
+    const onGuard = (cell: { c: number; r: number }) => cell.c === 16 && cell.r === 4
+    expect(curb.path.some(onGuard)).toBe(false)
+    expect(curb.exit.some(onGuard)).toBe(false)
+    expect(curb.path.at(-1)).toEqual({ c: 17, r: 8 })
+    const city = { c: 17, r: 0 }
+    for (const stand of stands) {
+      const truck = nearestPath(first.tiles, city, [stand], 'truck')
+      expect(truck?.some(onGuard), `${focus} city → stand`).toBe(true)
+    }
+    const tanker = deliveryPath(
+      tilesOf(first.tiles, 'road'),
+      tilesOf(first.tiles, 'fuel'),
+      guard,
+    )
+    expect(tanker.path.some(onGuard)).toBe(true)
     const hall = new Set(halls.map((p) => key(p.c, p.r)))
     for (const road of roads) expect(hall.has(key(road.c, road.r))).toBe(false)
     const view = { tiles: first.tiles, mapRev: 1 }
@@ -91,6 +132,14 @@ describe('starter kits', () => {
         for (const step of path!) expect(hall.has(key(step.c, step.r))).toBe(false)
       }
     }
+  })
+
+  it('rejects a belt that joins the hall to a stand without the sort', () => {
+    const game = field('pax')
+    game.tiles[8][13] = 'belt'
+    const stand = { c: 11, r: 6 }
+    expect(standBeltLinked(game.tiles, stand)).toBe(true)
+    expect(standBeltViaSort(game.tiles, stand)).toBe(false)
   })
 
   it('does not make the three kits the same stamp', () => {

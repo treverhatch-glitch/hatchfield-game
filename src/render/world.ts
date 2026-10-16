@@ -80,6 +80,7 @@ import { metreUv, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMat
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
 import { paintWindow } from './world/nightArt'
 import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './world/airsideMass'
+import { bagSortYaw } from './world/bagFacing'
 import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass, addHydrantPit, addRailStation } from './world/massPass3'
 import { helipadTurnOnPad } from './world/padHeli'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
@@ -836,6 +837,7 @@ export class World {
             spotterCrowd: game.spotterCrowdAt(c, r),
             alarmBell: tile === 'fire' && game.hostHasFitting('fire', { c, r }, 'alarm_bell'),
             beltArms: tile === 'belt' ? beltArms(game.tiles, c, r) : undefined,
+            bagYaw: tile === 'bags' ? bagSortYaw(game.tiles, c, r) : undefined,
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -930,6 +932,8 @@ export class World {
       spotterCrowd?: number
       alarmBell?: boolean
       beltArms?: BeltArms
+      /** Radians. Points the bag-sort bays (+Z) at the apron. */
+      bagYaw?: number
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
@@ -976,6 +980,7 @@ export class World {
       g.add(body, awning)
     } else if (tile === 'bags') {
       addBagSort(g)
+      g.rotation.y = opts.bagYaw ?? 0
     } else if (tile === 'belt') {
       // Low conveyor strip — distinct from taxi/road so broken chains read on the apron.
       addBeltDeck(g, opts.beltArms)
@@ -1548,7 +1553,9 @@ export class World {
     }
     for (const p of cells) {
       if (!inBounds(p.c, p.r)) continue
-      const built = this.building(tile, toWorld(p.c, p.r, 0))
+      const built = this.building(tile, toWorld(p.c, p.r, 0), {
+        bagYaw: tile === 'bags' ? bagSortYaw(game.tiles, p.c, p.r) : undefined,
+      })
       ghostify(built)
       this.ghostGroup.add(built)
     }
@@ -2125,7 +2132,7 @@ export class World {
   }
 
   /**
-   * Construction poles + progress bars, advisor / focus rings, and the bag-hall ring.
+   * Construction poles + progress bars, and advisor / focus rings.
    * Fuel-farm lane paint lives on the depot mesh.
    * Meshes are rebuilt only when the set of marks changes; bars just rescale each frame.
    */
@@ -2222,27 +2229,6 @@ export class World {
       mark.rotation.x = -Math.PI / 2
       mark.position.copy(p)
       this.siteGroup.add(mark)
-    }
-    for (let r = 0; r < game.tiles.length; r++) {
-      const row = game.tiles[r]
-      if (!row) continue
-      for (let c = 0; c < row.length; c++) {
-        const tile = row[c]
-        if (tile !== 'bags') continue
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(CELL * 0.32, CELL * 0.46, 18),
-          new THREE.MeshBasicMaterial({
-            color: '#3a8ec2',
-            transparent: true,
-            opacity: 0.9,
-            side: THREE.DoubleSide,
-          }),
-        )
-        const p = toWorld(c, r, 0.5)
-        ring.rotation.x = -Math.PI / 2
-        ring.position.copy(p)
-        this.siteGroup.add(ring)
-      }
     }
   }
 

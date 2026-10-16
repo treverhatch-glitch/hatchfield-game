@@ -324,6 +324,19 @@ export function beltReachable(tiles: Tile[][], start: Vec, goal: Vec): boolean {
   return false
 }
 
+/**
+ * True when the hall reaches the stand on the belt graph, and that link
+ * dies if the bag-sort cells are removed. A belt that runs hall → stand
+ * without the sort returns false.
+ */
+export function standBeltViaSort(tiles: Tile[][], stand: Vec): boolean {
+  if (!standBeltLinked(tiles, stand)) return false
+  const blocked = tiles.map((row) => row.slice())
+  for (const makeup of tilesOf(tiles, 'bags')) blocked[makeup.r][makeup.c] = 'grass'
+  const halls = tilesOf(tiles, 'terminal')
+  return !halls.some((hall) => beltReachable(blocked, hall, stand))
+}
+
 /** True when makeup can reach the stand and a terminal via belt tiles. */
 export function standBeltLinked(tiles: Tile[][], stand: Vec): boolean {
   const makeups = tilesOf(tiles, 'bags')
