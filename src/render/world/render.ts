@@ -145,13 +145,27 @@ function applyPavedSurface(mat: THREE.MeshLambertMaterial, isRunway: boolean) {
         '#include <map_fragment>',
         `#include <map_fragment>
         #ifdef USE_MAP
-          vec4 macroColor = texture2D(map, vMapUv * 0.15);
-          diffuseColor.rgb = mix(diffuseColor.rgb, macroColor.rgb * diffuse, 0.25);
+          vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+          vec4 macroColor = texture2D( map, vMapUv * 0.15 );
+          // Mix macro variation at reduced strength (approx 12-15%)
+          sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, macroColor.rgb, 0.12);
+          // Clamp brightness to prevent washing out to white
+          sampledDiffuseColor.rgb = min(sampledDiffuseColor.rgb, vec3(0.85));
+
+          #ifdef DECODE_VIDEO_TEXTURE
+            sampledDiffuseColor = sRGBTransferOETF( sampledDiffuseColor );
+          #endif
+          diffuseColor *= sampledDiffuseColor;
+
           ${isRunway ? `
+            // Subtle tyre strips in touchdown zones
             float streakX = fbm(vec2(vWorldXZ.x * 0.02, vWorldXZ.z * 1.5));
             float streakZ = fbm(vec2(vWorldXZ.x * 1.5, vWorldXZ.z * 0.02));
-            float dark = max(streakX, streakZ);
-            diffuseColor.rgb *= mix(1.0, 0.85, dark * 0.8);
+            // Threshold FBM so it only appears in faint streaks
+            float darkX = smoothstep(0.6, 0.9, streakX);
+            float darkZ = smoothstep(0.6, 0.9, streakZ);
+            float dark = max(darkX, darkZ);
+            diffuseColor.rgb *= mix(1.0, 0.88, dark);
           ` : ``}
         #endif
         `
