@@ -126,7 +126,7 @@ export function split1f(): BuildLayout {
 
   const fittings: Fitting[] = [
     fitting('s1-desk-0', 'checkin_desk', 0, 27, { staffed: true }),
-    fitting('s1-desk-1', 'checkin_desk', 2, 27, { staffed: false }),
+    fitting('s1-desk-1', 'checkin_desk', 2, 27, { staffed: true }),
     fitting('s1-bag', 'bag_drop', 5, 27),
     fitting('s1-kiosk', 'checkin_kiosk', 12, 36),
     fitting('s1-lane-0', 'security_lane', 28, 14, { staffed: true }),

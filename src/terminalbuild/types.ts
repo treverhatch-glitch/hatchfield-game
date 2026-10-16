@@ -100,6 +100,11 @@ export interface Equip {
   wear: number
   /** Story this piece sits on. Omitted means floor 0. */
   floor?: number
+  /**
+   * Omitted means staffed. False when the fitting card unstaffed this piece.
+   * The walk will not serve it.
+   */
+  staffed?: boolean
 }
 
 /** Catalog pieces on the 1 m layout. `Equip` stays until the walk reads fittings directly. */

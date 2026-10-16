@@ -373,6 +373,22 @@ describe('service points', () => {
     expect(nav.writePhases(phases)).toBe(nav.count)
   })
 
+  it('does not serve a fitting the card unstaffed, even when the post is open', () => {
+    const layout = sample()
+    const lane = layout.equipment.find((e) => e.id === 'lane2')!
+    layout.fittings = [
+      { id: lane.id, kind: 'security_lane', x: lane.x, y: lane.y, floor: 0, rot: 0, wear: 0, staffed: false },
+    ]
+    const nav = new PaxNav(layout, { seed: 4 })
+    nav.setStaffing(new Set(nav.metrics().map((m) => m.id)))
+    expect(nav.metricsFor('lane2')!.staffed).toBe(false)
+    for (let i = 0; i < 8; i++) nav.spawn({ id: `p${i}`, gate: 'g1', departAt: 4000, bags: false, needs: [] })
+    runChecked(nav, 0, 80, 0.25)
+    expect(nav.metricsFor('lane2')!.served).toBe(0)
+    expect(nav.poses().every((p) => p.facility !== 'lane2')).toBe(true)
+    expect(nav.metricsFor('lane1')!.served).toBeGreaterThan(0)
+  })
+
   it('holds the line at a closed lane until someone is staffing it', () => {
     const nav = new PaxNav(sample(), { seed: 5 })
     const open = new Set(nav.metrics().map((m) => m.id))

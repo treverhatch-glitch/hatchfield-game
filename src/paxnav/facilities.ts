@@ -36,6 +36,8 @@ export interface Facility {
    * do not serve. Defaults open; the hall sets it from staffing.
    */
   staffed: boolean
+  /** False when the fitting card unstaffed this piece. Hired posts cannot reopen it. */
+  cardOpen: boolean
   /** A check-in desk that accepts the suitcase. A kiosk does not. */
   takesBags: boolean
 }
@@ -203,7 +205,8 @@ export function buildFacilities(g: NavGrid): FacilitySet {
       lineIdx: new Map(),
       lane,
       serviceSec: serviceSecOf(eq),
-      staffed: true,
+      staffed: eq.staffed !== false,
+      cardOpen: eq.staffed !== false,
       takesBags: eq.kind === 'bag_drop' || (eq.kind === 'checkin_desk' && !eq.id.includes('kiosk')),
     }
     const pen = lanePen.slice()

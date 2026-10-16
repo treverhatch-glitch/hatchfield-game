@@ -1984,7 +1984,7 @@ export class PaxNav {
   setStaffing(open: ReadonlySet<string> | null): void {
     for (const f of this.fac.list) {
       if (f.kind !== 'checkin_desk' && f.kind !== 'security_lane') continue
-      f.staffed = open ? open.has(f.id) : true
+      f.staffed = f.cardOpen && (open ? open.has(f.id) : true)
     }
   }
 

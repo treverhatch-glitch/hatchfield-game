@@ -641,14 +641,29 @@ export const FITTING_EQUIP: Partial<Record<FittingKind, EquipKind>> = {
 export function appendWalkEquipment(layout: BuildLayout): BuildLayout {
   const have = new Set(layout.equipment.map((e) => e.id))
   const extra: Equip[] = []
+  const closed = new Set<string>()
   for (const f of layout.fittings ?? []) {
     const kind = FITTING_EQUIP[f.kind]
-    if (!kind || have.has(f.id)) continue
-    extra.push({ id: f.id, kind, x: Math.floor(f.x), y: Math.floor(f.y), wear: f.wear, floor: f.floor })
+    if (!kind) continue
+    if (f.staffed === false) closed.add(f.id)
+    if (have.has(f.id)) continue
+    extra.push({
+      id: f.id,
+      kind,
+      x: Math.floor(f.x),
+      y: Math.floor(f.y),
+      wear: f.wear,
+      floor: f.floor,
+      staffed: f.staffed !== false,
+    })
     have.add(f.id)
   }
-  if (!extra.length) return layout
-  return { ...layout, equipment: [...layout.equipment, ...extra] }
+  const needsPatch = layout.equipment.some((e) => closed.has(e.id) && e.staffed !== false)
+  if (!extra.length && !needsPatch) return layout
+  const equipment = needsPatch
+    ? layout.equipment.map((e) => (closed.has(e.id) ? { ...e, staffed: false } : e))
+    : layout.equipment
+  return { ...layout, equipment: extra.length ? [...equipment, ...extra] : equipment }
 }
 
 export function equipForFitting(f: Fitting, at: { x: number; y: number }): Equip | null {

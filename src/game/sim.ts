@@ -15977,7 +15977,7 @@ export class Game {
           floor: 0,
           rot: spot.rot,
           wear: 0,
-          staffed: false as boolean | undefined,
+          staffed: true,
         }
         fit.layout.fittings = [...(fit.layout.fittings ?? []), piece]
         const size = fittingSize(fittingKind, spot.rot)
@@ -16094,8 +16094,8 @@ export class Game {
   }
 
   /**
-   * Staff or unstaff the layout piece. The walk still treats its equipment as
-   * staffed; the card status reads this flag.
+   * Staff or unstaff the layout piece. The walk reads the same `staffed` flag
+   * as the fitting card and will not serve a piece marked false.
    */
   setFittingStaffed(id: string, staffed: boolean): boolean {
     const piece = this.activeHall()?.layout?.fittings?.find((row) => row.id === id)
