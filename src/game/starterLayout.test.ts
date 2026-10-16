@@ -3,7 +3,7 @@ import { deliveryPath } from '../fuel/path.ts'
 import { buildNetwork } from '../landside/network.ts'
 import { starterField } from '../landside/fixtures.test-util.ts'
 import { bagSortYaw } from '../render/world/bagFacing.ts'
-import { apronDocks, bowserPath, nearestPath, pathBeside, runwayStrips, shedStops, standBeltLinked, standBeltViaSort, tilesOf } from './path'
+import { apronDocks, bowserPath, nearestPath, pathBeside, retireApronBelts, runwayStrips, shedStops, standBeltLinked, standBeltViaSort, tilesOf } from './path'
 import { clearanceIntrusions, runwayBoxes } from './runwayClearance'
 import { Game } from './sim'
 import { STARTER_KITS, stampStarterKit } from './starterLayout'
@@ -74,6 +74,7 @@ describe('starter kits', () => {
     expect(halls).toHaveLength(8)
     expect(first.fits).toHaveLength(1)
     expect(stands).toHaveLength(2)
+    expect(tilesOf(first.tiles, 'belt')).toEqual([])
     expect(standBeltLinked(first.tiles, stands[0])).toBe(true)
     expect(standBeltLinked(first.tiles, stands[1])).toBe(true)
     expect(standBeltViaSort(first.tiles, stands[0])).toBe(true)
@@ -82,16 +83,6 @@ describe('starter kits', () => {
     expect(sort).toEqual([{ c: 14, r: 9 }])
     expect(first.tiles[9][15]).toBe('terminal')
     expect(first.tiles[9][14]).toBe('bags')
-    const hallsByKey = new Set(halls.map((p) => key(p.c, p.r)))
-    for (const belt of tilesOf(first.tiles, 'belt')) {
-      const touchesHall = [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ].some(([dc, dr]) => hallsByKey.has(key(belt.c + dc, belt.r + dr)))
-      expect(touchesHall, `belt ${belt.c},${belt.r} touches the hall`).toBe(false)
-    }
     expect(bagSortYaw(first.tiles, 14, 9)).toBeCloseTo(-Math.PI / 2)
     const guard = tilesOf(first.tiles, 'guard')
     expect(guard).toEqual([{ c: 16, r: 2 }])
@@ -181,15 +172,21 @@ describe('starter kits', () => {
     }
   })
 
-  it('rejects a belt that joins the hall to a stand without the sort', () => {
+  it('serves a stand from the bag room, and drops the link when the room is gone', () => {
     const game = field('pax')
-    // Column 14 is the gap between the belt run and the 2-wide hall. A belt
-    // there, joined to the stand run, reaches the hall without the sort.
-    game.tiles[8][13] = 'belt'
-    game.tiles[8][14] = 'belt'
     const stand = { c: 11, r: 6 }
     expect(standBeltLinked(game.tiles, stand)).toBe(true)
+    game.tiles[9][14] = 'grass'
+    expect(standBeltLinked(game.tiles, stand)).toBe(false)
     expect(standBeltViaSort(game.tiles, stand)).toBe(false)
+  })
+
+  it('turns saved apron belts into taxi', () => {
+    const game = field('pax')
+    game.tiles[8][12] = 'belt'
+    expect(retireApronBelts(game.tiles)).toBe(1)
+    expect(game.tiles[8][12]).toBe('taxi')
+    expect(tilesOf(game.tiles, 'belt')).toEqual([])
   })
 
   it('does not make the three kits the same stamp', () => {

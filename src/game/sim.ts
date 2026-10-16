@@ -25,7 +25,6 @@ import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
-  BELT_COST,
   BUDGET_BASE,
   BULLDOZE_REFUND,
   CASH_DEBT_FLOOR,
@@ -181,6 +180,7 @@ import { hangarFootprintCells } from './buildingFootprint'
 import { footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { AIRCRAFT_VISUAL_SCALE, getAircraftSpec } from '../render/aircraft/specs'
+import { BAG_ROOM_TUGS, BAG_UNITS_PER_CART, heavyBagLoad, planTugTrains } from './tugTrains'
 import { bridgeMirror, envelopeLetter, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
@@ -917,6 +917,7 @@ import {
   shedStops,
   hasBeltNetwork,
   inBounds,
+  retireApronBelts,
   neighbors,
   jetRouteOnGraph,
   nearestPath,
@@ -6142,6 +6143,7 @@ export class Game {
     // Drop the city-edge stub and any stray paint. The stamp is the whole field.
     for (const row of this.tiles) row.fill('grass')
     const kit = stampStarterKit(this.tiles, this.startFocus)
+    retireApronBelts(this.tiles)
     this.facing = 'h'
     for (const stand of kit.stands) {
       const key = `${stand.c},${stand.r}`
@@ -7869,6 +7871,7 @@ export class Game {
       if (opened.issues.some((issue) => issue.kind === 'flagged')) return false
       const s = opened.envelope.data
       this.tiles = s.tiles
+      retireApronBelts(this.tiles)
       this.fits = (s.terminalFits ?? []).map((f) => {
         const rooms = { ...emptyRooms(), ...(f.rooms ?? {}) }
         const claimRooms = Math.max(1, rooms.bagclaim || (f.premade ? 1 : 0))
@@ -21954,7 +21957,7 @@ export class Game {
     if (site.kind === 'single') {
       const v = site.cells[0]
       if (!v) return
-      this.tiles[v.r][v.c] = site.tile
+      this.tiles[v.r][v.c] = site.tile === 'belt' ? 'taxi' : site.tile
       const key = `${v.c},${v.r}`
       if (site.parkTerm) this.parkTerms[key] = site.parkTerm
       if (site.hotelClass) this.hotelClass[key] = site.hotelClass
@@ -22759,8 +22762,6 @@ export class Game {
       news = 'MRO hangar open — airlines can buy heavy checks. A bay ties up that stand.'
     } else if (building.tile === 'nighthub') {
       news = 'Cargo night hub open — freighters bank after dark. The city will bill the noise.'
-    } else if (building.tile === 'belt') {
-      news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
     } else if (building.tile === 'kitchen') {
       news = 'Catering kitchen open. Meals cook here for the galley trucks.'
     } else if (building.tile === 'depot') {
@@ -25858,11 +25859,7 @@ export class Game {
       // Arrival unload: shed → plane → claim/sort at shed → continue or park.
       if (bagBuild.length > 0 && f.stand) {
         this.noteBagBeltIssue(f)
-        const bagPath = pathBeside(this.tiles, bagBuild[0], [f.stand])
-        if (bagPath) {
-          f.waitingOn.bags = true
-          this.spawnTruck('bags', f, bagPath, 'unload', bagPath[0])
-        }
+        this.dispatchBagTugs(f, 'unload', bagBuild[0])
       }
       const snackPath =
         this.caterBrand && snackBuild.length > 0 && f.stand
@@ -26486,21 +26483,76 @@ export class Game {
       f.waitingOn.paxIn = walkers.length
       this.people.push(...walkers)
     }
-    // Outbound bags: shed makeup pickup → plane deposit.
+    // Outbound bags: bag room → tug train → stand. No apron belt.
     const bagBuild = tilesOf(this.tiles, 'bags')
     if (bagBuild.length && !f.posted.bagsLoad) {
       this.noteBagBeltIssue(f)
-      const path = pathBeside(this.tiles, bagBuild[0], [f.stand])
-      if (path) {
-        f.waitingOn.bagsLoad = true
-        this.spawnTruck('bags', f, path, 'load', path[0])
-      }
+      this.dispatchBagTugs(f, 'load', bagBuild[0])
     }
   }
 
   /**
-   * Belt lite — once any belt exists, stands need makeup↔stand↔hall connectivity.
-   * Broken chain: slower board + heat nick + news (trucks still roll for picture).
+   * One tug per flight, plus a second when the load is longer than one train
+   * and a tug is free. Otherwise that tug comes back for the rest.
+   */
+  private dispatchBagTugs(f: Flight, mission: 'load' | 'unload', home: Vec) {
+    if (!f.stand) return
+    const path = nearestPath(this.tiles, home, [f.stand], 'truck')
+    if (!path || path.length < 2) return
+    const units = Math.max(1, mission === 'load' ? (f.bagsDeposited ?? f.bagUnits ?? 0) : (f.bagUnits ?? 0))
+    const heavy = heavyBagLoad(f.kind, this.standClassAt(f.stand))
+    const pool = Math.max(1, tilesOf(this.tiles, 'bags').length) * BAG_ROOM_TUGS
+    const busy = this.trucks.filter((t) => t.kind === 'bags' && t.flightId).length
+    const trains = planTugTrains(units, heavy, Math.max(1, pool - busy))
+    if (mission === 'load') f.waitingOn.bagsLoad = true
+    else f.waitingOn.bags = true
+    trains.forEach((train, i) => {
+      const lane = i === 0 ? path : path.map((cell) => ({ c: cell.c, r: cell.r }))
+      this.spawnTruck('bags', f, lane, mission, home)
+      const tug = this.trucks[this.trucks.length - 1]
+      if (!tug || tug.kind !== 'bags') return
+      tug.carts = train.carts
+      tug.runsLeft = train.runs
+      tug.cargoUnits = Math.min(units, train.carts * BAG_UNITS_PER_CART)
+    })
+  }
+
+  /** Another lap to the bag room when one train cannot take the whole load. */
+  private bagTugAgain(t: Truck): boolean {
+    if (t.kind !== 'bags' || (t.mission !== 'load' && t.mission !== 'unload')) return false
+    if ((t.runsLeft ?? 1) <= 1 || !t.home) return false
+    t.runsLeft = (t.runsLeft ?? 1) - 1
+    t.repeatRun = true
+    const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+    t.returning = true
+    t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
+    t.seg = 0
+    t.t = 0
+    t.dwell = 0
+    return true
+  }
+
+  /** A parallel tug finished. The flight stays open until the other train is done. */
+  private bagTugHandOff(t: Truck): boolean {
+    if (t.kind !== 'bags' || (t.mission !== 'load' && t.mission !== 'unload')) return false
+    const mate = this.trucks.some(
+      (other) =>
+        other.id !== t.id &&
+        other.kind === 'bags' &&
+        other.flightId === t.flightId &&
+        other.mission === t.mission &&
+        other.dwell !== -99,
+    )
+    if (!mate) return false
+    t.cargoUnits = 0
+    t.dwell = -99
+    return true
+  }
+
+  /**
+   * Bag room on the terminal must have a truck path to the stand.
+   * A missing path slows boarding. Apron belts are not required.
    */
   noteBagBeltIssue(f: Flight) {
     if (!f.stand || f.cargo) return
@@ -26511,7 +26563,7 @@ export class Game {
     this.adjustHeat(f.airline, -2.2 * belt)
     if (Math.random() < 0.55) {
       this.pushNews(
-        `${f.flightNo} bags late — belt broken between hall, sort, and stand.`,
+        `${f.flightNo} bags late — no tug path from the bag room to the stand.`,
         'bad',
       )
     }
@@ -28276,6 +28328,8 @@ export class Game {
             t.dwell = 0.25
             continue
           }
+          if (this.bagTugAgain(t)) continue
+          if (this.bagTugHandOff(t)) continue
           this.finishTruck(t)
           const from = { c: Math.round(t.x), r: Math.round(t.y) }
           if (t.kind === 'termbus') {
@@ -28416,6 +28470,25 @@ export class Game {
           if (this.retargetBagsTruck(t)) continue
           t.dwell = -99
           continue
+        }
+        if (t.repeatRun && t.kind === 'bags' && t.home && t.flightId && (t.mission === 'load' || t.mission === 'unload')) {
+          const fl = this.flights.find((x) => x.id === t.flightId)
+          t.repeatRun = false
+          if (fl?.stand) {
+            const back = nearestPath(this.tiles, t.home, [fl.stand], 'truck')
+            if (back && back.length > 1) {
+              t.path = back
+              t.seg = 0
+              t.t = 0
+              t.returning = false
+              t.preDwell = 0.4
+              t.cargoUnits = Math.min(
+                fl.bagUnits ?? t.cargoUnits ?? 1,
+                (t.carts ?? 1) * BAG_UNITS_PER_CART,
+              )
+              continue
+            }
+          }
         }
         if (t.kind === 'bags' && t.mission === 'pickup') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null

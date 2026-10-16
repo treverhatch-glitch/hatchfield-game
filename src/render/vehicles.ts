@@ -260,6 +260,8 @@ export interface VehicleInstance {
   deck?: number
   /** Metres the belt slides toward the cargo door at full deploy. */
   slide?: number
+  /** Baggage-train carts. Omitted draws the two-cart train. */
+  carts?: number
 }
 
 export class VehicleFleet {
@@ -395,6 +397,7 @@ export class VehicleFleet {
       inp.beams = item.beams ?? false
       inp.deck = item.deck
       inp.slide = item.slide
+      inp.carts = item.carts
       if (model && part && partPose(model, part, inp, this.pose)) {
         this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
       }

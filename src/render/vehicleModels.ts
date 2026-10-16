@@ -259,7 +259,7 @@ export interface VPart {
 export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
   fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'grounding', 'reverse', 'beam'],
   hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose', 'reverse', 'beam'],
-  baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2', 'beam'],
+  baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2', 'cart_3', 'cart_4', 'cart_5', 'cart_6', 'beam'],
   baggage_cart: ['wheels_front', 'wheels_rear', 'curtain'],
   belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt', 'belt_bags', 'reverse'],
   catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck', 'reverse', 'beam'],
@@ -381,10 +381,11 @@ class Kit {
         lug.translate(r * 0.95, 0, (j % 2 ? 0.25 : -0.25) * tw).rotateZ(a)
         this.add(lug, LIVERY.tyre, x, r, z, name)
       }
-      // wheel arch: dark half-ring flare above the tyre (static shell)
+      // wheel arch: dark half-ring flare above the tyre (static shell, or the cart it belongs to)
+      const archName = name.startsWith('wheels') || name === '' ? '' : name
       const arch = new THREE.TorusGeometry(r * 1.14, 0.06, 5, 14, Math.PI)
-      this.add(arch, LIVERY.black, x, r, s * (W / 2 + 0.01))
-      this.add(new THREE.TorusGeometry(r * 1.14, 0.06, 5, 14, Math.PI), LIVERY.black, x, r, s * (W / 2 - tw - inset))
+      this.add(arch, LIVERY.black, x, r, s * (W / 2 + 0.01), archName)
+      this.add(new THREE.TorusGeometry(r * 1.14, 0.06, 5, 14, Math.PI), LIVERY.black, x, r, s * (W / 2 - tw - inset), archName)
       this.cyl(LIVERY.hub, r * 0.52, tw * 1.04, x, r, z, 'z', name, 10)
       this.cyl(LIVERY.chassis, r * 0.18, tw * 1.1, x, r, z, 'z', name, 6)
       if (dual) this.cyl(LIVERY.tyre, r, tw * 0.9, x, r, z - s * tw * 0.98, 'z', name, 14)
@@ -697,8 +698,14 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.beacon(tx - 0.42, H - 0.03)
     for (const s of [1, -1]) k.head(0.03, 0.12, 0.2, L / 2 + 0.01, r + 0.62, s * (W / 2 - 0.2), '', true)
     k.chevrons(tx - tL / 2, r - 0.05, 0.3, W, 4)
+    // Shell-length hitch. Carts are separate parts so a short train can drop the extras.
+    const spineBack = -L / 2 + 0.25
+    const spineFront = tx - tL / 2
+    k.box(LIVERY.steel, spineFront - spineBack, 0.05, 0.06, (spineFront + spineBack) / 2, r, 0)
     const cL = 2.6
-    for (const [i, name] of [[0, 'cart_1'], [1, 'cart_2']] as const) {
+    const cartNames = ['cart_1', 'cart_2', 'cart_3', 'cart_4', 'cart_5', 'cart_6'] as const
+    for (let i = 0; i < cartNames.length; i++) {
+      const name = cartNames[i]
       const cx = tx - tL / 2 - 0.35 - cL / 2 - i * (cL + 0.35)
       cart(k, cx, cL, W * 0.96, H - 0.15, name)
       k.box(LIVERY.steel, 0.35, 0.05, 0.05, cx + cL / 2 + 0.17, r, 0, name) // drawbar

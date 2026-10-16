@@ -44,7 +44,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
       'Staffed check-in desk, self-service kiosk, and spare desk cells',
       'Two security lanes, with empty lane cells beside them',
       'Gate seats, café counter, newsagent, toilets, claim belt, and wayfinding',
-      'Two concrete stands, bag-sort bays, fuel bays, guard, and a cargo shed',
+      'Two concrete stands, a bag room on the hall, fuel bays, guard, and a cargo shed',
     ],
   },
   cargo: {
@@ -116,8 +116,8 @@ function paintPassenger(chart: Chart, police: boolean) {
   const putAt = (c: number, r: number, tile: Tile) => put(chart, c, r, tile)
   paintRunways(putAt)
   // Apron on the west face. The stands stay a full bay apart so both can
-  // taxi while the 2×4 hall occupies the curb. Column 14 is the sort, against
-  // the west face, so the belt cells themselves stay off the hall.
+  // taxi while the 2×4 hall occupies the curb. Column 14 is the bag room,
+  // against the west face. Tugs drive the taxiway. There is no apron belt.
   putAt(11, 9, 'taxi')
   putAt(13, 8, 'taxi')
   putAt(13, 10, 'taxi')
@@ -162,15 +162,15 @@ function paintPassenger(chart: Chart, police: boolean) {
   for (let c = 7; c <= 15; c++) putAt(c, 4, 'road')
   // South apron road. It meets the taxi spine, not column 17, so it is not a second gate.
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
-  // One belt beside the sort, out to both stands. No belt cell touches the hall.
-  putAt(11, 7, 'belt')
-  putAt(11, 8, 'belt')
-  putAt(12, 8, 'belt')
-  putAt(12, 9, 'belt')
-  putAt(13, 9, 'belt')
-  putAt(12, 10, 'belt')
-  putAt(12, 11, 'belt')
-  putAt(12, 12, 'belt')
+  // Tug road from the bag room to both stands. Pavement, not a conveyor.
+  putAt(11, 7, 'taxi')
+  putAt(11, 8, 'taxi')
+  putAt(12, 8, 'taxi')
+  putAt(12, 9, 'taxi')
+  putAt(13, 9, 'taxi')
+  putAt(12, 10, 'taxi')
+  putAt(12, 11, 'taxi')
+  putAt(12, 12, 'taxi')
   // Against the west face of the 2-wide hall. The mesh yaws so the bays face the apron.
   putAt(14, 9, 'bags')
   putAt(7, 5, 'fuel')

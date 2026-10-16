@@ -796,6 +796,12 @@ export interface Truck {
   home: Vec | null
   /** Visible load — bag units on this cart (Manor Lords crate feel). */
   cargoUnits?: number
+  /** Carts in this tug's train. Omitted on trucks that are not bag tugs. */
+  carts?: number
+  /** Trips still owed, including the one in progress. */
+  runsLeft?: number
+  /** Heading home to pick up the next lap of the same flight. */
+  repeatRun?: boolean
   /** Stand-service dwell this stop started with, in sim seconds. Crew steps fill it. */
   serviceFor?: number
 }
