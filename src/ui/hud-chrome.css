@@ -412,6 +412,17 @@
   border-radius: 16px;
 }
 
+.facility-card {
+  position: absolute;
+  color: #e7eee9;
+  top: var(--region-inspector-top);
+  right: var(--region-gap);
+  left: auto;
+  bottom: auto;
+  width: var(--region-inspector);
+  z-index: 24;
+}
+
 /* Terminal view keeps the floor open: apron cards fold to chips, the dock to the view toggle. */
 .hall-peeks {
   position: absolute;

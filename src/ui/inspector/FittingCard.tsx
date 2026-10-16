@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { Game } from '../../game/sim.ts'
 import { subscribeTerminalVersion, terminalVersion } from '../../game/terminalVersion.ts'
-import { fittingSpec } from '../../terminalbuild/fittings.ts'
+import { FITTING_EQUIP } from '../../terminalbuild/fittings.ts'
 import {
   fittingCardModel,
   fittingCardText,
@@ -49,7 +49,6 @@ export function readFittingCard(game: Game, id: string): FittingCardModel | null
   const layout = game.activeHall()?.layout
   const fitting = layout?.version === 2 ? layout.fittings?.find((row) => row.id === id) : undefined
   if (!fitting) return null
-  const spec = fittingSpec(fitting.kind)
   const row = game.hallNav.live ? game.hallNav.metrics().find((metric) => metric.id === id) : undefined
   const metric: FittingMetric | null = row
     ? {
@@ -66,7 +65,7 @@ export function readFittingCard(game: Game, id: string): FittingCardModel | null
     metric,
     info,
     intlDue: fitting.kind === 'passport_booth' ? game.intlArrivalsDue() : 0,
-    connected: !game.hallNav.live || spec.servers <= 0 || Boolean(row),
+    connected: !game.hallNav.live || !FITTING_EQUIP[fitting.kind] || Boolean(row),
   })
 }
 
@@ -86,7 +85,19 @@ export function FittingCardView({
   onAction: (action: FittingCardModel['actions'][number]) => void
 }) {
   return (
-    <aside className="facility-card" data-testid="fitting-card" data-kind={model.kind} data-id={model.id} style={{ padding: 12, pointerEvents: 'auto', zIndex: 24 }}>
+    <aside
+      className="facility-card"
+      data-testid="fitting-card"
+      data-kind={model.kind}
+      data-id={model.id}
+      style={{
+        padding: 12,
+        pointerEvents: 'auto',
+        zIndex: 24,
+        color: '#e7eee9',
+        background: 'rgb(15 23 42 / 0.94)',
+      }}
+    >
       <h2 data-testid="fitting-name">{model.name}</h2>
       <p className="mood" data-testid="fitting-status">
         {model.status}
@@ -109,7 +120,13 @@ export function FittingCardView({
       </ul>
       <div className="building-actions">
         {model.actions.map((action) => (
-          <button key={action} type="button" data-testid={`fitting-action-${action}`} onClick={() => onAction(action)}>
+          <button
+            key={action}
+            type="button"
+            data-testid={`fitting-action-${action}`}
+            style={{ color: '#e7eee9', background: 'transparent', border: '1px solid rgb(255 255 255 / 0.2)', borderRadius: 8, margin: '8px 6px 0 0' }}
+            onClick={() => onAction(action)}
+          >
             {ACTION_LABEL[action]}
           </button>
         ))}

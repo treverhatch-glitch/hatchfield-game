@@ -242,6 +242,7 @@ import {
   takeFittingSocket,
   ITEM_TO_FITTING,
   equipForFitting,
+  FITTING_EQUIP,
   fittingSize,
   fittingSpec,
   fittingRefund,
@@ -21516,7 +21517,7 @@ export class Game {
     const metric = this.hallNav.live ? this.hallNav.metrics().find((row) => row.id === id) : undefined
     const serviceSec = metric?.serviceSec || spec.serviceSec
     const throughput = metric?.serving && serviceSec > 0 ? 60 / serviceSec : 0
-    const connected = !this.hallNav.live || spec.servers <= 0 || Boolean(metric)
+    const connected = !this.hallNav.live || !FITTING_EQUIP[piece.kind] || Boolean(metric)
     return {
       id,
       name: spec.label,
