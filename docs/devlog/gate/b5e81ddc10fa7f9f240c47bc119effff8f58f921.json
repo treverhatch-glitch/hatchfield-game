@@ -1,0 +1,151 @@
+{
+  "sha": "b5e81ddc10fa7f9f240c47bc119effff8f58f921",
+  "shortSha": "b5e81ddc10fa",
+  "mode": "quick",
+  "ok": true,
+  "node": "v22.14.0",
+  "dirty": [
+    "docs/screens/info-views/airfield.png",
+    "docs/screens/ui-audit/taxonomy/tab-achievements.png",
+    "docs/screens/ui-audit/taxonomy/tab-charts.png",
+    "docs/screens/ui-audit/taxonomy/tab-commercial.png",
+    "docs/screens/ui-audit/taxonomy/tab-commute.png",
+    "docs/screens/ui-audit/taxonomy/tab-council.png",
+    "docs/screens/ui-audit/taxonomy/tab-expenses.png",
+    "docs/screens/ui-audit/taxonomy/tab-fees.png",
+    "docs/screens/ui-audit/taxonomy/tab-hubs.png",
+    "docs/screens/ui-audit/taxonomy/tab-income.png",
+    "docs/screens/ui-audit/taxonomy/tab-letters.png",
+    "docs/screens/ui-audit/taxonomy/tab-levels.png",
+    "docs/screens/ui-audit/taxonomy/tab-loans.png",
+    "docs/screens/ui-audit/taxonomy/tab-morale.png",
+    "docs/screens/ui-audit/taxonomy/tab-negotiation.png",
+    "docs/screens/ui-audit/taxonomy/tab-overview.png",
+    "docs/screens/ui-audit/taxonomy/tab-payroll.png",
+    "docs/screens/ui-audit/taxonomy/tab-planner.png",
+    "docs/screens/ui-audit/taxonomy/tab-premium.png",
+    "docs/screens/ui-audit/taxonomy/tab-relations.png",
+    "docs/screens/ui-audit/taxonomy/tab-research.png",
+    "docs/screens/ui-audit/taxonomy/tab-rival.png",
+    "docs/screens/ui-audit/taxonomy/tab-roster.png",
+    "docs/screens/ui-audit/taxonomy/tab-services.png",
+    "docs/screens/ui-audit/taxonomy/tab-specializations.png",
+    "docs/screens/ui-audit/taxonomy/tab-staff.png",
+    "docs/screens/ui-audit/taxonomy/tab-stands.png",
+    "docs/screens/ui-audit/taxonomy/tab-thoughts.png"
+  ],
+  "startedAt": "2026-10-16T07:31:00.238Z",
+  "finishedAt": "2026-10-16T07:50:14.289Z",
+  "durationMs": 1154051,
+  "soakDays": 30,
+  "testCounts": {
+    "filesPassed": 493,
+    "filesFailed": 0,
+    "filesSkipped": 6,
+    "files": 499,
+    "passed": 3159,
+    "failed": 0,
+    "skipped": 9,
+    "total": 3168
+  },
+  "soak": {
+    "days": 30,
+    "reachedDay": 30,
+    "cashEnd": 4627724,
+    "stuck": 0,
+    "recoveries": 26,
+    "heapGrowth": 0.1125
+  },
+  "steps": [
+    {
+      "id": "node",
+      "status": "pass",
+      "durationMs": 0,
+      "exitCode": 0,
+      "command": "process.version",
+      "detail": "v22.14.0 (>= 22.12)",
+      "tail": ""
+    },
+    {
+      "id": "npm-ci",
+      "status": "pass",
+      "durationMs": 0,
+      "exitCode": 0,
+      "command": "npm ci",
+      "detail": "skipped (--no-install)",
+      "tail": ""
+    },
+    {
+      "id": "unpack-art",
+      "status": "pass",
+      "durationMs": 48,
+      "exitCode": 0,
+      "command": "/exec-daemon/node scripts/unpack-art.mjs",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "tsc",
+      "status": "pass",
+      "durationMs": 15646,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/typescript/bin/tsc -b",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "oxlint",
+      "status": "pass",
+      "durationMs": 698,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/oxlint/bin/oxlint",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "vitest",
+      "status": "pass",
+      "durationMs": 1073105,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vitest/vitest.mjs run --maxWorkers=2",
+      "detail": "3159 passed, 0 failed, 9 skipped (499 files)",
+      "tail": ""
+    },
+    {
+      "id": "vite-build",
+      "status": "pass",
+      "durationMs": 5317,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vite/bin/vite.js build",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "soak",
+      "status": "pass",
+      "durationMs": 40663,
+      "exitCode": 0,
+      "command": "/exec-daemon/node scripts/soak-150.mjs --days 30",
+      "detail": "30 days, end cash $4,627,724, stuck 0, recoveries 26",
+      "tail": ""
+    },
+    {
+      "id": "draw-budgets",
+      "status": "pass",
+      "durationMs": 809,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vitest/vitest.mjs run src/people/budget.test.ts src/render/people/crowd.test.ts src/render/hallFigures.test.ts src/perf/lodTune.test.ts src/perf/overlay.test.ts src/perf/rendererStats.test.ts",
+      "detail": "26 passed, 0 failed, 0 skipped (6 files)",
+      "tail": ""
+    },
+    {
+      "id": "playtest-bots",
+      "status": "pass",
+      "durationMs": 17741,
+      "exitCode": 0,
+      "command": "npm run playtest:bots -- --quick",
+      "detail": "1 passed, 0 failed, 0 skipped (1 files)",
+      "tail": ""
+    }
+  ]
+}
