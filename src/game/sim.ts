@@ -9361,6 +9361,26 @@ export class Game {
     return book
   }
 
+  /** A walker who has left the desk or the bag drop has handed the bag over. */
+  private noteWalkerBagDrop(g: HallGuest) {
+    if (g.job !== 'depart' || g.bagsDropped || !g.hasChecked || g.bags === false) return
+    const stop = this.hallNav.nav?.stopOf(g.id)
+    if (!stop || stop === 'checkin' || stop === 'bagdrop') return
+    g.bagsDropped = true
+    g.bagDepositLeft = 0
+    g.hasChecked = false
+    const fl = this.flights.find((x) => x.id === g.flightId)
+    if (!fl || fl.cargo) return
+    this.noteBagDrop(fl, bagUnitsForTag(g.tag), g.id, g.tag)
+    const need = fl.bagUnits ?? 1
+    const early =
+      !fl.bagStage ||
+      fl.bagStage === 'idle' ||
+      fl.bagStage === 'pax_deposit' ||
+      fl.bagStage === 'hold_screen'
+    if ((fl.bagsDeposited ?? 0) >= need * 0.55 && early) fl.bagStage = 'hold_screen'
+  }
+
   private noteBagDrop(f: Flight, units: number, ownerId?: string, paxTag?: PaxTag) {
     const book = this.ensureBagBook(f)
     book.dropped += units
@@ -11013,6 +11033,7 @@ export class Game {
           g.node = node
         }
         if (this.hallNav.pastSecurity(g.id)) g.clearedSec = true
+        this.noteWalkerBagDrop(g)
         continue
       }
       const open = this.openForGuest(g)
@@ -18355,6 +18376,11 @@ export class Game {
     return { from, to }
   }
 
+  /** A slot that already has an aircraft must not go back to "delayed" and spawn a twin. */
+  private slotHasAircraft(slot: ScheduleSlot): boolean {
+    return this.flights.some((f) => f.scheduleId === slot.id && f.phase !== 'gone')
+  }
+
   /**
    * Push one slot later without moving the flights behind it.
    * Used when this metal cannot use the stands that are free — those flights should still launch.
@@ -18364,7 +18390,7 @@ export class Game {
     slot.eta += add
     const before = slot.delaySec
     slot.delaySec = Math.min(120, slot.delaySec + add)
-    slot.status = 'delayed'
+    if (slot.status !== 'inbound' && !this.slotHasAircraft(slot)) slot.status = 'delayed'
     slot.delayReason = reason
     const share = Math.min(1, Math.max(0, slot.delaySec - before) / DELAY_HEAT_REF_SEC)
     this.adjustHeat(slot.airline, -0.45 * share)
@@ -18387,7 +18413,9 @@ export class Game {
     slot.delaySec = Math.min(120, slot.delaySec + add)
     // Standing follows the delay actually booked, not how often a held slot is retried.
     const share = (added: number) => Math.min(1, Math.max(0, added) / DELAY_HEAT_REF_SEC)
-    slot.status = 'delayed'
+    // Go-arounds and queue slips used to mark an inbound slot delayed, and the
+    // tower then spawned another aircraft for the same flight onto a full apron.
+    if (slot.status !== 'inbound' && !this.slotHasAircraft(slot)) slot.status = 'delayed'
     slot.delayReason = reason
     // Ripple later slots that would collide — capped so the bank doesn't explode.
     const later = this.schedule
@@ -18408,7 +18436,7 @@ export class Game {
         x.eta += push
         const xBefore = x.delaySec
         x.delaySec = Math.min(120, x.delaySec + push)
-        x.status = 'delayed'
+        if (x.status !== 'inbound' && !this.slotHasAircraft(x)) x.status = 'delayed'
         x.delayReason = 'Cascade from earlier delay'
         // Player rearrange hurts relations more than weather acts of god.
         this.adjustHeat(x.airline, (playerRearrange ? -1.1 : -0.35) * share(x.delaySec - xBefore))
@@ -18448,7 +18476,7 @@ export class Game {
     if (!(add > 0)) return
     slot.eta += add
     slot.delaySec = Math.min(120, slot.delaySec + add)
-    slot.status = 'delayed'
+    if (slot.status !== 'inbound' && !this.slotHasAircraft(slot)) slot.status = 'delayed'
     slot.delayReason = reason
     this.invalidateRunwayLoad()
   }
@@ -18590,7 +18618,8 @@ export class Game {
       (s) =>
         (s.status === 'scheduled' || s.status === 'delayed') &&
         s.eta <= this.clock + 1.5 &&
-        !this.slotUsesPad(s),
+        !this.slotUsesPad(s) &&
+        !this.slotHasAircraft(s),
     )
     return due[0] ?? null
   }
