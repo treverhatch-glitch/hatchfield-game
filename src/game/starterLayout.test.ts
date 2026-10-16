@@ -3,7 +3,7 @@ import { deliveryPath } from '../fuel/path.ts'
 import { buildNetwork } from '../landside/network.ts'
 import { starterField } from '../landside/fixtures.test-util.ts'
 import { bagSortYaw } from '../render/world/bagFacing.ts'
-import { bowserPath, nearestPath, retireApronBelts, runwayStrips, standBeltLinked, standBeltViaSort, tilesOf } from './path'
+import { bowserPath, nearestPath, retireApronBelts, runwayStrips, standBeltLinked, standBeltViaSort, tilesOf, walkableFor } from './path'
 import { clearanceIntrusions, runwayBoxes } from './runwayClearance'
 import { Game } from './sim'
 import { STARTER_KITS, stampStarterKit } from './starterLayout'
@@ -74,7 +74,16 @@ describe('starter kits', () => {
     expect(halls).toHaveLength(8)
     expect(first.fits).toHaveLength(1)
     expect(stands).toHaveLength(2)
-    expect(tilesOf(first.tiles, 'belt')).toEqual([])
+    expect(tilesOf(first.tiles, 'belt')).toEqual([
+      { c: 11, r: 7 },
+      { c: 11, r: 8 },
+      { c: 12, r: 8 },
+      { c: 12, r: 9 },
+      { c: 13, r: 9 },
+      { c: 12, r: 10 },
+      { c: 12, r: 11 },
+      { c: 12, r: 12 },
+    ])
     expect(standBeltLinked(first.tiles, stands[0])).toBe(true)
     expect(standBeltLinked(first.tiles, stands[1])).toBe(true)
     expect(standBeltViaSort(first.tiles, stands[0])).toBe(true)
@@ -156,12 +165,15 @@ describe('starter kits', () => {
     expect(standBeltViaSort(game.tiles, stand)).toBe(false)
   })
 
-  it('turns saved apron belts into taxi', () => {
+  it('keeps tug pavement off the jet taxiway', () => {
     const game = field('pax')
     game.tiles[8][12] = 'belt'
-    expect(retireApronBelts(game.tiles)).toBe(1)
-    expect(game.tiles[8][12]).toBe('taxi')
-    expect(tilesOf(game.tiles, 'belt')).toEqual([])
+    expect(retireApronBelts(game.tiles)).toBe(0)
+    expect(game.tiles[8][12]).toBe('belt')
+    expect(walkableFor('truck', 'belt')).toBe(true)
+    expect(walkableFor('jet', 'belt')).toBe(false)
+    const south = nearestPath(game.tiles, { c: 11, r: 6 }, [{ c: 11, r: 12 }], 'jet')
+    expect(south?.some((cell) => game.tiles[cell.r][cell.c] === 'belt')).toBe(false)
   })
 
   it('does not make the three kits the same stamp', () => {

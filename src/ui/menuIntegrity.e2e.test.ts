@@ -80,7 +80,9 @@ describe('every menu opens, has content, and closes', () => {
           }
           if (menu.id === 'terminal') {
             await page.getByTestId('build-group-processing').click()
-            expect(await page.getByTestId('tray-belt').count()).toBe(1)
+            expect(await page.getByTestId('tray-belt').count()).toBe(0)
+            await page.getByTestId('tray-checkin_hall').waitFor({ state: 'visible' })
+            await page.getByTestId('build-group-halls').click()
           }
           await page.getByTestId('build-subtabs').waitFor({ state: 'visible' })
           await page.screenshot({ path: `${shots}/build-${menu.id}.png` })
