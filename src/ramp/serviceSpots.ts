@@ -10,7 +10,7 @@
  */
 import { AIRCRAFT_VISUAL_SCALE, METERS_PER_CELL, getAircraftSpec, type ModelSpec } from '../render/aircraft/specs.ts'
 import { aircraftSocketTable, vehicleSocket } from '../render/socketLayout.ts'
-import { HOSE_M, MODEL_SIZE, type VehicleModel } from '../render/vehicleModels.ts'
+import { beltGeom, HOSE_M, MODEL_SIZE, type VehicleModel } from '../render/vehicleModels.ts'
 import { SERVICE_SPOT } from './serviceSpotData.ts'
 
 export type SpotSize = 'small' | 'large'
@@ -36,6 +36,10 @@ export interface ServiceSpot {
   /** Truck heading relative to the aircraft. */
   rel: number
   yaw: number
+  /** Extra belt pitch at full deploy, radians. Zero on trucks that do not rise. */
+  deck: number
+  /** Metres the belt slides forward at full deploy so the tip stays on the door. */
+  slide: number
 }
 
 interface LocalPose {
@@ -319,23 +323,6 @@ function bagPose(door: { x: number; z: number }, truck: TruckBox, yaw: number, n
   return poseFromAim(at, 0, truck.width / 2, thetaForRight(dir), yaw)
 }
 
-function solveBag(
-  spec: ModelSpec,
-  door: { x: number; z: number },
-  truck: TruckBox,
-  size: SpotSize,
-  nose: boolean,
-  yawMin: number,
-): LocalPose {
-  const max = size === 'small' ? 1.2 : 0.9
-  let last = bagPose(door, truck, yawMin, nose)
-  for (let yaw = yawMin; yaw <= max + 1e-6; yaw += 0.04) {
-    last = bagPose(door, truck, yaw, nose)
-    if (!bodyHits(last, spec, truck)) return last
-  }
-  return last
-}
-
 function tooClose(a: LocalPose, aBox: TruckBox, b: LocalPose, bBox: TruckBox): boolean {
   const dist = Math.hypot(a.cx - b.cx, a.cz - b.cz)
   return dist < SERVICE_SPOT.minSeparationM || rectOverlap(a, aBox, b, bBox.length, bBox.width, SERVICE_SPOT.skinGapM)
@@ -357,7 +344,7 @@ function shoveClear(mover: LocalPose, moverBox: TruckBox, spec: ModelSpec, block
   }
 }
 
-function publish(pose: LocalPose, origin: SpotOrigin, socket: SpotSocket, size: SpotSize): ServiceSpot {
+function publish(pose: LocalPose, origin: SpotOrigin, socket: SpotSocket, size: SpotSize, deck = 0, slide = 0): ServiceSpot {
   const h = origin.heading
   const fx = Math.cos(h)
   const fy = Math.sin(h)
@@ -373,7 +360,131 @@ function publish(pose: LocalPose, origin: SpotOrigin, socket: SpotSocket, size: 
     localZ: pose.cz,
     rel: pose.theta,
     yaw: pose.yaw,
+    deck,
+    slide,
   }
+}
+
+/** Belt tip after the deploy rotation, model metres. The built belt already sits at `beltGeom.pitch`. */
+function beltTipLocal(rz: number): { x: number; y: number; z: number } {
+  const [L, , W] = MODEL_SIZE.belt_loader
+  const g = beltGeom(L, MODEL_SIZE.belt_loader[1])
+  const run = L * 0.9
+  const dx = Math.cos(g.pitch) * run
+  const dy = Math.sin(g.pitch) * run
+  const c = Math.cos(rz)
+  const s = Math.sin(rz)
+  return { x: g.lowX + dx * c - dy * s, y: g.lowY + dx * s + dy * c, z: W * 0.15 }
+}
+
+/** Extra pitch that lifts the belt tip to `height` metres in the drawn frame. */
+function deckForHeight(height: number): number {
+  const [L, H] = MODEL_SIZE.belt_loader
+  const g = beltGeom(L, H)
+  const run = L * 0.9
+  const rise = Math.min(run * 0.9, Math.max(0.35, height - g.lowY))
+  return Math.asin(rise / run) - g.pitch
+}
+
+function wingBandAt(spec: ModelSpec, zDrawn: number): { low: number; high: number } {
+  const z = Math.abs(zDrawn) / SCALE
+  const centerY = spec.gear + spec.ry
+  const wingY = spec.wingHigh ? centerY + spec.ry * 0.7 : centerY - spec.ry * 0.28
+  const under = wingY + Math.tan((spec.dihedral * Math.PI) / 180) * z - spec.thickness * 0.5
+  const over = under + spec.thickness
+  return { low: under * SCALE, high: over * SCALE }
+}
+
+/** Nacelle keep-out in drawn metres. The boom has to miss the pod, not only the wing sheet. */
+function nacelleHit(spec: ModelSpec, x: number, y: number, z: number): boolean {
+  const eng = spec.engines
+  if (eng.mount !== 'wing') return false
+  const rx = x / SCALE
+  const ry = y / SCALE
+  const rz = z / SCALE
+  const semi = spec.spanM / 2
+  const fracs = eng.count >= 4 ? [0.25, 0.52] : [spec.spanM >= 55 ? 0.34 : 0.3]
+  const wingX = spec.lengthM * (0.5 - spec.wingAt)
+  const centerY = spec.gear + spec.ry
+  const wingY = spec.wingHigh ? centerY + spec.ry * 0.7 : centerY - spec.ry * 0.28
+  const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
+  const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
+  for (const frac of fracs) {
+    const ez = semi * frac
+    const le = wingX + spec.rootChord / 2 - tanSweep * ez
+    const cy = wingY + tanDih * ez - eng.radius * 1.3 - spec.thickness * 0.2
+    const cx = le + eng.length * 0.12
+    const x0 = cx - eng.length * 0.2
+    const x1 = cx + eng.length * 0.75
+    for (const sign of [1, -1]) {
+      const clamped = Math.min(x1, Math.max(x0, rx))
+      const horiz = Math.hypot(rx - clamped, rz - sign * ez)
+      if (horiz < eng.radius + 0.7 && Math.abs(ry - cy) < eng.radius + 0.55) return true
+    }
+  }
+  return false
+}
+
+/** Raised belt boom against the fuselage and the wing. The tip may meet the door. */
+function boomHits(pose: LocalPose, spec: ModelSpec, tip: { x: number; y: number; z: number }, door: { x: number; z: number }): boolean {
+  const [L, H] = MODEL_SIZE.belt_loader
+  const g = beltGeom(L, H)
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16
+    const lx = g.lowX + (tip.x - g.lowX) * t
+    const ly = g.lowY + (tip.y - g.lowY) * t
+    for (const zOff of [-0.48, 0, 0.48]) {
+      const p = toCraft(pose, lx, tip.z + zOff)
+      const along = Math.hypot(p.x - door.x, p.z - door.z)
+      if (along > 0.9 && inFuselage(p.x, p.z, spec, 0.2)) return true
+      if (nacelleHit(spec, p.x, ly, p.z)) return true
+      if (along > 1.15 && inWing(p.x, p.z, spec, 0.15)) {
+        const band = wingBandAt(spec, p.z)
+        if (ly > band.low - 0.15 && ly < band.high + 0.2) return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Park the bumper just outside the skin. The belt then slides forward as it
+ * rises so the tip meets the door without the chassis following it in.
+ * Orbit until the chassis and the raised boom are clear of the wing, the
+ * fuselage, and the bowser. Rectangle clearance, not a centre gap: on a
+ * regional the fuel port and the cargo door are closer than 8 m.
+ */
+function solveBelt(
+  spec: ModelSpec,
+  door: { x: number; y: number; z: number },
+  truck: TruckBox,
+  blocks: { pose: LocalPose; box: TruckBox }[],
+): { pose: LocalPose; deck: number; slide: number } {
+  const deck = deckForHeight(door.y)
+  const tip = beltTipLocal(deck)
+  const reach = SERVICE_SPOT.skinGapM + 1.7
+  const slide = truck.length / 2 + reach - tip.x
+  const raised = { x: tip.x + slide, y: tip.y, z: tip.z }
+  const side = sideOf(door.z)
+  let fallback: { pose: LocalPose; deck: number; slide: number } | null = null
+  for (let yaw = -1.2; yaw <= 2.4; yaw += 0.05) {
+    const dir = inwardDir(side, yaw)
+    const theta = thetaForNose(dir)
+    // Raised tip meets the door. The chassis bumper stays `reach` metres outside.
+    const pose = poseFromAim(door, truck.length / 2 + reach, tip.z, theta, yaw)
+    const blocked = blocks.some((b) => rectOverlap(pose, truck, b.pose, b.box.length, b.box.width, SERVICE_SPOT.skinGapM))
+    const body = bodyHits(pose, spec, truck)
+    const boom = boomHits(pose, spec, raised, door)
+    if (!body && !boom && !fallback) fallback = { pose, deck, slide }
+    if (!body && !boom && !blocked) return { pose, deck, slide }
+  }
+  return fallback ?? { pose: bagPose(door, truck, SERVICE_SPOT.belt.smallYaw, true), deck, slide }
+}
+
+function beltFoot(pose: LocalPose): { x: number; z: number } {
+  const [L, H, W] = MODEL_SIZE.belt_loader
+  const g = beltGeom(L, H)
+  return toCraft(pose, g.lowX, W * 0.15)
 }
 
 /** Fuel bowser, bag train, and belt loader. Each socket is its own stop. */
@@ -386,18 +497,38 @@ export function reservedSpots(airframeId: string, origin: SpotOrigin): { fuel: S
   const bagTruck = boxOf('baggage_train')
   const beltTruck = boxOf('belt_loader')
   const fuel = solveFuel(spec, port, fuelTruck, size)
-  const bags = solveBag(spec, door, bagTruck, size, false, size === 'small' ? SERVICE_SPOT.bags.smallYaw : SERVICE_SPOT.bags.largeYaw)
-  const belt = solveBag(spec, door, beltTruck, size, true, size === 'small' ? SERVICE_SPOT.belt.smallYaw : SERVICE_SPOT.belt.largeYaw)
-  shoveClear(bags, bagTruck, spec, [{ pose: fuel, box: fuelTruck }])
-  shoveClear(belt, beltTruck, spec, [
-    { pose: fuel, box: fuelTruck },
-    { pose: bags, box: bagTruck },
-  ])
+  const raised = solveBelt(spec, door, beltTruck, [{ pose: fuel, box: fuelTruck }])
+  const bags = solveBagsAtFoot(spec, beltFoot(raised.pose), bagTruck, raised.pose, beltTruck, fuel, fuelTruck)
   return {
     fuel: publish(fuel, origin, 'plane_fuel_port', size),
     bags: publish(bags, origin, 'plane_cargo_door_fwd', size),
-    belt: publish(belt, origin, 'plane_cargo_door_fwd', size),
+    belt: publish(raised.pose, origin, 'plane_cargo_door_fwd', size, raised.deck, raised.slide),
   }
+}
+
+/** Bag train beside the belt foot. It stays off the fuel bowser and off the loader. */
+function solveBagsAtFoot(
+  spec: ModelSpec,
+  foot: { x: number; z: number },
+  truck: TruckBox,
+  belt: LocalPose,
+  beltBox: TruckBox,
+  fuel: LocalPose,
+  fuelBox: TruckBox,
+): LocalPose {
+  let best = bagPose(foot, truck, SERVICE_SPOT.bags.largeYaw, false)
+  for (let yaw = 0.05; yaw <= 1.25; yaw += 0.05) {
+    const pose = bagPose(foot, truck, yaw, false)
+    if (bodyHits(pose, spec, truck)) continue
+    if (rectOverlap(pose, truck, belt, beltBox.length, beltBox.width, SERVICE_SPOT.skinGapM)) continue
+    if (tooClose(pose, truck, fuel, fuelBox)) continue
+    return pose
+  }
+  shoveClear(best, truck, spec, [
+    { pose: belt, box: beltBox },
+    { pose: fuel, box: fuelBox },
+  ])
+  return best
 }
 
 export interface SpotAudit {
@@ -412,6 +543,9 @@ export interface SpotAudit {
   socketDist: number
   /** Metres from this truck origin to the other two. */
   gaps: number[]
+  /** Metres from the raised belt tip to the cargo door. 0 for other trucks. */
+  tipApart: number
+  deck: number
 }
 
 function auditOne(
@@ -425,11 +559,15 @@ function auditOne(
   const pose: LocalPose = { cx: spot.localX, cz: spot.localZ, theta: spot.rel, yaw: spot.yaw }
   const truck = boxOf(model)
   const socket = drawnSocket(spec, socketName) ?? { x: 0, y: 0, z: 0 }
+  const tip = beltTipLocal(spot.deck)
+  const raised = toCraft(pose, tip.x + spot.slide, tip.z)
   const body = bodyHits(pose, spec, truck)
+  const boom = model === 'belt_loader' ? boomHits(pose, spec, { x: tip.x + spot.slide, y: tip.y, z: tip.z }, socket) : false
   const hoseHit = hose ? hoseHits(pose, spec, truck, socket) : false
+  const tipApart = model === 'belt_loader' ? Math.hypot(raised.x - socket.x, raised.z - socket.z, tip.y - socket.y) : 0
   return {
     size: spot.size,
-    clear: !body && !hoseHit,
+    clear: !body && !hoseHit && !boom,
     body: !body,
     hose: !hoseHit,
     yaw: spot.yaw,
@@ -437,11 +575,22 @@ function auditOne(
     localZ: spot.localZ,
     socketDist: Math.hypot(spot.localX - socket.x, spot.localZ - socket.z),
     gaps: others.map((o) => Math.hypot(spot.localX - o.localX, spot.localZ - o.localZ)),
+    tipApart,
+    deck: spot.deck,
   }
 }
 
+function spotPose(spot: ServiceSpot): LocalPose {
+  return { cx: spot.localX, cz: spot.localZ, theta: spot.rel, yaw: spot.yaw }
+}
+
+function trucksOverlap(a: ServiceSpot, aModel: VehicleModel, b: ServiceSpot, bModel: VehicleModel): boolean {
+  const box = boxOf(bModel)
+  return rectOverlap(spotPose(a), boxOf(aModel), spotPose(b), box.length, box.width, 0.05)
+}
+
 /** Clearance of the three reserved stops for one airframe. Tests and the proof log read this. */
-export function auditSpots(airframeId: string): { fuel: SpotAudit; bags: SpotAudit; belt: SpotAudit; portX: number; leadingX: number } {
+export function auditSpots(airframeId: string): { fuel: SpotAudit; bags: SpotAudit; belt: SpotAudit; portX: number; leadingX: number; vehiclesClear: boolean } {
   const spec = getAircraftSpec(airframeId || 'b738')
   const spots = reservedSpots(airframeId, { x: 0, y: 0, heading: 0 })
   const port = drawnSocket(spec, 'plane_fuel_port') ?? { x: 0, y: 0, z: 0 }
@@ -453,6 +602,10 @@ export function auditSpots(airframeId: string): { fuel: SpotAudit; bags: SpotAud
     belt: auditOne(spec, spots.belt, 'belt_loader', 'plane_cargo_door_fwd', [spots.fuel, spots.bags], false),
     portX: port.x,
     leadingX,
+    vehiclesClear:
+      !trucksOverlap(spots.fuel, 'fuel_tanker', spots.bags, 'baggage_train') &&
+      !trucksOverlap(spots.fuel, 'fuel_tanker', spots.belt, 'belt_loader') &&
+      !trucksOverlap(spots.bags, 'baggage_train', spots.belt, 'belt_loader'),
   }
 }
 

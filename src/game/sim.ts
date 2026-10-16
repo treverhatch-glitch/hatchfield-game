@@ -180,7 +180,7 @@ import {
 import { hangarFootprintCells } from './buildingFootprint'
 import { footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
-import { getAircraftSpec } from '../render/aircraft/specs'
+import { AIRCRAFT_VISUAL_SCALE, getAircraftSpec } from '../render/aircraft/specs'
 import { bridgeMirror, envelopeLetter, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
@@ -12292,7 +12292,7 @@ export class Game {
    */
   private placeServicePose<T extends { x: number; y: number; heading: number; phase: string; u: number; type?: string; dock?: { phase: 'idle' | 'route' | 'approach' | 'align' | 'service' | 'depart'; u: number; localX: number; localY: number; heading: number; owner: 'stand' | 'building'; standId: string | null } }>(
     pose: T,
-  ): T & { drawX?: number; drawY?: number; drawHeading?: number; pinned?: boolean } {
+  ): T & { drawX?: number; drawY?: number; drawHeading?: number; pinned?: boolean; drawDeck?: number; drawSlide?: number } {
     const dock = pose.dock
     if (!dock) return pose
     const h = dock.owner === 'stand' ? this.headingForStand(dock.standId) : 0
@@ -12319,6 +12319,7 @@ export class Game {
         drawX: pose.x + (spot.x - pose.x) * w,
         drawY: pose.y + (spot.y - pose.y) * w,
         drawHeading: lerpAngle(pose.heading, spot.heading, w),
+        ...(role === 'belt' ? { drawDeck: spot.deck, drawSlide: spot.slide } : {}),
       }
     }
     // x/y stay on the service road. drawX/drawY are the bay the mesh and the camera use.
@@ -12374,6 +12375,43 @@ export class Game {
       x: t.x + (spot.x - t.x) * w,
       y: t.y + (spot.y - t.y) * w,
       heading: lerpAngle(along, spot.heading, w),
+    }
+  }
+
+  /**
+   * Belt loader that rides with a legacy bag truck. The starter turnaround
+   * draws a bag train; this is the loader whose deck rises to the cargo door.
+   * Same blend as the bag truck, so it does not pop onto the stand.
+   */
+  beltApronDraw(t: Truck): { x: number; y: number; heading: number; deck: number; slide: number } | null {
+    if (t.kind !== 'bags' || (t.mission !== 'load' && t.mission !== 'unload')) return null
+    const flight = t.flightId ? this.flights.find((f) => f.id === t.flightId) : undefined
+    if (!flight?.stand || flight.phase === 'gone') return null
+    if (Math.hypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
+    const stand = flight.stand
+    const onStand = (v: { c: number; r: number } | undefined) => !!v && v.c === stand.c && v.r === stand.r
+    let w = 0
+    if (!t.returning && t.seg >= t.path.length - 1 && onStand(t.path[t.path.length - 1])) w = 1
+    else if (!t.returning && t.path.length >= 2 && t.seg === t.path.length - 2 && onStand(t.path[t.path.length - 1])) w = Math.min(1, Math.max(0, t.t))
+    else if (t.returning && t.seg === 0 && onStand(t.path[0])) w = 1 - Math.min(1, Math.max(0, t.t))
+    if (!(w > 0)) return null
+    const spots = reservedSpots(flight.airframeId || 'b738', {
+      x: flight.x,
+      y: flight.y,
+      heading: flight.heading || 0,
+    })
+    const spot = spots.belt
+    const a = t.path[Math.min(t.seg, Math.max(0, t.path.length - 1))]
+    const b = t.path[Math.min(t.seg + 1, Math.max(0, t.path.length - 1))]
+    const dx = (b?.c ?? t.x) - (a?.c ?? t.x)
+    const dy = (b?.r ?? t.y) - (a?.r ?? t.y)
+    const along = Math.hypot(dx, dy) > 0.02 ? Math.atan2(dy, dx) : pathHeading(t.path)
+    return {
+      x: t.x + (spot.x - t.x) * w,
+      y: t.y + (spot.y - t.y) * w,
+      heading: lerpAngle(along, spot.heading, w),
+      deck: spot.deck,
+      slide: spot.slide,
     }
   }
 
@@ -12450,7 +12488,17 @@ export class Game {
       else if (f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') t = STAND_TIMELINE.settled
       else continue
       const spec = getAircraftSpec(f.airframeId || 'b738')
-      out.push({ id: f.id, x: f.x, y: f.y, heading: f.heading, lengthM: spec.lengthM, spanM: spec.spanM, t })
+      const visual = AIRCRAFT_VISUAL_SCALE
+      out.push({
+        id: f.id,
+        x: f.x,
+        y: f.y,
+        heading: f.heading,
+        lengthM: spec.lengthM * visual,
+        spanM: spec.spanM * visual,
+        skinM: spec.rx * visual,
+        t,
+      })
     }
     return out
   }

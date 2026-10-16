@@ -17,6 +17,7 @@ function stand(over: Partial<TurnaroundStand> = {}): TurnaroundStand {
     noseGear: 14,
     semiSpan: 18,
     tail: -19,
+    skin: 0,
     ...over,
   }
 }

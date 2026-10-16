@@ -12,6 +12,7 @@
 import { crewLook } from '../people/variants.ts'
 import type { PeopleAgent } from '../people/renderer.ts'
 import type { CrewKind, PersonLook, PersonPose } from '../people/types.ts'
+import { walkOutside, type CrewFootprint } from '../ramp/crewPath.ts'
 import { newPartPose, partPose, poseInput } from './vehicleAnim'
 import { beltGeom, cateringHinge, HOSE_M, lineAnchor, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
 import { vehicleSocket } from './socketLayout'
@@ -112,15 +113,10 @@ export function vehicleCrew(v: CrewVehicle, clock: number, out: PeopleAgent[], u
   switch (model) {
     case 'belt_loader': {
       const g = beltGeom(L, H)
-      // one at the foot feeding bags, one up in the hold door stacking them
+      // Both stay on the apron at the belt foot. The hold worker used to stand
+      // on the raised boom, which put them inside the wing.
       place(out, `${v.id}:belt`, 'ground', 'reach', v, g.lowX - 0.7, 0, W * 0.15 + 0.15, 0, upm)
-      _pi.ext = e
-      partPose(model, 'belt', _pi, _pp)
-      // Hold loader stands on the top of the belt, just short of the door sill, outside the fuselage,
-      // facing the hold and passing bags in.
-      const hx = L / 2 - 1.1
-      const top = g.lowY + Math.tan(g.pitch + _pp.rz) * (hx - g.lowX)
-      place(out, `${v.id}:hold`, 'ground', (Math.floor(clock / 1.6) % 2 ? 'reach' : 'push'), v, hx, Math.max(0, top + 0.12), -W * 0.12, 0, upm)
+      place(out, `${v.id}:hold`, 'ground', (Math.floor(clock / 1.6) % 2 ? 'reach' : 'push'), v, g.lowX + 0.35, 0, -(W * 0.55), Math.PI, upm)
       break
     }
     case 'k_loader':
@@ -155,7 +151,7 @@ export function vehicleCrew(v: CrewVehicle, clock: number, out: PeopleAgent[], u
 }
 
 /** Arrival timeline in seconds since the aircraft started its final taxi onto the stand. */
-export const STAND_T = { taxi: 6, chocksWalk: 6.6, chocksOn: 9, conesStart: 7.5, conePer: 2.2, marshalOff: 8 } as const
+export const STAND_T = { taxi: 6, chocksWalk: 6.6, chocksOn: 9, conesStart: 7.5, conePer: 4.8, marshalOff: 8 } as const
 
 export interface StandState {
   /** 0..1 progress of the taxi-in (eased); 1 = on the stop line. */
@@ -185,6 +181,8 @@ export interface StandFrame {
   noseGear: number
   semiSpan: number
   tail: number
+  /** Drawn fuselage radius. 0 keeps the straight walks. */
+  skin?: number
 }
 
 /** Cone spots in aircraft-local metres, in placing order. */
@@ -204,31 +202,33 @@ export function standCrew(f: StandFrame, t: number, out: PeopleAgent[], upm = 1)
     // Faces the aircraft (-X) from ahead of the stop line, wands waving until it stops.
     place(out, 'stand:marshal', 'marshaller', st.marshal === 'guide' ? 'wave' : 'idle', f, f.nose + 9, 0, 0, Math.PI, upm)
   }
-  // Chocks pair: wait at the stand edge, walk in once the aircraft stops, kneel at the nose gear.
+  // Chocks pair: wait at the stand edge, walk in once the aircraft stops, kneel beside the nose gear.
+  const foot: CrewFootprint = { nose: f.nose, tail: f.tail, skin: f.skin ?? 0 }
   for (const side of [-1, 1]) {
     const id = `stand:chock${side}`
     const sx = f.nose + 6
     const sz = side * 7
     const gx = f.noseGear
-    const gz = side * 0.9
+    const gz = f.skin && f.skin > 0 ? side * (f.skin + 0.85) : side * 0.9
+    const placedZ = f.skin && f.skin > 0 ? gz : gz + side * 0.5
     if (t < STAND_T.chocksWalk) place(out, id, 'ground', 'idle', f, sx, 0, sz, Math.PI, upm)
     else if (t < STAND_T.chocksOn) {
       const k = (t - STAND_T.chocksWalk) / (STAND_T.chocksOn - STAND_T.chocksWalk)
-      place(out, id, 'ground', 'walk', f, sx + (gx - sx) * k, 0, sz + (gz - sz) * k, Math.atan2(gz - sz, gx - sx), upm, 1.4)
-    } else place(out, id, 'ground', t < STAND_T.chocksOn + 2 ? 'reach' : 'idle', f, gx, 0, gz + side * 0.5, -side * Math.PI / 2, upm)
+      const at = walkOutside([sx, sz], [gx, placedZ], k, foot)
+      place(out, id, 'ground', 'walk', f, at[0], 0, at[1], Math.atan2(placedZ - sz, gx - sx), upm, 1.4)
+    } else place(out, id, 'ground', t < STAND_T.chocksOn + 2 ? 'reach' : 'idle', f, gx, 0, placedZ, -side * Math.PI / 2, upm)
   }
-  // Cone walker: goes spot to spot, bending to place each.
+  // Cone walker: spot to spot, around the fuselage rather than through it.
   if (t >= STAND_T.conesStart - 1) {
     const pts = conePoints(f)
     const k = Math.max(0, (t - STAND_T.conesStart) / STAND_T.conePer)
     const i = Math.min(3, Math.floor(k))
     const a = i === 0 ? ([f.nose + 6, 7] as [number, number]) : pts[i - 1]
     const b = pts[i]
-    const w = Math.min(1, (k - i) / 0.75)
+    const w = Math.min(1, (k - i) / 0.95)
     const walking = k < 4 && w < 1
-    const px = a[0] + (b[0] - a[0]) * w
-    const pz = a[1] + (b[1] - a[1]) * w
-    place(out, 'stand:cones', 'ground', walking ? 'walk' : 'reach', f, px, 0, pz + 0.6, walking ? Math.atan2(b[1] - a[1], b[0] - a[0]) : -Math.PI / 2, upm, walking ? 1.6 : 0)
+    const at = walkOutside(a, b, w, foot)
+    place(out, 'stand:cones', 'ground', walking ? 'walk' : 'reach', f, at[0], 0, at[1] + 0.6, walking ? Math.atan2(b[1] - a[1], b[0] - a[0]) : -Math.PI / 2, upm, walking ? 1.6 : 0)
   }
   return out
 }

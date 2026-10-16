@@ -113,6 +113,12 @@ describe('legacy service spots', () => {
       expect(Math.hypot(fuelDraw!.x - stand.c, fuelDraw!.y - stand.r)).toBeGreaterThan(0.15)
       const apart = Math.hypot(fuelDraw!.x - bagDraw!.x, fuelDraw!.y - bagDraw!.y) * METERS_PER_CELL
       expect(apart).toBeGreaterThanOrEqual(SERVICE_SPOT.minSeparationM - 0.05)
+      const belt = game.beltApronDraw(bags)
+      expect(belt, airframeId).not.toBeNull()
+      expect(belt!.x).toBeCloseTo(spots.belt.x, 4)
+      expect(belt!.y).toBeCloseTo(spots.belt.y, 4)
+      expect(belt!.deck).toBeGreaterThan(0.05)
+      expect(belt!.slide).toBeGreaterThan(0)
       game.trucks.length = 0
       game.flights.length = 0
     }

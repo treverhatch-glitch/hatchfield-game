@@ -256,6 +256,10 @@ export interface VehicleInstance {
   steer?: number
   /** Headlight beams on (night / dusk, moving). */
   beams?: boolean
+  /** Extra belt pitch at full deploy, radians. */
+  deck?: number
+  /** Metres the belt slides toward the cargo door at full deploy. */
+  slide?: number
 }
 
 export class VehicleFleet {
@@ -389,6 +393,8 @@ export class VehicleFleet {
       inp.reversing = item.reversing ?? false
       inp.steer = item.steer ?? 0
       inp.beams = item.beams ?? false
+      inp.deck = item.deck
+      inp.slide = item.slide
       if (model && part && partPose(model, part, inp, this.pose)) {
         this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
       }
