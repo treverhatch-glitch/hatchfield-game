@@ -190,7 +190,7 @@ export function addFuelFarm(g: THREE.Group) {
   const steel = plated('#8b949e', 'tank_steel', 0.4, 0.55)
   const dark = plated('#3a4048', 'tank_steel', 0.45, 0.5)
   const concrete = plated('#c9c6bf', 'apron_concrete', 0.82, 0.05)
-  const earth = plated('#5d7a3a', 'gravel_yard', 0.95, 0.02)
+  const earth = plated('#8fa17a', 'gravel_yard', 0.95, 0.02)
   const canopyMat = plated('#c5ccd3', 'hangar_cladding', 0.55, 0.35)
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
@@ -220,7 +220,7 @@ export function addFuelFarm(g: THREE.Group) {
     body.castShadow = true
     if (name) body.name = name
     const phi = Math.PI * 0.16
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 5, 0, Math.PI * 2, 0, phi), shell)
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 8, 0, Math.PI * 2, 0, phi), shell)
     dome.position.set(x, 0.3 + h - r * Math.cos(phi), z)
     dome.castShadow = true
     const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.12, 18), bandMat)
@@ -232,9 +232,20 @@ export function addFuelFarm(g: THREE.Group) {
     if (name) {
       for (let i = 0; i < 6; i++) {
         const a = 0.4 + i * 0.45
-        const step = based(0.32, 0.05, 0.2, dark, x + Math.cos(a) * (r + 0.12), 0.3 + (h / 6) * i, z + Math.sin(a) * (r + 0.12))
+        const px = x + Math.cos(a) * (r + 0.12)
+        const py = 0.3 + (h / 6) * i
+        const pz = z + Math.sin(a) * (r + 0.12)
+        const step = based(0.32, 0.05, 0.2, dark, px, py, pz)
         step.rotation.y = -a
         g.add(step)
+        if (i > 1) {
+          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.02, 4, 10, Math.PI), dark)
+          hoop.rotation.order = 'YXZ'
+          hoop.rotation.y = -a - Math.PI / 2
+          hoop.rotation.x = Math.PI / 2
+          hoop.position.set(px, py, pz)
+          g.add(hoop)
+        }
       }
     }
   }

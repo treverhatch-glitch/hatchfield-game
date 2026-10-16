@@ -160,7 +160,7 @@ describe('concept building massing', () => {
     expect(bayMat.transparent).toBe(true)
     expect((bayMat as THREE.MeshBasicMaterial).color?.getHexString?.()).not.toBe('d7a21a')
     expect(fuel.children.filter((c) => c.name === 'fuel-tank' || (c as THREE.Mesh).geometry?.type === 'CylinderGeometry').length).toBeGreaterThan(4)
-    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(4500)
+    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(7500)
     const fire = new THREE.Group()
     addFireStation(fire)
     expect(fire.getObjectByName('service-bay:1')).toBeTruthy()
