@@ -10941,11 +10941,20 @@ export class Game {
       const f = this.flights.find((x) => x.id === flightId)
       const slot = flightId.startsWith('slot:') ? flightId.slice(5) : null
       let std = f?.std ?? this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
+      // Landing, taxi-in, and the turn are still an open door. Pushback is not.
+      const openDoor =
+        f &&
+        (f.phase === 'landing' ||
+          f.phase === 'taxi_in' ||
+          f.phase === 'parked' ||
+          f.phase === 'servicing' ||
+          f.phase === 'deboard' ||
+          f.phase === 'board')
       if (
         std != null &&
-        std < this.clock &&
-        f &&
-        (f.phase === 'parked' || f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board')
+        std <= this.clock &&
+        openDoor &&
+        this.clock - std <= HALL_NAV_TUNING.lateDoorMaxClockSec
       ) {
         std = this.clock + HALL_NAV_TUNING.lateDoorLeadClockSec
       }

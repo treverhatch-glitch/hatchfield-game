@@ -22,11 +22,19 @@ export const HALL_NAV_TUNING = {
   /** Departure lead, clock seconds, for a walker with no flight yet (day-one walkers, unbound slots). */
   unknownLeadClockSec: 40,
   /**
-   * Clock seconds of walk time for someone the curb releases after STD while
-   * the aircraft is still on the stand. Zero lead fails the gate close on the
-   * first tick, which is a car delay, not a missed walk.
+   * Clock seconds of door time for someone the curb releases at or after STD
+   * while the aircraft has not pushed back. The gate close is 300 nav seconds,
+   * so zero lead fails on the first tick. Two clock seconds clears that close
+   * for a walk that is already at the kerb. A pushback gets no extra lead.
    */
   lateDoorLeadClockSec: 2,
+  /**
+   * How late, in clock seconds, the curb may be and still find that door open.
+   * Deboard and boarding on this clock sit inside forty-four seconds. A drop
+   * long after the aircraft has gone stays a missed flight, so abandoned walks
+   * do not reshuffle a seeded bank.
+   */
+  lateDoorMaxClockSec: 44,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
   /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */

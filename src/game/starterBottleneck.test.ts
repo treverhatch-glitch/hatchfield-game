@@ -71,6 +71,6 @@ describe('starter hall bottleneck', () => {
     })
     expect(found.hit).toBeNull()
     expect(found.signed).toEqual(['air_regional_1', 'zoomjet'])
-    expect(found.peak).toEqual({ day: 10, kind: 'checkin_desk', count: 0, waitSec: 357 })
+    expect(found.peak).toEqual({ day: 15, kind: 'checkin_desk', count: 0, waitSec: 335 })
   }, 180_000)
 })
