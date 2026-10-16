@@ -58,7 +58,10 @@ async function waitForServer() {
 
 async function boot(page: Page) {
   await page.goto(URL, { waitUntil: 'load' })
-  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('hatchfield-gfx', 'ultra')
+  })
   await page.reload({ waitUntil: 'load' })
   await page.getByTestId('sandbox-toggle').uncheck()
   await page.getByTestId('new-game').click()
@@ -444,6 +447,104 @@ async function recordChangingFlight(page: Page) {
   return last
 }
 
+async function canvasSpot(page: Page, x: number, y: number): Promise<{ x: number; y: number; hit: string }> {
+  return page.evaluate(({ x, y }) => {
+    const shifts = [
+      [0, 0],
+      [0, -36],
+      [28, 0],
+      [-28, 0],
+      [0, 32],
+      [48, -24],
+      [-48, 20],
+    ]
+    for (const shift of shifts) {
+      const el = document.elementFromPoint(x + shift[0], y + shift[1])
+      if (el && el.tagName === 'CANVAS') return { x: x + shift[0], y: y + shift[1], hit: 'canvas' }
+    }
+    const el = document.elementFromPoint(x, y)
+    return { x, y, hit: el ? `${el.tagName}.${String(el.className)}` : 'none' }
+  }, { x, y })
+}
+
+async function readClick(page: Page) {
+  return page.evaluate(() => {
+    const g = (window as unknown as { __hatch: { selectedFacility: string | null; selectedGuest: string | null } }).__hatch
+    const panel = document.querySelector('[data-testid="building-panel"]')
+    const guest = document.querySelector('[data-testid="guest-card"]')
+    return {
+      selectedFacility: g.selectedFacility,
+      selectedGuest: g.selectedGuest,
+      title: panel?.querySelector('.building-panel-head, header')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      note: document.querySelector('[data-testid="building-note"]')?.textContent?.trim() ?? '',
+      queue: document.querySelector('[data-testid="building-figure-queue"]')?.textContent?.trim() ?? '',
+      bays: document.querySelector('[data-testid="building-figure-bays"]')?.textContent?.trim() ?? '',
+      empty: document.querySelector('.left-dock-note')?.textContent?.trim() ?? '',
+      guest: Boolean(guest),
+      panel: Boolean(panel),
+    }
+  })
+}
+
+/** Aim the hall camera at a service point or a placed fitting and return its screen point. */
+async function projectAim(page: Page, aim: { kind: 'metric' | 'item'; id: string }): Promise<{ x: number; y: number } | null> {
+  return page.evaluate((aim) => {
+    const hall = (window as unknown as {
+      __hall?: {
+        camera: { updateMatrixWorld: () => void }
+        pivot: { set: (x: number, y: number, z: number) => void }
+        placeCam: () => void
+        dist: number
+        serviceFx: {
+          facilityTargets: () => {
+            userData: { facilityId?: string }
+            position: { clone: () => { x: number; y: number; z: number; project: (c: unknown) => void } }
+            parent: { localToWorld: (v: { x: number; y: number; z: number; project: (c: unknown) => void }) => void } | null
+          }[]
+        }
+        roomGroup: {
+          children: {
+            userData: { facilityId?: string }
+            position: { clone: () => { x: number; y: number; z: number; project: (c: unknown) => void } }
+            parent: { localToWorld: (v: { x: number; y: number; z: number; project: (c: unknown) => void }) => void } | null
+          }[]
+        }
+      }
+    }).__hall
+    if (!hall) return null
+    const want = aim.kind === 'metric' ? aim.id : `item:${aim.id}`
+    const list = aim.kind === 'metric' ? hall.serviceFx.facilityTargets() : hall.roomGroup.children
+    const pick = list.find((row) => row.userData.facilityId === want)
+    if (!pick) return null
+    const v = pick.position.clone()
+    ;(pick.parent ?? pick).localToWorld(v)
+    hall.pivot.set(v.x, 0, v.z)
+    hall.dist = Math.min(hall.dist, 16)
+    hall.placeCam()
+    hall.camera.updateMatrixWorld()
+    v.project(hall.camera)
+    const canvas = [...document.querySelectorAll('canvas')].find((node) => {
+      const r = node.getBoundingClientRect()
+      return r.width > 100 && r.height > 100 && getComputedStyle(node).visibility !== 'hidden'
+    })
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    const projected = v as { z: number; x: number; y: number }
+    if (projected.z > 1) return null
+    return { x: rect.left + (projected.x * 0.5 + 0.5) * rect.width, y: rect.top + (-projected.y * 0.5 + 0.5) * rect.height }
+  }, aim)
+}
+
+async function clickAim(page: Page, aim: { kind: 'metric' | 'item'; id: string }) {
+  const point = await projectAim(page, aim)
+  if (!point) return { point: null, spot: null, click: await readClick(page) }
+  const spot = await canvasSpot(page, point.x, point.y)
+  if (spot.hit !== 'canvas') return { point, spot, click: await readClick(page) }
+  await page.mouse.click(spot.x, spot.y)
+  await page.waitForTimeout(250)
+  return { point, spot, click: await readClick(page) }
+}
+
 async function readTexts(page: Page): Promise<Record<string, string>> {
   return page.evaluate(() => ({
     phase: document.querySelector('[data-testid="flight-phase"]')?.textContent?.trim() ?? '',
@@ -535,7 +636,7 @@ async function main() {
       }
       log.wait = { offer, flight }
 
-      if (offer && flight && only !== 'flight') {
+      if (offer && flight && only !== 'flight' && only !== 'security') {
         await clickSpeed(page, '1x')
         const cardUp = await ensureFlightCard(page)
         await openPhone(page)
@@ -566,44 +667,73 @@ async function main() {
           null,
           { timeout: 30_000 },
         ).catch(() => {})
-        const sec = await projectClick(page, 'security')
-        if (sec) {
-          const spot = await page.evaluate(({ x, y }) => {
-            const shifts = [
-              [0, 0],
-              [0, -36],
-              [28, 0],
-              [-28, 0],
-              [0, 32],
-              [48, -24],
-              [-48, 20],
-            ]
-            for (const shift of shifts) {
-              const el = document.elementFromPoint(x + shift[0], y + shift[1])
-              if (el && el.tagName === 'CANVAS') return { x: x + shift[0], y: y + shift[1], hit: 'canvas' }
-            }
-            const el = document.elementFromPoint(x, y)
-            return { x, y, hit: el ? `${el.tagName}.${el.className}` : 'none' }
-          }, sec)
-          console.log('security click', JSON.stringify(spot))
-          await page.mouse.click(spot.x, spot.y)
-        }
-        const laneId = await page.evaluate(() => {
+        const targets = await page.evaluate(() => {
           const g = (window as unknown as {
             __hatch: {
-              hallNav: { live: boolean; metrics: () => { id: string; kind: string; queueLength: number; served: number }[] }
-              selectFacility: (id: string) => void
-              selectedFacility: string | null
+              activeHall: () => { items?: { id: string; def: string }[] } | null
+              hallNav: { metrics: () => { id: string; kind: string; queueLength: number; serving: boolean; served: number }[] }
             }
           }).__hatch
-          const lanes = g.hallNav.metrics().filter((row) => row.kind === 'security_lane')
-          const lane = [...lanes].sort((a, b) => b.queueLength - a.queueLength)[0]
-          if (!lane) return ''
-          g.selectFacility(lane.id)
-          return `${lane.id} live=${g.hallNav.live} q=${lane.queueLength} served=${lane.served} sel=${g.selectedFacility}`
+          const items = g.activeHall()?.items ?? []
+          const metrics = g.hallNav.metrics()
+          const bagIds = items.filter((row) => row.def === 'bag_drop').map((row) => row.id)
+          const desk = metrics.find((row) => row.kind === 'checkin_desk' && !bagIds.some((id) => row.id.startsWith(`${id}-`) || row.id === id))
+          const bagMetric = metrics.find((row) => row.kind === 'checkin_desk' && bagIds.some((id) => row.id.startsWith(`${id}-`) || row.id === id))
+          const bag = items.find((row) => row.def === 'bag_drop' || row.def === 'bag_system')
+          const claim = items.find((row) => row.def === 'claim_carousel')
+          const laneItem = items.find((row) => row.def === 'security_small' || row.def === 'security_medium' || row.def === 'security_large')
+          return {
+            desk: desk?.id ?? '',
+            bagMetric: bagMetric?.id ?? '',
+            bag: bag?.id ?? '',
+            claim: claim?.id ?? '',
+            laneItem: laneItem?.id ?? '',
+          }
         })
-        console.log('security lane', laneId)
-        await page.getByTestId('building-panel').waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {})
+        const spotChecks: { asset: string; aim: { kind: 'metric' | 'item'; id: string } }[] = []
+        if (targets.laneItem) spotChecks.push({ asset: 'security lane fitting', aim: { kind: 'item', id: targets.laneItem } })
+        if (targets.desk) spotChecks.push({ asset: 'check-in desk', aim: { kind: 'metric', id: targets.desk } })
+        if (targets.bag) spotChecks.push({ asset: 'bag drop', aim: { kind: 'item', id: targets.bag } })
+        else if (targets.bagMetric) spotChecks.push({ asset: 'bag drop', aim: { kind: 'metric', id: targets.bagMetric } })
+        if (targets.claim) spotChecks.push({ asset: 'baggage claim', aim: { kind: 'item', id: targets.claim } })
+        const clicks: Record<string, unknown>[] = []
+        for (const row of spotChecks) {
+          const result = await clickAim(page, row.aim)
+          const opened = Boolean(result.click.panel) && !result.click.guest && result.click.selectedFacility != null
+          clicks.push({ asset: row.asset, aim: row.aim, opened, ...result })
+          console.log('click', row.asset, JSON.stringify({ opened, spot: result.spot, click: result.click }))
+        }
+        log.clicks = clicks
+        await clickSpeed(page, '5x')
+        const busy = await page.waitForFunction(
+          () => {
+            const g = (window as unknown as {
+              __hatch: { hallNav: { metrics: () => { id: string; kind: string; queueLength: number; serving: boolean }[] } }
+            }).__hatch
+            return g.hallNav.metrics().some((row) => row.kind === 'security_lane' && (row.queueLength > 0 || row.serving))
+          },
+          null,
+          { timeout: 90_000 },
+        ).then(() => true).catch(() => false)
+        await clickSpeed(page, '1x')
+        const laneId = await page.evaluate(() => {
+          const g = (window as unknown as {
+            __hatch: { hallNav: { metrics: () => { id: string; kind: string; queueLength: number; serving: boolean; served: number }[] } }
+          }).__hatch
+          const lanes = g.hallNav.metrics().filter((row) => row.kind === 'security_lane')
+          const lane = [...lanes].sort((a, b) => b.queueLength + (b.serving ? 1 : 0) - (a.queueLength + (a.serving ? 1 : 0)))[0]
+          return lane?.id ?? ''
+        })
+        const secClick = laneId ? await clickAim(page, { kind: 'metric', id: laneId }) : null
+        const secOpened = Boolean(secClick?.click.panel) && !secClick?.click.guest && secClick?.click.selectedFacility === laneId
+        clicks.push({ asset: 'security lane', aim: { kind: 'metric', id: laneId }, opened: secOpened, busy, ...secClick })
+        console.log('security click', JSON.stringify({ laneId, busy, opened: secOpened, spot: secClick?.spot, click: secClick?.click }))
+        if (!secOpened) throw new Error(`security lane click did not open the lane panel: ${JSON.stringify(secClick?.click)}`)
+        if (process.env.SKIP_SHOOT === '1') {
+          console.log('skip shoot')
+          return
+        }
+        await page.getByTestId('building-panel').waitFor({ state: 'visible', timeout: 8_000 })
         const queue = page.getByTestId('building-section-queue')
         if (await queue.count()) await queue.click()
         const bays = page.getByTestId('building-section-bays')
@@ -612,15 +742,23 @@ async function main() {
         rmSync(join(WORK, 'inspector-security'), { recursive: true, force: true })
         log.inspectorSecurityStep = await shoot(page, join(WORK, 'inspector-security'), LIVE_FRAMES)
         const noteAfter = await readTexts(page)
+        const changed = noteBefore.note !== noteAfter.note || noteBefore.queue !== noteAfter.queue || noteBefore.bays !== noteAfter.bays
         log.inspectorSecurity = {
-          point: sec,
+          laneId,
+          click: secClick?.click,
           before: noteBefore,
           after: noteAfter,
           frames: LIVE_FRAMES,
           step: DT,
-          changed: noteBefore.note !== noteAfter.note || noteBefore.queue !== noteAfter.queue || noteBefore.bays !== noteAfter.bays,
+          changed,
         }
         console.log('inspector-security', JSON.stringify(log.inspectorSecurity))
+        if (!changed) {
+          throw new Error(`security panel did not change live: ${JSON.stringify(log.inspectorSecurity)}`)
+        }
+        const secFile = join(OUT, 'inspector-security-framestep-12fps.mp4')
+        await encode(join(WORK, 'inspector-security'), secFile)
+        copyFileSync(secFile, join(ART, 'inspector-security-framestep-12fps.mp4'))
         }
       }
 
@@ -634,12 +772,12 @@ async function main() {
         await encode(join(WORK, dir), file)
         copyFileSync(file, join(ART, name))
       }
-      if (offer && flight && only !== 'flight') {
+      if (offer && flight && only !== 'flight' && only !== 'security') {
         const file = join(OUT, 'flight-offer-framestep-12fps.mp4')
         await encode(join(WORK, 'flight-offer'), file)
         copyFileSync(file, join(ART, 'flight-offer-framestep-12fps.mp4'))
       }
-      if (flight) {
+      if (flight && only !== 'security') {
         const liveDir = join(WORK, 'inspector-live')
         rmSync(liveDir, { recursive: true, force: true })
         mkdirSync(liveDir, { recursive: true })

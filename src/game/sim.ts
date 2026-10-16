@@ -20870,6 +20870,22 @@ export class Game {
         const node = def.room === 'security' ? 'security' : 'checkin'
         return this.queueReading(node, def.name)
       }
+      if (def?.room === 'bagclaim') {
+        const waiting = this.hallNav.arrivals.claimWaiting()
+        return {
+          id,
+          name: def.name,
+          upkeepPerDay: def.upkeep ?? 0,
+          staffNeeded: 0,
+          staffAssigned: null,
+          demand: waiting > 0 ? 1 : 0,
+          queueLength: waiting,
+          queueKind: 'passengers',
+          bays: [{ label: `Waiting ${waiting}`, inUse: waiting > 0 }],
+          note: waiting > 0 ? `${waiting} waiting for bags` : 'Belt clear',
+          unit: 'pax',
+        }
+      }
       return {
         id,
         name: def?.name ?? 'Facility',

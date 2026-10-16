@@ -157,6 +157,13 @@ export class HallArrivals {
     return this.agents.length
   }
 
+  /** Arrivals standing at a claim belt right now. */
+  claimWaiting(): number {
+    let n = 0
+    for (const a of this.agents) if (a.phase === 'claim') n++
+    return n
+  }
+
   /** The arrivals' nav grid (tests, debug). */
   get nav(): NavGrid | null {
     return this.grid

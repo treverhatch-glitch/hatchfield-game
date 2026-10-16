@@ -5,7 +5,7 @@
 import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
-import { buildHallDetail, hallItemProp, hallPickMesh, hallPropAllowed } from './hallKitDetail'
+import { buildHallDetail, hallItemProp, hallPickMesh, hallPropAllowed, pickedFacilityId } from './hallKitDetail'
 import { hiDetailOn } from './world/terminalHiDetail'
 import { readAnimSec } from './interior/animClock'
 import { canvasToPng } from '../camera/capture.ts'
@@ -587,6 +587,14 @@ export class HallWorld {
       this.game.openAssign(kind, id)
       return
     }
+    // A lane, desk, bag drop, or claim belt wins over the passenger standing in it.
+    // pickWalker runs in screen space and used to take the click, then selectGuest
+    // cleared the facility and left the dock on "Select a building".
+    const serviceId = this.serviceVolumeId()
+    if (serviceId) {
+      this.game.selectFacility(serviceId)
+      return
+    }
     const walked = this.pickWalker(e.clientX, e.clientY)
     if (walked) {
       this.game.selectGuest(walked)
@@ -659,6 +667,24 @@ export class HallWorld {
       }
     }
     this.game.selectGuest(null)
+  }
+
+  /**
+   * Service volumes under the cursor. A nav point (`lane-0`) beats a placed
+   * fitting (`item:…`) when the ray hits both, so the lane card stays the
+   * one with that point's queue and served count.
+   */
+  private serviceVolumeId(): string | null {
+    const picks = this.roomGroup.children.filter((obj) => obj.userData.servicePick === true)
+    const hits = this.ray.intersectObjects([...this.serviceFx.facilityTargets(), ...picks], false)
+    const ranked: { id: string; fromCenter: number }[] = []
+    for (const hit of hits) {
+      const id = hit.object.userData.facilityId
+      if (typeof id !== 'string' || !id) continue
+      const origin = hit.object.getWorldPosition(this.zoomScratch)
+      ranked.push({ id, fromCenter: hit.point.distanceToSquared(origin) })
+    }
+    return pickedFacilityId(ranked)
   }
 
   private assignHit(): { kind: 'desk' | 'lane' | 'gate' | 'lounge' | 'hangar' | 'vehicle'; id: string } | null {

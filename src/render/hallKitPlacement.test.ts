@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
-import { buildHallDetail, hallDetailPlacements, hallPickMesh } from './hallKitDetail.ts'
+import { buildHallDetail, hallDetailPlacements, hallPickMesh, pickedFacilityId } from './hallKitDetail.ts'
 import { layoutItems } from './hallKitMeshes.ts'
 
 describe('hall kit placement', () => {
@@ -49,5 +49,34 @@ describe('hall kit placement', () => {
       pick.geometry.dispose()
       mat.dispose()
     }
+    const lane = laid.find((row) => row.item.def === 'security_small')!
+    const lanePick = hallPickMesh(lane.item, lane.x, lane.z)
+    const laneGeo = lanePick.geometry as THREE.BoxGeometry
+    expect(lanePick.userData.servicePick).toBe(true)
+    expect(laneGeo.parameters.width).toBeGreaterThan(10)
+    lanePick.updateMatrixWorld()
+    const belt = new THREE.Raycaster(new THREE.Vector3(lane.x + 5, 8, lane.z), new THREE.Vector3(0, -1, 0))
+    expect(belt.intersectObject(lanePick).length, 'a click on the lane body must hit').toBeGreaterThan(0)
+    lanePick.geometry.dispose()
+    ;(lanePick.material as THREE.Material).dispose()
+    const bench = laid.find((row) => row.item.def === 'bench')!
+    const benchPick = hallPickMesh(bench.item, bench.x, bench.z)
+    expect(benchPick.userData.servicePick).toBe(false)
+    benchPick.geometry.dispose()
+    ;(benchPick.material as THREE.Material).dispose()
+    const bags = hallPickMesh({ id: 'bags', def: 'bag_system', rot: 0 }, 0, 0)
+    expect(bags.userData.servicePick).toBe(true)
+    expect((bags.geometry as THREE.BoxGeometry).parameters.width).toBeGreaterThan(5)
+    bags.geometry.dispose()
+    ;(bags.material as THREE.Material).dispose()
+    expect(pickedFacilityId([
+      { id: 'item:lane-1', fromCenter: 0.2 },
+      { id: 'lane-0', fromCenter: 4 },
+    ])).toBe('lane-0')
+    expect(pickedFacilityId([
+      { id: 'item:claim-1', fromCenter: 6 },
+      { id: 'item:bags', fromCenter: 0.4 },
+    ])).toBe('item:bags')
+    expect(pickedFacilityId([])).toBeNull()
   })
 })
