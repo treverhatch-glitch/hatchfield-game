@@ -1271,9 +1271,16 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'bags',
     tile: 'bags',
-    name: 'Bag room',
+    name: 'Bag sort',
     cost: BAGS_COST,
-    blurb: 'Back-of-house sort on the terminal. Tugs take cart trains to the stand.',
+    blurb: 'Makeup hub — paint Belt tiles to the hall and stands.',
+  },
+  {
+    tool: 'belt',
+    tile: 'belt',
+    name: 'Bag belt',
+    cost: BELT_COST,
+    blurb: 'Link hall ↔ bag sort ↔ stand. Break the chain → late bags + Standing dips.',
   },
   {
     tool: 'fuel',

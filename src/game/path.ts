@@ -41,13 +41,12 @@ export function walkableFor(
   if (kind === 'truck') {
     // Trucks stay on the apron and the public road. The terminal is a building,
     // so a shortcut through the hall is not a vehicle path.
-    // Tug pavement is stored as belt. Trucks may drive it. Jets may not.
     return (
       tile === 'taxi' ||
       tile === 'stand' ||
-      tile === 'belt' ||
       tile === 'fuel' ||
       tile === 'bags' ||
+      tile === 'belt' ||
       tile === 'snack' ||
       tile === 'fire' ||
       tile === 'police' ||
@@ -156,7 +155,6 @@ export function astar(
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
   pass?: (c: number, r: number) => boolean,
   gate: GateUse = 'airside',
-  stepCost?: (c: number, r: number) => number,
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]
@@ -208,11 +206,7 @@ export function astar(
       if (!cellOpen(tiles, nc, nr, kind, pass)) continue
       if (gateBlocks(tiles, nc, nr, kind, gate, start, goal)) continue
       const n = nr * SIZE + nc
-      const step = stepCost
-        ? stepCost(nc, nr)
-        : kind === 'person'
-          ? personStepCost(tiles[nr][nc])
-          : 1
+      const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
       const ng = searchG[cur] + step
       const seen = searchStamp[n] === gen
       if (seen && ng >= searchG[n]) continue
@@ -254,95 +248,19 @@ export function nearestPath(
 }
 
 /**
- * Bag-tug drive from the bag room to a stand, or back.
- * Road and tug pavement are the normal road. A taxi cell costs more than a
- * short pavement detour, so the train does not ride the jet spine or cut
- * through the throat between the starter stands. Another stand is not a shortcut.
- */
-export function tugTrainPath(tiles: Tile[][], home: Vec, stand: Vec): Vec[] | null {
-  const cost = (c: number, r: number) => {
-    if ((c === home.c && r === home.r) || (c === stand.c && r === stand.r)) return 1
-    const tile = tiles[r][c]
-    if (tile === 'road' || tile === 'belt') return 1
-    if (tile === 'taxi') return 8
-    if (tile === 'stand') return 24
-    return 4
-  }
-  return astar(tiles, home, stand, 'truck', undefined, 'airside', cost)
-}
-
-/** Road, taxiway, or stand. Fuel trucks and shed stops stay on these. */
-const PAVEMENT: ReadonlySet<Tile> = new Set(['road', 'taxi', 'stand'])
-
-export function isPavement(tile: Tile): boolean {
-  return PAVEMENT.has(tile)
-}
-
-/**
- * Bowser walk: road, taxi, and stand only. The farm cell is the tank yard.
+ * Bowser walk: any truck cell except a fuel farm. The farm cell is the tank yard.
  * `from` stays open so a bowser already standing on a farm (old saves) can drive off it.
  */
 export function bowserPass(tiles: Tile[][], from?: Vec): (c: number, r: number) => boolean {
-  return (c, r) => {
-    if (from && c === from.c && r === from.r) return true
-    const tile = tiles[r][c]
-    return tile !== 'fuel' && isPavement(tile)
-  }
+  return (c, r) => tiles[r][c] !== 'fuel' || (!!from && c === from.c && r === from.r)
 }
 
-/** Pavement cell sharing an edge with a building. The truck stops here, not on the footprint. */
-export function apronDocks(tiles: Tile[][], at: Vec): Vec[] {
-  return neighbors(at.c, at.r).filter((n) => isPavement(tiles[n.r][n.c]))
-}
-
-/** Road or apron cells beside every shed. Empty when the shed has no pavement neighbour. */
-export function shedStops(tiles: Tile[][], sheds: readonly Vec[]): Vec[] {
-  const out: Vec[] = []
-  const seen = new Set<string>()
-  for (const shed of sheds) {
-    for (const dock of apronDocks(tiles, shed)) {
-      const id = key(dock.c, dock.r)
-      if (seen.has(id)) continue
-      seen.add(id)
-      out.push(dock)
-    }
-  }
-  return out
-}
-
-/**
- * Shortest truck path that starts on pavement beside `building` and stays on pavement.
- * Belt cells and the building footprint are not part of the drive. Null when no apron door reaches a goal.
- */
-export function pathBeside(
-  tiles: Tile[][],
-  building: Vec,
-  goals: Vec[],
-  gate: GateUse = 'airside',
-): Vec[] | null {
-  const pass = (c: number, r: number) => isPavement(tiles[r][c])
-  let best: Vec[] | null = null
-  for (const start of apronDocks(tiles, building)) {
-    const path = nearestPath(tiles, start, goals, 'truck', pass, gate)
-    if (path && (!best || path.length < best.length)) best = path
-  }
-  return best
-}
-
-/**
- * Pavement beside a farm where a bowser waits and bottom-loads.
- * A taxi cell with no road beside it is the gap between the tanks and the
- * taxiway (the starter spine stub south of the farm). A bay that touches a
- * road wins when one exists, so the bowser does not roll across that gap.
- */
+/** Truck cells beside a farm where a bowser waits and bottom-loads. */
 export function farmDocks(tiles: Tile[][], farm: Vec): Vec[] {
-  const docks = apronDocks(tiles, farm)
-  const besideRoad = docks.filter(
-    (dock) =>
-      tiles[dock.r][dock.c] === 'road' ||
-      neighbors(dock.c, dock.r).some((n) => tiles[n.r][n.c] === 'road'),
-  )
-  return besideRoad.length > 0 ? besideRoad : docks
+  return neighbors(farm.c, farm.r).filter((n) => {
+    const tile = tiles[n.r][n.c]
+    return tile !== 'fuel' && walkableFor('truck', tile)
+  })
 }
 
 /** Shortest bowser route to the goals from a dock beside the farm. Null when no dock reaches them. */
@@ -436,47 +354,34 @@ export function beltReachable(tiles: Tile[][], start: Vec, goal: Vec): boolean {
   return false
 }
 
-/** Bag room sits on the terminal wall. Apron belts are not the link. */
-function bagRoomOnTerminal(tiles: Tile[][], room: Vec): boolean {
-  return neighbors(room.c, room.r).some((n) => tiles[n.r]?.[n.c] === 'terminal')
-}
-
 /**
- * True when a bag room on the terminal can reach the stand by truck.
- * Painted apron belts are not part of the link.
- */
-export function standBeltLinked(tiles: Tile[][], stand: Vec): boolean {
-  for (const room of tilesOf(tiles, 'bags')) {
-    if (!bagRoomOnTerminal(tiles, room)) continue
-    const path = nearestPath(tiles, room, [stand], 'truck')
-    if (path && path.length >= 2) return true
-  }
-  return false
-}
-
-/**
- * The link dies when the bag room is removed. A shortcut that never
- * enters the bag room does not count.
+ * True when the hall reaches the stand on the belt graph, and that link
+ * dies if the bag-sort cells are removed. A belt that runs hall → stand
+ * without the sort returns false.
  */
 export function standBeltViaSort(tiles: Tile[][], stand: Vec): boolean {
   if (!standBeltLinked(tiles, stand)) return false
   const blocked = tiles.map((row) => row.slice())
-  for (const room of tilesOf(tiles, 'bags')) blocked[room.r][room.c] = 'grass'
-  return !standBeltLinked(blocked, stand)
+  for (const makeup of tilesOf(tiles, 'bags')) blocked[makeup.r][makeup.c] = 'grass'
+  const halls = tilesOf(tiles, 'terminal')
+  return !halls.some((hall) => beltReachable(blocked, hall, stand))
 }
 
-/** A bag room is attached to the hall. Apron belt paint no longer opens the chain. */
+/** True when makeup can reach the stand and a terminal via belt tiles. */
+export function standBeltLinked(tiles: Tile[][], stand: Vec): boolean {
+  const makeups = tilesOf(tiles, 'bags')
+  const halls = tilesOf(tiles, 'terminal')
+  if (!makeups.length || !halls.length) return false
+  for (const m of makeups) {
+    if (!beltReachable(tiles, m, stand)) continue
+    if (halls.some((h) => beltReachable(tiles, m, h))) return true
+  }
+  return false
+}
+
+/** Any belt tile stamped — once true, broken links start to hurt. */
 export function hasBeltNetwork(tiles: Tile[][]): boolean {
-  return tilesOf(tiles, 'bags').some((room) => bagRoomOnTerminal(tiles, room))
-}
-
-/**
- * Apron belt cells stay truck pavement. Promoting them to taxi would open a
- * jet shortcut between the stands. The mesh is a gray apron, not a conveyor.
- */
-export function retireApronBelts(tiles: Tile[][]): number {
-  void tiles
-  return 0
+  return tilesOf(tiles, 'belt').length > 0
 }
 
 export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {

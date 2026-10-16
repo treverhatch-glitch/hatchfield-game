@@ -44,7 +44,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
       'Staffed check-in desk, self-service kiosk, and spare desk cells',
       'Two security lanes, with empty lane cells beside them',
       'Gate seats, café counter, newsagent, toilets, claim belt, and wayfinding',
-      'Two concrete stands, a bag room on the hall, fuel bays, guard, and a cargo shed',
+      'Two concrete stands, bag-sort bays, fuel bays, guard, and a cargo shed',
     ],
   },
   cargo: {
@@ -116,8 +116,8 @@ function paintPassenger(chart: Chart, police: boolean) {
   const putAt = (c: number, r: number, tile: Tile) => put(chart, c, r, tile)
   paintRunways(putAt)
   // Apron on the west face. The stands stay a full bay apart so both can
-  // taxi while the 2×4 hall occupies the curb. Column 14 is the bag room,
-  // against the west face. Tugs use the pavement below. It is not a jet taxiway.
+  // taxi while the 2×4 hall occupies the curb. Column 14 is the sort, against
+  // the west face, so the belt cells themselves stay off the hall.
   putAt(11, 9, 'taxi')
   putAt(13, 8, 'taxi')
   putAt(13, 10, 'taxi')
@@ -125,21 +125,6 @@ function paintPassenger(chart: Chart, police: boolean) {
     putAt(c, 6, 'taxi')
     putAt(c, 12, 'taxi')
   }
-  // Service road for the bowser and the shed, and the link from the farm onto the taxiway.
-  // These cells are not taxi, so a jet cannot cut through. Bag tugs use the pavement below.
-  putAt(8, 5, 'road')
-  for (let r = 7; r <= 11; r++) putAt(10, r, 'road')
-  putAt(12, 6, 'road')
-  putAt(12, 7, 'road')
-  putAt(13, 7, 'road')
-  putAt(11, 13, 'road')
-  putAt(12, 13, 'road')
-  putAt(13, 11, 'road')
-  putAt(13, 12, 'road')
-  putAt(13, 13, 'road')
-  // Doors of the bag room, north and south of the building.
-  putAt(14, 8, 'road')
-  putAt(14, 10, 'road')
   putAt(11, 6, 'stand')
   putAt(11, 12, 'stand')
   for (let r = 7; r <= 10; r++) {
@@ -161,8 +146,7 @@ function paintPassenger(chart: Chart, police: boolean) {
   for (let c = 7; c <= 15; c++) putAt(c, 4, 'road')
   // South apron road. It meets the taxi spine, not column 17, so it is not a second gate.
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
-  // Tug pavement from the bag room to both stands. Truck-only, so the two
-  // stands keep their own taxi rows. The renderer paints apron, not a conveyor.
+  // One belt beside the sort, out to both stands. No belt cell touches the hall.
   putAt(11, 7, 'belt')
   putAt(11, 8, 'belt')
   putAt(12, 8, 'belt')

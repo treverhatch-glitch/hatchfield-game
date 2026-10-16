@@ -1,8 +1,8 @@
 /**
  * Default new game, no persona. Seeded so the note in
  * docs/playtest/STARTER_BOTTLENECK.md can be re-run.
- * Passengers ride to the four-stall curb. Bag tugs stay on the truck pavement,
- * so the check-in peak stays under the 360s red line. The peak is day 6.
+ * Passengers ride to the four-stall curb, so the check-in wait stays under
+ * the 360s red line for the whole horizon. The peak is still recorded.
  */
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
@@ -36,7 +36,7 @@ function facilityChoke(game: Game): { kind: string; count: number; waitSec: numb
 }
 
 describe('starter hall bottleneck', () => {
-  it('stays under the check-in red line once tug trains stay off the jet taxi', () => {
+  it('keeps the curb-metered starter under the check-in red line', () => {
     const found = withSeed(SEED, () => {
       const game = new Game()
       game.sandbox = false
@@ -71,6 +71,6 @@ describe('starter hall bottleneck', () => {
     })
     expect(found.hit).toBeNull()
     expect(found.signed).toEqual(['air_regional_1', 'zoomjet'])
-    expect(found.peak).toEqual({ day: 6, kind: 'checkin_desk', count: 2, waitSec: 358 })
+    expect(found.peak).toEqual({ day: 8, kind: 'checkin_desk', count: 2, waitSec: 350 })
   }, 180_000)
 })

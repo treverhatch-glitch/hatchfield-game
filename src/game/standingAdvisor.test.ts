@@ -65,7 +65,7 @@ describe('StandingAdvisor top causes and suggested fixes', () => {
     expect(top).toHaveLength(2)
     expect(top[0]).toEqual(CAUSE_FIXES.baggage)
     expect(top[1]).toEqual(CAUSE_FIXES.hall_amenities)
-    expect(top[0].fix).toContain('bag room')
+    expect(top[0].fix).toContain('baggage belts')
     expect(top[1].fix).toContain('food, WCs')
   })
 

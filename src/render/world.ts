@@ -57,7 +57,10 @@ import { steerAngle } from './vehicleAnim.ts'
 import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
-import { CrewFigures } from './crew/figures.ts'
+import { BAG_HEX, CrewFigures } from './crew/figures.ts'
+import { addBeltDeck, BELT_SURFACE_Y } from './beltDeck.ts'
+import { BELT_BAGS } from './beltBagsData.ts'
+import { alongRun, bagsPerRun, beltArms, beltRuns, type BeltArms } from './beltRuns.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {
   baseLevel,
@@ -233,19 +236,6 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
   )
 }
 
-/**
- * The booth sits in the middle of the guard cell. Shift the mesh toward the
- * south edge of that cell so the body stays on the paved post and misses the booth.
- * Sim x/y stay on the path; only the draw position moves.
- */
-function guardBoothShift(tiles: readonly (readonly string[])[], x: number, y: number): number {
-  const c = Math.round(x)
-  const r = Math.round(y)
-  if (tiles[r]?.[c] !== 'guard') return 0
-  const edge = Math.max(Math.abs(x - c), Math.abs(y - r))
-  return 0.3 * Math.max(0, 1 - edge * 2)
-}
-
 function wu(meters: number): number {
   return meters * WORLD_PER_METER
 }
@@ -377,6 +367,10 @@ export class World {
   housingGroup = new THREE.Group()
   private housingMeshes = new Map<string, THREE.Group>()
   private housingWalkers = new Map<string, THREE.Group>()
+  private beltCubes: THREE.Mesh[] = []
+  private beltRuns: { points: THREE.Vector3[]; length: number }[] = []
+  private beltShare: number[] = []
+  private beltRev = -1
   private sitesHash = ''
   private siteBars: THREE.Mesh[] = []
   ray = new THREE.Raycaster()
@@ -882,6 +876,7 @@ export class World {
             terminalTier: pierTier,
             spotterCrowd: game.spotterCrowdAt(c, r),
             alarmBell: tile === 'fire' && game.hostHasFitting('fire', { c, r }, 'alarm_bell'),
+            beltArms: tile === 'belt' ? beltArms(game.tiles, c, r) : undefined,
             bagYaw: tile === 'bags' ? bagSortYaw(game.tiles, c, r) : undefined,
           })
           built.userData.cellKey = key
@@ -976,6 +971,7 @@ export class World {
       terminalTier?: 1 | 2 | 3
       spotterCrowd?: number
       alarmBell?: boolean
+      beltArms?: BeltArms
       /** Radians. Points the bag-sort bays (+Z) at the apron. */
       bagYaw?: number
     } = {},
@@ -1026,15 +1022,8 @@ export class World {
       addBagSort(g)
       g.rotation.y = opts.bagYaw ?? 0
     } else if (tile === 'belt') {
-      // Tug pavement. Paint apron, never a conveyor.
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98),
-        new THREE.MeshLambertMaterial({ color: '#6a7078' }),
-      )
-      mesh.rotation.x = -Math.PI / 2
-      mesh.position.y = 0.03
-      mesh.receiveShadow = true
-      g.add(mesh)
+      // Low conveyor strip — distinct from taxi/road so broken chains read on the apron.
+      addBeltDeck(g, opts.beltArms)
     } else if (tile === 'fuel') {
       addFuelFarm(g)
     } else if (tile === 'fire') {
@@ -1892,7 +1881,7 @@ export class World {
       const size = vehicleMeters(t.kind)
       const docked = game.truckApronDraw(t)
       const drawX = docked?.x ?? t.x
-      const drawY = docked?.y ?? t.y + (docked ? 0 : guardBoothShift(game.tiles, t.x, t.y))
+      const drawY = docked?.y ?? t.y
       const pos = toWorld(drawX, drawY, 0)
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
@@ -1913,7 +1902,6 @@ export class World {
         yaw: -heading,
         scale: WORLD_PER_METER,
         cargo: loaded ? (t.kind === 'bags' ? 'suitcases' : t.kind === 'citycargo' ? 'crates' : undefined) : undefined,
-        carts: t.kind === 'bags' ? t.carts : undefined,
         cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
         ext,
         active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0 || moving,
@@ -2135,6 +2123,7 @@ export class World {
         this.people.delete(id)
       }
     }
+    this.syncBeltBags(game)
     this.crewFigures.update(game.crewScene(), this.camera, dt, game.speed >= 5, (c, r, y) => toWorld(c, r, y))
     this.liveTurn.sync(turnaroundStands(game), turnaroundTrucks(this.vehicleFrame), game.clock, this.camera, dt, game.speed >= 5)
     syncStaffHousing(
@@ -2145,6 +2134,50 @@ export class World {
       game.staffWalkers(),
       toWorld,
     )
+  }
+
+  /** A few suitcases riding the apron belts. Each bag stays on its own run and never jumps a gap. */
+  private syncBeltBags(game: Game) {
+    const [len, high, depth] = BELT_BAGS.sizeM
+    if (game.mapRev !== this.beltRev) {
+      this.beltRev = game.mapRev
+      this.beltRuns = beltRuns(game.tiles).map((cells) => ({
+        points: cells.map((p) => toWorld(p.c, p.r, 0)),
+        length: Math.max(1, cells.length - 1),
+      }))
+      this.beltShare = bagsPerRun(this.beltRuns.map((run) => run.length), BELT_BAGS.count)
+    }
+    while (this.beltCubes.length < BELT_BAGS.count) {
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(wu(len), wu(high), wu(depth)),
+        new THREE.MeshLambertMaterial({ color: BAG_HEX[this.beltCubes.length % BAG_HEX.length] }),
+      )
+      cube.name = 'belt-bag'
+      cube.castShadow = true
+      cube.visible = false
+      this.entGroup.add(cube)
+      this.beltCubes.push(cube)
+    }
+    const motion = game.luggageMotion()
+    const show = motion.belt && this.beltRuns.length > 0
+    const y = 0.02 + BELT_SURFACE_Y + wu(high) / 2
+    const sec = performance.now() / 1000
+    let bag = 0
+    for (let r = 0; r < this.beltRuns.length && show; r++) {
+      const run = this.beltRuns[r]
+      const share = this.beltShare[r] ?? 0
+      const lap = (motion.phase + (sec * BELT_BAGS.cellsPerSec) / run.length) % 1
+      for (let k = 0; k < share && bag < this.beltCubes.length; k++, bag++) {
+        const cube = this.beltCubes[bag]
+        const u = (lap + k / share) % 1
+        const at = alongRun(run.points, u)
+        const ahead = alongRun(run.points, Math.min(1, u + 0.02))
+        cube.position.set(at.x, y, at.z)
+        if (ahead.x !== at.x || ahead.z !== at.z) cube.rotation.y = Math.atan2(-(ahead.z - at.z), ahead.x - at.x)
+        cube.visible = true
+      }
+    }
+    for (; bag < this.beltCubes.length; bag++) this.beltCubes[bag].visible = false
   }
 
   /** Ghost meshes are rebuilt per hover. Dispose every geometry and cloned material. */
