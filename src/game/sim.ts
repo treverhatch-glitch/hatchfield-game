@@ -913,6 +913,8 @@ import {
   bowserPath,
   farmBesidePavement,
   farmDocks,
+  pathBeside,
+  shedStops,
   hasBeltNetwork,
   inBounds,
   neighbors,
@@ -9671,7 +9673,8 @@ export class Game {
       } else if (Math.random() < 0.35) {
         // Sneak in without screen — short path straight to shed, incident risk.
         const edge = pick(edges)
-        const path = nearestPath(this.tiles, edge, sheds, 'truck')
+        const stops = shedStops(this.tiles, sheds)
+        const path = stops.length ? nearestPath(this.tiles, edge, stops, 'truck') : null
         if (path && path.length > 1) {
           this.trucks.push({
             id: uid('city'),
@@ -9687,7 +9690,7 @@ export class Game {
             preDwell: 0,
             patrol: false,
             mission: 'city_shed',
-            home: sheds[0],
+            home: path[path.length - 1],
             cargoUnits: this.rivalCargoUnits(10 + Math.floor(Math.random() * 14)),
           })
           this.securityIncidents += 1
@@ -9742,11 +9745,9 @@ export class Game {
     if (t.kind !== 'citycargo') return
     if (t.mission === 'city_guard') {
       // Screened — roll to shed.
-      const sheds = tilesOf(this.tiles, 'cargo')
+      const stops = shedStops(this.tiles, tilesOf(this.tiles, 'cargo'))
       const from = { c: Math.round(t.x), r: Math.round(t.y) }
-      const path = sheds.length
-        ? nearestPath(this.tiles, from, sheds, 'truck')
-        : null
+      const path = stops.length ? nearestPath(this.tiles, from, stops, 'truck', undefined, 'outside') : null
       if (path && path.length > 1) {
         t.mission = 'city_shed'
         t.path = path
@@ -9754,7 +9755,7 @@ export class Game {
         t.t = 0
         t.returning = false
         t.dwell = 0
-        t.home = sheds[0]
+        t.home = path[path.length - 1]
       } else {
         t.dwell = -99
       }
@@ -25773,7 +25774,7 @@ export class Game {
     if (f.cargo) {
       const shed = tilesOf(this.tiles, 'cargo')
       if (shed.length && f.stand) {
-        const cargoPath = nearestPath(this.tiles, shed[0], [f.stand], 'truck')
+        const cargoPath = pathBeside(this.tiles, shed[0], [f.stand])
         if (cargoPath) {
           // Shed → freighter uplift needs staged warehouse stock (city trucks fill it).
           const need = clamp(18 + Math.floor(f.pax / 8), 18, 48)
@@ -25786,7 +25787,7 @@ export class Game {
             )
           }
           f.waitingOn.bags = true
-          this.spawnTruck('bags', f, cargoPath, 'unload', shed[0])
+          this.spawnTruck('bags', f, cargoPath, 'unload', cargoPath[0])
           const tr = this.trucks[this.trucks.length - 1]
           if (tr?.kind === 'bags') {
             const take = Math.min(this.cargoWarehouse, need)
@@ -25809,10 +25810,10 @@ export class Game {
       // Arrival unload: shed → plane → claim/sort at shed → continue or park.
       if (bagBuild.length > 0 && f.stand) {
         this.noteBagBeltIssue(f)
-        const bagPath = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
+        const bagPath = pathBeside(this.tiles, bagBuild[0], [f.stand])
         if (bagPath) {
           f.waitingOn.bags = true
-          this.spawnTruck('bags', f, bagPath, 'unload', bagBuild[0])
+          this.spawnTruck('bags', f, bagPath, 'unload', bagPath[0])
         }
       }
       const snackPath =
@@ -26441,10 +26442,10 @@ export class Game {
     const bagBuild = tilesOf(this.tiles, 'bags')
     if (bagBuild.length && !f.posted.bagsLoad) {
       this.noteBagBeltIssue(f)
-      const path = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
+      const path = pathBeside(this.tiles, bagBuild[0], [f.stand])
       if (path) {
         f.waitingOn.bagsLoad = true
-        this.spawnTruck('bags', f, path, 'load', bagBuild[0])
+        this.spawnTruck('bags', f, path, 'load', path[0])
       }
     }
   }

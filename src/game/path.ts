@@ -41,12 +41,12 @@ export function walkableFor(
   if (kind === 'truck') {
     // Trucks stay on the apron and the public road. The terminal is a building,
     // so a shortcut through the hall is not a vehicle path.
+    // Belts are the bag conveyor. A tug that treats them as road rides the belt.
     return (
       tile === 'taxi' ||
       tile === 'stand' ||
       tile === 'fuel' ||
       tile === 'bags' ||
-      tile === 'belt' ||
       tile === 'snack' ||
       tile === 'fire' ||
       tile === 'police' ||
@@ -247,20 +247,78 @@ export function nearestPath(
   return best
 }
 
+/** Road, taxiway, or stand. Fuel trucks and shed stops stay on these. */
+const PAVEMENT: ReadonlySet<Tile> = new Set(['road', 'taxi', 'stand'])
+
+export function isPavement(tile: Tile): boolean {
+  return PAVEMENT.has(tile)
+}
+
 /**
- * Bowser walk: any truck cell except a fuel farm. The farm cell is the tank yard.
+ * Bowser walk: road, taxi, and stand only. The farm cell is the tank yard.
  * `from` stays open so a bowser already standing on a farm (old saves) can drive off it.
  */
 export function bowserPass(tiles: Tile[][], from?: Vec): (c: number, r: number) => boolean {
-  return (c, r) => tiles[r][c] !== 'fuel' || (!!from && c === from.c && r === from.r)
+  return (c, r) => {
+    if (from && c === from.c && r === from.r) return true
+    const tile = tiles[r][c]
+    return tile !== 'fuel' && isPavement(tile)
+  }
 }
 
-/** Truck cells beside a farm where a bowser waits and bottom-loads. */
+/** Pavement cell sharing an edge with a building. The truck stops here, not on the footprint. */
+export function apronDocks(tiles: Tile[][], at: Vec): Vec[] {
+  return neighbors(at.c, at.r).filter((n) => isPavement(tiles[n.r][n.c]))
+}
+
+/** Road or apron cells beside every shed. Empty when the shed has no pavement neighbour. */
+export function shedStops(tiles: Tile[][], sheds: readonly Vec[]): Vec[] {
+  const out: Vec[] = []
+  const seen = new Set<string>()
+  for (const shed of sheds) {
+    for (const dock of apronDocks(tiles, shed)) {
+      const id = key(dock.c, dock.r)
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push(dock)
+    }
+  }
+  return out
+}
+
+/**
+ * Shortest truck path that starts on pavement beside `building` and stays on pavement.
+ * Belt cells and the building footprint are not part of the drive. Null when no apron door reaches a goal.
+ */
+export function pathBeside(
+  tiles: Tile[][],
+  building: Vec,
+  goals: Vec[],
+  gate: GateUse = 'airside',
+): Vec[] | null {
+  const pass = (c: number, r: number) => isPavement(tiles[r][c])
+  let best: Vec[] | null = null
+  for (const start of apronDocks(tiles, building)) {
+    const path = nearestPath(tiles, start, goals, 'truck', pass, gate)
+    if (path && (!best || path.length < best.length)) best = path
+  }
+  return best
+}
+
+/**
+ * Pavement beside a farm where a bowser waits and bottom-loads.
+ * A taxi cell with no road beside it is the gap between the tanks and the
+ * taxiway (the starter spine stub south of the farm). A bay that touches a
+ * road wins when one exists, so the bowser does not roll across that gap.
+ */
 export function farmDocks(tiles: Tile[][], farm: Vec): Vec[] {
-  return neighbors(farm.c, farm.r).filter((n) => {
-    const tile = tiles[n.r][n.c]
-    return tile !== 'fuel' && walkableFor('truck', tile)
-  })
+  const docks = apronDocks(tiles, farm)
+  const besideRoad = docks.filter(
+    (dock) =>
+      tiles[dock.r][dock.c] === 'road' ||
+      neighbors(dock.c, dock.r).some((n) => tiles[n.r][n.c] === 'road'),
+  )
+  return besideRoad.length > 0 ? besideRoad : docks
 }
 
 /** Shortest bowser route to the goals from a dock beside the farm. Null when no dock reaches them. */

@@ -125,6 +125,21 @@ function paintPassenger(chart: Chart, police: boolean) {
     putAt(c, 6, 'taxi')
     putAt(c, 12, 'taxi')
   }
+  // Apron beside the belts, and the link from the farm road onto that taxiway.
+  // Tugs and the bowser use these. Belt cells stay for bags.
+  putAt(8, 5, 'taxi')
+  for (let r = 7; r <= 11; r++) putAt(10, r, 'taxi')
+  putAt(12, 6, 'taxi')
+  putAt(12, 7, 'taxi')
+  putAt(13, 7, 'taxi')
+  putAt(11, 13, 'taxi')
+  putAt(12, 13, 'taxi')
+  putAt(13, 11, 'taxi')
+  putAt(13, 12, 'taxi')
+  putAt(13, 13, 'taxi')
+  // Doors of the sort, north and south of the building. The west neighbour is a belt.
+  putAt(14, 8, 'taxi')
+  putAt(14, 10, 'taxi')
   putAt(11, 6, 'stand')
   putAt(11, 12, 'stand')
   for (let r = 7; r <= 10; r++) {
