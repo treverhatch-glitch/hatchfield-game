@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { AIRFRAMES } from '../../game/airframes.ts'
 import { money } from '../../game/catalog.ts'
 import type { Flight } from '../../game/types.ts'
@@ -11,11 +11,12 @@ import {
   flightCardSnapshot,
   flightConnectionSummary,
   flightDelaySummary,
+  flightLiveKey,
   labelPhase,
   serviceProgress,
   subscribeFlightCard,
+  subscribeFlightLive,
 } from './flightCard.ts'
-import { liveRevWhen, subscribeLiveWhen } from './live.ts'
 
 function titleColor(flight: Flight, airlineColor: string): string {
   if (flight.kind === 'military') return '#8a9a6a'
@@ -87,16 +88,6 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
           {grade.note ? ` — ${grade.note}` : ''}
         </p>
       ) : null}
-      <p className="phase" data-testid="flight-phase">
-        {aircraft} · {labelPhase(flight.phase, flight.craft)}
-        {flight.pax > 0 ? ` · ${flight.pax} pax` : flight.cargo ? ' · freight' : ''}
-        {(flight.craft ?? 'jet') === 'jet' ? ` · ${stand}` : ' · helipad'}
-        {flight.ga && flight.phase === 'parked'
-          ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
-            ? ` · LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
-            : ` · parked ${Math.round(flight.phaseTime)}s / ask ~${flight.parkStaySec ?? '?'}s`
-          : ''}
-      </p>
       {flight.ga && flight.phase === 'parked' ? (
         <button type="button" className="wide" onClick={() => game.releaseGa(flight.id)}>
           {flight.parkLeaveRequestedAt ? 'Release (manual departure)' : 'Release early'}
@@ -137,14 +128,32 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
   )
 }
 
+function phaseLine(flight: Flight, game: Game, stand: string): string {
+  const aircraft = flight.airframeName || game.aircraftLabel(flight.kind)
+  const elapsed = `${Math.max(0, Math.round(flight.phaseTime))}s`
+  const load = flight.pax > 0 ? `${flight.pax} pax` : flight.cargo ? 'freight' : ''
+  const place = (flight.craft ?? 'jet') === 'jet' ? stand : 'helipad'
+  const parked =
+    flight.ga && flight.phase === 'parked'
+      ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
+        ? `LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
+        : `parked ask ~${flight.parkStaySec ?? '?'}s`
+      : ''
+  return [labelPhase(flight.phase, flight.craft), elapsed, aircraft, load, place, parked].filter(Boolean).join(' · ')
+}
+
 /** Right-edge inspector. Planner stays closed; dismissing does not clear the selection. */
 export function ApronFlightCard({ game }: { game: Game }) {
   const snap = useSyncExternalStore(subscribeFlightCard, flightCardSnapshot, flightCardSnapshot)
-  useSyncExternalStore(subscribeLiveWhen(Boolean(snap)), liveRevWhen(Boolean(snap)), () => 0)
+  const subscribe = useCallback((listener: () => void) => subscribeFlightLive(game, listener), [game])
+  const readKey = useCallback(() => flightLiveKey(game), [game])
+  // The key is the selected flight's phase and services. Parent HUD snapshots only watch flights[0].
+  useSyncExternalStore(subscribe, readKey, () => '')
   if (!snap || game.view !== 'apron') return null
   const id = flightCardFlightId()
   const flight = game.flights.find((row) => row.id === id && row.id === game.selectedFlight)
   if (!flight) return null
+  const stand = (flight.craft ?? 'jet') === 'jet' ? game.gateLabel(flight.stand) : 'Helipad'
   return (
     <aside
       className="flight-card"
@@ -157,6 +166,9 @@ export function ApronFlightCard({ game }: { game: Game }) {
           Close
         </button>
       </header>
+      <p className="phase flight-phase-live" data-testid="flight-phase" data-phase={flight.phase}>
+        {phaseLine(flight, game, stand)}
+      </p>
       <div className="flight-card-body">
         <FlightCard game={game} flight={flight} />
       </div>

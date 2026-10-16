@@ -117,6 +117,13 @@ export function cardForVehicle(input: {
  * Card for whatever is selected. A hall lane uses that lane's live metrics.
  * A service vehicle uses its pose. Everything else keeps the building reading.
  */
+/** Changes when the open facility or vehicle card's queue, bays, or note change. */
+export function facilityLiveKey(game: Game): string {
+  const card = inspectorCard(game)
+  if (!card) return ''
+  return [card.id, card.status, card.queueLength, card.queueText, card.baysText, card.note ?? '', card.staffText].join('|')
+}
+
 export function inspectorCard(game: Game): BuildingCard | null {
   if (game.view === 'hall' && game.selectedFacility && game.hallNav.live) {
     const metric = game.hallNav.metrics().find((row) => row.id === game.selectedFacility)

@@ -150,6 +150,8 @@ function hudSnapshot(): string {
         game.signed.join(','),
         game.selectedFlight,
         game.selectedBuilding ?? '',
+        game.selectedFacility ?? '',
+        game.assignPick?.id ?? '',
         game.selectedGuest,
         game.news[0]?.id,
         game.fuelLoads,

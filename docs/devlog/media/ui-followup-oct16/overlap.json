@@ -1,0 +1,69 @@
+{
+  "wait": {
+    "offer": true,
+    "flight": true
+  },
+  "flightOffer": {
+    "boxes": [
+      {
+        "id": "flight-card",
+        "x": 932,
+        "y": 397,
+        "w": 340,
+        "h": 163
+      },
+      {
+        "id": "offer",
+        "x": 26,
+        "y": -6.109375,
+        "w": 264,
+        "h": 324.9375
+      },
+      {
+        "id": "phone",
+        "x": 8,
+        "y": 477.890625,
+        "w": 300,
+        "h": 197.609375
+      }
+    ],
+    "overlaps": [],
+    "cardUp": true,
+    "frames": 72,
+    "step": 0.08333333333333333
+  },
+  "flightOfferStep": {
+    "frames": 72,
+    "reused": true
+  },
+  "inspectorSecurityStep": {
+    "frames": 144,
+    "clock0": 237.19510000000187,
+    "clock1": 249.19510000000324
+  },
+  "inspectorSecurity": {
+    "point": {
+      "x": 640.0000000000001,
+      "y": 298.9010677371494
+    },
+    "before": {
+      "phase": "",
+      "note": "Serving",
+      "queue": "0 waitingInputs: people waiting at these desks, not counting the passenger being served.",
+      "bays": "1 / 1Inputs: bays in use against this building's bay count. A bay is in use only when its kit is present, the crew is not zero, and something is asking for it.Served 10 · in use",
+      "vehicle": "",
+      "offer": ""
+    },
+    "after": {
+      "phase": "",
+      "note": "Clear",
+      "queue": "0 waitingInputs: people waiting at these desks, not counting the passenger being served.",
+      "bays": "0 / 1Inputs: bays in use against this building's bay count. A bay is in use only when its kit is present, the crew is not zero, and something is asking for it.Served 13 · idle",
+      "vehicle": "",
+      "offer": ""
+    },
+    "frames": 144,
+    "step": 0.08333333333333333,
+    "changed": true
+  }
+}

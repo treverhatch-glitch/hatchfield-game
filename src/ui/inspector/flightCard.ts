@@ -209,6 +209,59 @@ export function flightCardFlightId(): string | null {
   return open ? shownId : null
 }
 
+/**
+ * Identity of the open card's flight. Changes when that flight's phase,
+ * elapsed second, passengers, or turnaround services change — not when
+ * some other flight (including flights[0]) moves.
+ */
+export function flightLiveKey(game: {
+  flights: Flight[]
+  selectedFlight: string | null
+  cartServiceHold: (id: string) => CartServiceHold
+}): string {
+  const id = flightCardFlightId()
+  if (!id || game.selectedFlight !== id) return ''
+  const flight = game.flights.find((row) => row.id === id)
+  if (!flight || flight.phase === 'gone') return ''
+  const services = serviceProgress(flight, game.cartServiceHold(flight.id))
+  return [
+    flight.id,
+    flight.phase,
+    Math.floor(Math.max(0, flight.phaseTime)),
+    flight.pax,
+    flight.waitingOn.paxIn,
+    flight.waitingOn.paxOut,
+    services.map((row) => `${row.id}:${row.state}:${row.detail}`).join(','),
+    flight.ledger.length,
+  ].join('|')
+}
+
+/** Re-render the open card on sim emits and on animation frames while the key moves. */
+export function subscribeFlightLive(
+  game: { subscribe: (fn: () => void) => () => void; flights: Flight[]; selectedFlight: string | null; cartServiceHold: (id: string) => CartServiceHold },
+  listener: () => void,
+): () => void {
+  let alive = true
+  let last = flightLiveKey(game)
+  const pull = () => {
+    const next = flightLiveKey(game)
+    if (next === last) return
+    last = next
+    listener()
+  }
+  const off = game.subscribe(pull)
+  const frame = () => {
+    if (!alive) return
+    pull()
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame)
+  }
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame)
+  return () => {
+    alive = false
+    off()
+  }
+}
+
 export function openFlightCard(id: string) {
   if (open && shownId === id) return
   open = true

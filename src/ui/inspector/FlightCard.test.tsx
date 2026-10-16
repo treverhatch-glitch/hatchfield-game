@@ -9,7 +9,9 @@ import {
   FLIGHT_CARD_BOTTOM,
   FLIGHT_CARD_WIDTH,
   closeFlightCard,
+  flightLiveKey,
   isFlightCardOpen,
+  openFlightCard,
   resetFlightCard,
   syncFlightCardClick,
 } from './flightCard.ts'
@@ -97,6 +99,10 @@ describe('apron flight card', () => {
 
     const html = renderToStaticMarkup(<ApronFlightCard game={game} />)
     expect(html).toContain('data-testid="flight-card"')
+    expect(html).toContain('data-testid="flight-phase"')
+    expect(html).toContain('data-phase="servicing"')
+    expect(html).toContain('Servicing · 12s')
+    expect(html.indexOf('flight-phase')).toBeLessThan(html.indexOf('flight-stand'))
     expect(html).not.toContain('Flight planner')
     expect(html).toContain('Harbor Air')
     expect(html).toContain('Boeing 737-800')
@@ -140,5 +146,30 @@ describe('apron flight card', () => {
     expect(isFlightCardOpen()).toBe(false)
     expect(game.selectedFlight).toBe(flight.id)
     expect(renderToStaticMarkup(<ApronFlightCard game={game} />)).toBe('')
+  })
+
+  it('live key follows the selected flight phase, not the first flight', () => {
+    const game = new Game()
+    const stand = { c: 3, r: 3 }
+    const first = flightAt(stand)
+    first.id = 'flt-first'
+    first.phase = 'landing'
+    first.phaseTime = 4
+    const selected = flightAt(stand)
+    selected.id = 'flt-selected'
+    selected.flightNo = 'HB404'
+    selected.phase = 'board'
+    selected.phaseTime = 2
+    game.flights.push(first, selected)
+    game.selectedFlight = selected.id
+    openFlightCard(selected.id)
+
+    expect(flightLiveKey(game).split('|')[1]).toBe('board')
+    selected.phase = 'pushback'
+    selected.phaseTime = 0.2
+    expect(flightLiveKey(game).split('|')[1]).toBe('pushback')
+    first.phase = 'takeoff'
+    expect(flightLiveKey(game)).not.toContain('takeoff')
+    expect(flightLiveKey(game).split('|')[1]).toBe('pushback')
   })
 })
