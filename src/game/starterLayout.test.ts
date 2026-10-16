@@ -3,7 +3,7 @@ import { deliveryPath } from '../fuel/path.ts'
 import { buildNetwork } from '../landside/network.ts'
 import { starterField } from '../landside/fixtures.test-util.ts'
 import { bagSortYaw } from '../render/world/bagFacing.ts'
-import { apronDocks, bowserPath, nearestPath, retireApronBelts, runwayStrips, shedStops, standBeltLinked, standBeltViaSort, tilesOf, walkableFor } from './path'
+import { apronDocks, bowserPath, nearestPath, retireApronBelts, runwayStrips, shedStops, standBeltLinked, standBeltViaSort, tilesOf, tugTrainPath, walkableFor } from './path'
 import { clearanceIntrusions, runwayBoxes } from './runwayClearance'
 import { Game } from './sim'
 import { STARTER_KITS, stampStarterKit } from './starterLayout'
@@ -138,9 +138,9 @@ describe('starter kits', () => {
     expect(shedStop?.at(-1)).not.toEqual(shed[0])
     expect(first.tiles[shedStop!.at(-1)!.r][shedStop!.at(-1)!.c]).toBe('road')
     for (const stand of stands) {
-      const tug = nearestPath(first.tiles, { c: 14, r: 9 }, [stand], 'truck')
+      const tug = tugTrainPath(first.tiles, { c: 14, r: 9 }, stand)
       expect(tug, `tug train to ${stand.c},${stand.r}`).toBeTruthy()
-      expect(tug!.length).toBeGreaterThanOrEqual(2)
+      expect(tug!.some((cell) => first.tiles[cell.r][cell.c] === 'taxi'), `tug train taxi ${stand.c},${stand.r}`).toBe(false)
     }
     const tanker = deliveryPath(
       tilesOf(first.tiles, 'road'),

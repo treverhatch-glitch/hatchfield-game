@@ -9,14 +9,14 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | | |
 | --- | --- |
 | Seed | 1 |
-| First red line | in-game day 7, clock 1216 |
-| Peak | check-in desk, queue 1, 400 nav seconds |
-| Red line | 360 nav seconds at check-in. The four-stall curb meters the rides; tug trains on the truck pavement clear the stands so day 7 tips over it |
+| First red line | none inside 16 days |
+| Peak | check-in desk, day 6, queue 2, 358 nav seconds |
+| Red line | 360 nav seconds at check-in. The four-stall curb meters the rides. Tug trains stay on the truck pavement and only meet the taxi at the stand, so the peak stays just under the line |
 | Signed | `air_regional_1`, `zoomjet` |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
-Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them. Bag tugs drive the truck pavement from the bag room, and the bowser joins the taxiway on the road cell east of the farm instead of the stub south of the tanks, so the stands clear without a truck on the jet taxi. Check-in then flags on day 7 at clock 1216: a queue of 1 and 400 nav seconds, just over the 360-second red line. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
+Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them. Bag tugs drive the truck pavement from the bag room and join the taxi only beside the stand. The bowser joins the taxiway on the road cell east of the farm instead of the stub south of the tanks. Check-in peaks on day 6 at 358 nav seconds, a queue of 2, just under the 360-second red line, and does not flag inside 16 days. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
 
 ## What changed
 

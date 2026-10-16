@@ -925,6 +925,7 @@ import {
   runwayStrips,
   standBeltLinked,
   tilesOf,
+  tugTrainPath,
   walkableFor,
 } from './path'
 import {
@@ -25335,7 +25336,10 @@ export class Game {
     const flight = truck.flightId ? this.flights.find((item) => item.id === truck.flightId) : null
     const goal = flight?.stand ?? truck.home
     if (!goal) return
-    const path = nearestPath(this.tiles, from, [goal], 'truck')
+    const path =
+      truck.kind === 'bags'
+        ? tugTrainPath(this.tiles, from, goal)
+        : nearestPath(this.tiles, from, [goal], 'truck')
     if (!path || path.length < 2) return
     truck.path = path
     truck.seg = 0
@@ -26497,7 +26501,7 @@ export class Game {
    */
   private dispatchBagTugs(f: Flight, mission: 'load' | 'unload', home: Vec) {
     if (!f.stand) return
-    const path = nearestPath(this.tiles, home, [f.stand], 'truck')
+    const path = tugTrainPath(this.tiles, home, f.stand)
     if (!path || path.length < 2) return
     const units = Math.max(1, mission === 'load' ? (f.bagsDeposited ?? f.bagUnits ?? 0) : (f.bagUnits ?? 0))
     const heavy = heavyBagLoad(f.kind, this.standClassAt(f.stand))
@@ -26524,7 +26528,7 @@ export class Game {
     t.runsLeft = (t.runsLeft ?? 1) - 1
     t.repeatRun = true
     const from = { c: Math.round(t.x), r: Math.round(t.y) }
-    const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+    const homePath = tugTrainPath(this.tiles, from, t.home)
     t.returning = true
     t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
     t.seg = 0
@@ -28347,7 +28351,7 @@ export class Game {
           // Arrival bags: plane → shed sort (process dwell) → claim inject.
           if (t.kind === 'bags' && t.mission === 'unload' && t.home) {
             const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
-            const claimPath = nearestPath(this.tiles, from, [t.home], 'truck')
+            const claimPath = tugTrainPath(this.tiles, from, t.home)
             t.mission = 'sort_inbound'
             t.returning = true
             t.path = claimPath && claimPath.length > 1 ? claimPath : [...t.path].reverse()
@@ -28381,7 +28385,7 @@ export class Game {
           }
           t.returning = true
           if (t.home) {
-            const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+            const homePath = t.kind === 'bags' ? tugTrainPath(this.tiles, from, t.home) : nearestPath(this.tiles, from, [t.home], 'truck')
             t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
           } else {
             t.path = [...t.path].reverse()
@@ -28475,7 +28479,7 @@ export class Game {
           const fl = this.flights.find((x) => x.id === t.flightId)
           t.repeatRun = false
           if (fl?.stand) {
-            const back = nearestPath(this.tiles, t.home, [fl.stand], 'truck')
+            const back = tugTrainPath(this.tiles, t.home, fl.stand)
             if (back && back.length > 1) {
               t.path = back
               t.seg = 0
