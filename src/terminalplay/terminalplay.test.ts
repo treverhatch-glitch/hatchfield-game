@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mulberry32 } from '../playtest/personas.ts'
 import { Game } from '../game/sim.ts'
 import type { Flight } from '../game/types.ts'
 import { itemDef, type PlacedItem, type ZoneId } from '../game/terminal.ts'
@@ -247,6 +248,9 @@ describe('live queues on the doorway walk', () => {
 
 describe('prefab pace', () => {
   it('lets one bank through security, and holds a stacked bank in taxis at the curb', () => {
+    const random = Math.random
+    Math.random = mulberry32(0x5171)
+    try {
     const game = new Game()
     game.sandbox = false
     game.beginNew('easy')
@@ -318,5 +322,8 @@ describe('prefab pace', () => {
     expect(maxQueue).toBe(16)
     expect(maxBusy).toBeGreaterThan(2.5)
     expect(maxBusy).toBeLessThan(3.2)
+    } finally {
+      Math.random = random
+    }
   })
 })
