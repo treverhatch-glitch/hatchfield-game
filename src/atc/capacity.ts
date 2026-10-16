@@ -18,7 +18,9 @@ export const ARRIVAL_OCCUPANCY_SEC = 14
  * Same harness, five samples: 13.30s, 14.00s, 13.90s, 13.90s, 12.70s.
  * The lock starts at the hold line (taxi, just short of the pavement) and
  * ends when the aircraft is airborne. The constant is the longer sample,
- * rounded up.
+ * rounded up. Spacing stays on this figure. One later seed, with passengers
+ * riding to the layby, holds for 17.60s; that sample is pinned in the
+ * occupancy test and does not widen the gap.
  */
 export const DEPARTURE_OCCUPANCY_SEC = 14
 

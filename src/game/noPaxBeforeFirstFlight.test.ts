@@ -49,12 +49,16 @@ describe('no passengers before the first show-up', () => {
     })
     game.tick(0.5)
     expect(game.clock).toBeLessThan(openAt)
-    expect(game.hallGuests.filter((g) => !g.dead)).toHaveLength(0)
+    // The car is already on the road. The hall itself stays empty until the door.
+    expect(game.hallGuests.filter((g) => !g.dead && !g.curbHold)).toHaveLength(0)
     expect(game.terminalPaxCount()).toBe(0)
 
-    game.clock = openAt
-    game.tick(0.05)
-    expect(game.hallGuests.some((g) => !g.dead && !g.preview)).toBe(true)
+    let admitted = false
+    for (let i = 0; i < 400 && !admitted; i++) {
+      game.tick(0.25)
+      admitted = game.hallGuests.some((g) => !g.dead && !g.preview && !g.curbHold)
+    }
+    expect(admitted).toBe(true)
     expect(game.terminalPaxCount()).toBeGreaterThan(0)
   })
 

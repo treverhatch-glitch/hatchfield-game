@@ -246,7 +246,7 @@ describe('live queues on the doorway walk', () => {
 })
 
 describe('prefab pace', () => {
-  it('does not bottleneck on the first bank, and does once later banks stack', () => {
+  it('lets one bank through security, and holds a stacked bank in taxis at the curb', () => {
     const game = new Game()
     game.sandbox = false
     game.beginNew('easy')
@@ -264,7 +264,8 @@ describe('prefab pace', () => {
       game.tick(0.5)
       early = Math.max(early, game.securityQueueCount())
     }
-    expect(early).toBeLessThan(PLAY_TUNING.bottleneckAt)
+    // One flight drips through the layby. Security peaks at one, under the red line of 8.
+    expect(early).toBe(1)
 
     game.clock = 800
     for (let n = 0; n < 3; n++) {
@@ -281,11 +282,35 @@ describe('prefab pace', () => {
         'depart',
       )
     }
-    let late = 0
-    for (let i = 0; i < 80; i++) {
+    const late = game.hallGuests.filter((g) => g.flightId.startsWith('late-bank'))
+    expect(late).toHaveLength(39)
+    expect(late.every((g) => g.arriveMode === 'dropoff' && g.curbHold === 'ride')).toBe(true)
+
+    // Three banks due together take taxis. The layby meters them, so security
+    // stays at one. All three stalls (rows 8, 9 and 10) take a taxi. Two can
+    // sit at once: a drop-off stop is 1.2s and the next taxi is still pulling in.
+    // The rest queue on the approach. Curb load is those cars, not the rate model.
+    let security = 0
+    let maxStop = 0
+    const rows = new Set<number>()
+    let maxQueue = 0
+    let maxBusy = 0
+    for (let i = 0; i < 360; i++) {
       game.tick(0.25)
-      late = Math.max(late, game.securityQueueCount())
+      security = Math.max(security, game.securityQueueCount())
+      const view = game.landsideView()
+      const trips = view.vehicles.filter((v) => v.orderId)
+      const stopped = trips.filter((v) => v.state === 'stop' && v.c < 16.85 && v.r > 7 && v.r < 11)
+      maxStop = Math.max(maxStop, stopped.length)
+      maxQueue = Math.max(maxQueue, trips.filter((v) => v.state === 'queue').length)
+      maxBusy = Math.max(maxBusy, view.curbBusy)
+      for (const v of stopped) rows.add(Math.round(v.r))
     }
-    expect(late).toBeGreaterThanOrEqual(PLAY_TUNING.bottleneckAt)
+    expect(security).toBe(1)
+    expect(maxStop).toBe(2)
+    expect([...rows].sort((a, b) => a - b)).toEqual([8, 9, 10])
+    expect(maxQueue).toBe(18)
+    expect(maxBusy).toBeGreaterThan(2)
+    expect(maxBusy).toBeLessThan(2.5)
   })
 })
