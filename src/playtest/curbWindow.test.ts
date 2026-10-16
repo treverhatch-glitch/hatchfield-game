@@ -4,17 +4,17 @@ import { mulberry32 } from './personas.ts'
 import { TIP_PERSONAS, runHeadless } from './run.ts'
 
 /**
- * The starter curb stays under pressure 1 through day 16. The 88 m hall
- * faces the road with four stalls, the stands sit a bay apart, and the city
- * road forks so the passenger branch never enters the guard. The first
- * reading over 1 is day 17.
- * The eighth carrier is on the books between day 14 and 35. Careful's curb
- * stamp is left off, and the tip policy leaves the second strip off, so the
- * reading is the starter curb alone. The bay that
+ * The 88 m hall faces the road with four stalls. Passengers ride their own
+ * cars, and curb load follows the cars sitting in those stalls. The city
+ * road forks, so the passenger branch never enters the guard. Pressure stays
+ * under 1 through day 19 and crosses on day 20. The eighth carrier, with 80
+ * flights, is on the books on day 19, still just under 1.
+ * Careful's curb stamp is left off, and the tip policy leaves the second
+ * strip off, so the reading is the starter curb alone. The bay that
  * brings it back under 1 is pinned in src/landside/landside.test.ts.
  */
 describe('starter curb pressure window', () => {
-  it('stays under 1 through day 16, crosses on day 17, and seats the eighth carrier by day 35', { timeout: 180_000 }, () => {
+  it('stays under 1 through day 19, crosses on day 20, and seats the eighth carrier on day 19', { timeout: 180_000 }, () => {
     const spec = TIP_PERSONAS.find((persona) => persona.id === 'careful')
     expect(spec).toBeTruthy()
     const peaks = new Map<number, { pressure: number; flights: number; carriers: number; bays: number; ranks: number; curbLanes: number }>()
@@ -74,22 +74,18 @@ describe('starter curb pressure window', () => {
       expect(peaks.get(day)!.pressure, `day ${day}`).toBeLessThan(1)
     }
     for (const day of days) {
-      if (day >= 17) break
+      if (day >= 20) break
       expect(peaks.get(day)!.pressure, `day ${day} before the window`).toBeLessThan(1)
     }
     const crossed = days.filter((day) => peaks.get(day)!.pressure > 1)
-    expect(crossed.length, 'pressure never crossed 1').toBeGreaterThan(0)
-    expect(crossed[0]!, `first cross on day ${crossed[0]}`).toBe(17)
-    expect(crossed[0]!, `first cross on day ${crossed[0]}`).toBeLessThanOrEqual(35)
+    expect(crossed[0], `first cross on day ${crossed[0]}`).toBe(20)
     const grown = days.find((day) => {
       const row = peaks.get(day)!
       return row.carriers >= 8 && row.flights >= 80
     })
-    expect(grown, `days ${days.length} last ${JSON.stringify(peaks.get(days.at(-1)!))}`).toBeDefined()
-    expect(grown!).toBeGreaterThanOrEqual(14)
-    expect(grown!).toBeLessThanOrEqual(35)
-    const at = peaks.get(grown!)!
-    expect(at.pressure, `day ${grown} carriers ${at.carriers} flights ${at.flights}`).toBeGreaterThan(1)
+    expect(grown).toBe(19)
+    const at = peaks.get(20)!
+    expect(at.pressure).toBeGreaterThan(1)
     expect(at.bays, 'starter curb only').toBe(0)
     expect(at.ranks).toBe(0)
     expect(at.curbLanes).toBe(0)

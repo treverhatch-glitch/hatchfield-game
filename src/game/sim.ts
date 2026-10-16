@@ -15068,7 +15068,7 @@ export class Game {
    */
   terminalPaxCount(): number {
     if (this.hallNav.live) return this.hallNav.passengers
-    return this.hallGuests.filter((g) => !g.dead && !g.preview).length
+    return this.hallGuests.filter((g) => !g.dead && !g.preview && !g.curbHold).length
   }
 
   /** Drop a departure wave at the doors so the lane can be watched. */

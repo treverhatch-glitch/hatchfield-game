@@ -89,7 +89,8 @@ describe('landside wiring', () => {
     const view = game.landsideView()
     expect(view.segments.length).toBeGreaterThan(0)
     expect(view.curbStalls).toBeGreaterThan(0)
-    expect(view.vehicles.length).toBeGreaterThan(0)
+    // No flight is due in this window, so the road stays empty. Decorative cars are off.
+    expect(view.vehicles).toHaveLength(0)
     expect(game.landsideUpkeep()).toBe(upkeep)
   })
 

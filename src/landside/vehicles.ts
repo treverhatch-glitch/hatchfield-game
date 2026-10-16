@@ -456,6 +456,20 @@ export class LandsideFleet {
     })
   }
 
+  /**
+   * Stalls with a car in them: pulling in, stopped, or still waiting to pull out.
+   * A car that only has a reservation and is still on the approach does not count.
+   */
+  stallsHeld(): number {
+    let n = 0
+    for (const car of this.cars) {
+      const slot = car.slot
+      if (!slot || slot.park) continue
+      if (car.mode === 'pullIn' || car.phase === 'dwell' || car.phase === 'leave') n++
+    }
+    return n
+  }
+
   passengers(): PassengerRead[] {
     return this.walkers.map((walker) => {
       const t = Math.min(1, walker.age / LANDSIDE.walkSec)

@@ -244,8 +244,8 @@ function segmentsFor(net: Network, sample: Sample, queue: number, curbBusy: numb
  * Landside traffic: the capacity model plus the vehicles that are drawn.
  * Pressure, delay and missed check-ins come from {@link measure}. The drawn
  * vehicles follow those per-kind rates until {@link LandsideTraffic.offer}
- * hands them real passenger trips. Either way they use the real stalls and
- * never feed back into the numbers.
+ * hands them real passenger trips. Stall load (`curbBusy`) is the cars
+ * actually in the stalls. Pressure, delay, and the rate queue stay on measure.
  * Rendering reads {@link LandsideTraffic.snapshot} and does not feed back.
  * The drawn vehicles are also bodies on the shared {@link BodySource} list.
  */
@@ -310,7 +310,6 @@ export class LandsideTraffic implements BodySource {
     const sample = measure(field, net)
     this.queue = smooth(this.queue, sample.queue, dt)
     this.delaySec = smooth(this.delaySec, sample.delaySec, dt)
-    this.curbBusy = smooth(this.curbBusy, sample.curbBusy, dt)
     const late = this.delaySec > LANDSIDE.delayGraceSec
     const news =
       late && !this.wasLate
@@ -328,6 +327,7 @@ export class LandsideTraffic implements BodySource {
       taxi: sample.taxiVehPerMin,
       bus: sample.busVehPerMin,
     })
+    this.curbBusy = smooth(this.curbBusy, this.fleet.stallsHeld(), dt)
     this.view = {
       segments: segmentsFor(net, sample, this.queue, this.curbBusy),
       vehicles: this.fleet.vehicles(),
