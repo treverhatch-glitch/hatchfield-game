@@ -11,9 +11,9 @@ describe('roster livery plates', () => {
   it('maps every Gemini carrier onto the airframes it flies, and leaves the five base carriers procedural', () => {
     const withRef = ROSTER.filter((airline) => airline.ref)
     const without = ROSTER.filter((airline) => !airline.ref)
-    expect(ROSTER).toHaveLength(45)
+    expect(ROSTER).toHaveLength(46)
     expect(withRef).toHaveLength(40)
-    expect(without).toHaveLength(5)
+    expect(without).toHaveLength(6)
     for (const airline of withRef) {
       expect(listedLivery(airline.id)).toBe(true)
       expect(liveryPreload(airline.id)).toBe(false)
@@ -26,6 +26,11 @@ describe('roster livery plates', () => {
       expect(existsSync(`public/textures/liveries/${airline.id}/low/tail.jpg`)).toBe(true)
     }
     for (const airline of without) {
+      if (airline.id === 'siam_breeze') {
+        expect(listedLivery(airline.id)).toBe(true)
+        expect(jpegLiveryFits(airline.id, 'a320neo')).toBe(true)
+        continue
+      }
       expect(listedLivery(airline.id)).toBe(false)
       expect(existsSync(`public/textures/liveries/${airline.id}/fuselage.jpg`)).toBe(false)
     }

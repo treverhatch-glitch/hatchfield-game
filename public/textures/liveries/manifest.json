@@ -44,9 +44,7 @@
         "siam_breeze"
       ],
       "types": [
-        "b789",
-        "a321",
-        "a359"
+        "a320neo"
       ]
     },
     {
@@ -278,7 +276,7 @@
     },
     {
       "id": "lotus_air",
-      "engine": "#31104d",
+      "engine": "#46225e",
       "airlines": [
         "lotus_air"
       ],

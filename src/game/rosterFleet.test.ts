@@ -138,8 +138,8 @@ beforeEach(() => {
 })
 
 describe('roster fleets', () => {
-  it('resolves all 45 fleets onto AIRFRAMES and seats from those airframes', () => {
-    expect(ROSTER).toHaveLength(45)
+  it('resolves every roster fleet onto AIRFRAMES and seats from those airframes', () => {
+    expect(ROSTER).toHaveLength(46)
     expect(SAVE_SCHEMA_VERSION).toBe(6)
     let seatMismatch = 0
     for (const r of ROSTER) {

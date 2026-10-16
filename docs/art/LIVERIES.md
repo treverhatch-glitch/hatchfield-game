@@ -11,6 +11,7 @@ Served from `public/textures/liveries/<id>/`. High is the crop at its own pixels
 | `bushline_local` | Bushline (`bushline`) | `bn2`, `dhc6` |
 | `crown_pacific` | Crown Pacific (`crown`) | `a380`, `b77w` |
 | `zoomjet` | Zoomjet (`zoomjet`) | `a320neo`, `b738`, `b38m` |
+| `siam_breeze` | Siam Breeze (`siam_breeze`) | `a320neo` |
 | 40 Gemini roster plates | The roster id of the same name (`brisa`, `atlas_cargo`, …) | That carrier's fleet |
 
 Zoomjet is a negotiation carrier. `game.allAirlines()` lists it, and a field that meets the asks can sign it. The scripted playthrough line "could not sign zoomjet" is from before that listing. It is not negotiation-only.
@@ -19,11 +20,10 @@ Its contract does not name metal. `CONTRACT_FLEET` stays unset, so spawn still d
 
 ## Plates with no carrier
 
-These ids resolve a livery and the files are on disk. No row in the catalog, the 45-airline roster, or the negotiation book uses the id, so a normal game never spawns an aircraft in that paint. No new airline was added for them.
+These ids resolve a livery and the files are on disk. No row in the catalog, the roster, or the negotiation book uses the id, so a normal game never spawns an aircraft in that paint.
 
 | Plate | Airframes on the plate | Why it does not fly |
 | --- | --- | --- |
-| `siam_breeze` | `b789`, `a321`, `a359` | No airline id `siam_breeze` |
 | `northstar_cargo` | `b752f`, `b763f`, `b748f` | No airline id `northstar_cargo` |
 
 ## Live procedural paint (concept palette + tail decal)
