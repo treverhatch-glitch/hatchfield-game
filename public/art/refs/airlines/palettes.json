@@ -164,10 +164,10 @@
   "lotus_air": {
    "name": "Lotus Air",
    "ref": "public/art/refs/airlines/lotus_air.jpg",
-   "primary": "#31104d",
-   "secondary": "#f0f0f0",
+   "primary": "#46225e",
+   "secondary": "#ba9551",
    "accent": "#282830",
-   "description": "Dark red-led livery, white secondary, dark blue accent, white fuselage."
+   "description": "Purple-led livery, gold secondary, dark accent, white fuselage."
   },
   "maple_coastal": {
    "name": "Maple Coastal",

@@ -1,5 +1,5 @@
 /**
- * The 45-airline roster as playable game airlines. Each roster carrier takes
+ * The roster as playable game airlines. Each roster carrier takes
  * the economics and facility asks of a catalog carrier of the same kind
  * (ROSTER_TEMPLATE), its own name, colours and fleet, and a reputation gate
  * from the roster unlock table. Liveries come from procLivery: a flight whose

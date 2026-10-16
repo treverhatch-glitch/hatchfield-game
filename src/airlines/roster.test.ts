@@ -7,16 +7,21 @@ import { DEFAULT_AIRLINES } from './data.ts'
 const HEX = /^#[0-9a-f]{6}$/i
 
 describe('roster', () => {
-  it('has 45 airlines: 5 base and 40 from the palette file', () => {
-    expect(ROSTER).toHaveLength(45)
+  it('has 46 airlines: 5 base, 40 from the palette file, and Siam Breeze', () => {
+    expect(ROSTER).toHaveLength(46)
     expect(Object.keys(palettes.airlines)).toHaveLength(40)
     for (const base of DEFAULT_AIRLINES) expect(rosterAirline(base.id)).toBeDefined()
+    const siam = rosterAirline('siam_breeze')
+    expect(siam?.name).toBe('Siam Breeze')
+    expect(siam?.fleet).toEqual(['a320neo'])
+    expect(siam?.primary).toBe('#1b8480')
+    expect(siam?.secondary).toBe('#c6a35a')
   })
 
   it('has unique ids, names and three-letter codes', () => {
-    expect(new Set(ROSTER.map((a) => a.id)).size).toBe(45)
-    expect(new Set(ROSTER.map((a) => a.name)).size).toBe(45)
-    expect(new Set(ROSTER.map((a) => a.code)).size).toBe(45)
+    expect(new Set(ROSTER.map((a) => a.id)).size).toBe(46)
+    expect(new Set(ROSTER.map((a) => a.name)).size).toBe(46)
+    expect(new Set(ROSTER.map((a) => a.code)).size).toBe(46)
     for (const a of ROSTER) expect(a.code).toMatch(/^[A-Z]{3}$/)
   })
 

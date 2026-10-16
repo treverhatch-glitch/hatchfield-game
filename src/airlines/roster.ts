@@ -1,8 +1,9 @@
 /**
- * The 45-airline roster: the 5 base airlines plus 40 fictional ones.
+ * The 46-airline roster: the 5 base airlines, 40 fictional ones, and Siam Breeze.
  * Colours for the 40 come from public/art/refs/airlines/palettes.json (sampled
- * from the Gemini livery refs). Tunable numbers live in rosterConfig.ts; the
- * contract and livery code only read this file.
+ * from the Gemini livery refs). Siam Breeze wears the teal/gold plate already
+ * on disk. Tunable numbers live in rosterConfig.ts; the contract and livery
+ * code only read this file.
  */
 import palettes from '../../public/art/refs/airlines/palettes.json'
 import { DEFAULT_AIRLINES } from './data.ts'
@@ -274,6 +275,18 @@ function build(): RosterAirline[] {
       ref: pal.ref,
     })
   }
+  // Photographed plate already on disk. Not a palette-file carrier.
+  out.push({
+    id: 'siam_breeze',
+    name: 'Siam Breeze',
+    code: 'SMB',
+    type: 'budget',
+    primary: '#1b8480',
+    secondary: '#c6a35a',
+    accent: '#f7fbfa',
+    motif: 'none',
+    fleet: ['a320neo'],
+  })
   return out
 }
 

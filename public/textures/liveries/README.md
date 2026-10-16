@@ -36,9 +36,9 @@ those plates off the boot fetch.
 `b738`, or `b38m`. Zoomjet is a negotiation carrier listed by
 `game.allAirlines()` and can be signed. Its contract does not name metal, so
 other types in the 180-seat band stay procedural.
-`siam_breeze` and `northstar_cargo` resolve to plates, and no airline in the
-catalog, the roster, or the negotiation book uses those ids, so no flight
-wears them.
+`siam_breeze` is the roster carrier Siam Breeze and wears this plate on `a320neo`.
+`northstar_cargo` resolves to a plate, and no airline in the catalog, the
+roster, or the negotiation book uses that id, so no flight wears it.
 
 The five base roster carriers (Puddle Jumper, SkyCheap, Prestige Air, National
 Airways, HeavyLift) stay on procedural paint. Their colours and tail decals

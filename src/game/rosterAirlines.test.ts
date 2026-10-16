@@ -31,10 +31,10 @@ beforeEach(() => {
 })
 
 describe('roster airlines in the live game', () => {
-  it('turns all 45 roster carriers into game airlines with their own paint', () => {
+  it('turns every roster carrier into a game airline with its own paint', () => {
     const all = rosterGameAirlines()
     expect(all).toHaveLength(ROSTER.length)
-    expect(ROSTER.length).toBe(45)
+    expect(ROSTER.length).toBe(46)
     for (const r of ROSTER) {
       const a = rosterGameAirline(r.id)!
       expect(a.name).toBe(r.name)
@@ -48,7 +48,7 @@ describe('roster airlines in the live game', () => {
     const game = fresh()
     const r = ROSTER[10]
     expect(game.airline(r.id).name).toBe(r.name)
-    expect(game.allAirlines().filter((a) => isRosterAirlineId(a.id))).toHaveLength(45)
+    expect(game.allAirlines().filter((a) => isRosterAirlineId(a.id))).toHaveLength(46)
   })
 
   it('sends contract letters from the roster, not the 8 catalog carriers', () => {

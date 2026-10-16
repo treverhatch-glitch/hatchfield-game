@@ -3065,7 +3065,7 @@ export class Game {
     return craftRoleLabel(kind)
   }
 
-  /** Premade catalog, the 45-airline roster, live procedural regionals and negotiation carriers. */
+  /** Premade catalog, the roster, live procedural regionals and negotiation carriers. */
   allAirlines(): Airline[] {
     const roster = rosterGameAirlines().map((a) => normalizeAirline(a))
     // Negotiation-only carriers (Zoomjet etc.) resolve through airline(); list them so they can be signed.

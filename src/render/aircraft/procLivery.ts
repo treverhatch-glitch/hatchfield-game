@@ -1,5 +1,5 @@
 /**
- * Procedural liveries for the 45-airline roster.
+ * Procedural liveries for the roster.
  *
  * Colours come from the roster (sampled from the Gemini refs). Each airline and
  * model pair gets a spec (fuselage, belly, cheatline, tail colour and motif,
