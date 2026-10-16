@@ -1459,6 +1459,9 @@ export class PaxNav {
       }
       const remaining = this.queueDist(f, F, goal) + seg
       if (!a.joined && (nxt < 0 || remaining <= st.queue.length * spacing + spacing * 0.5)) {
+        // Stand on the marked line. A lateral offset puts the body in the rail.
+        a.ox = 0
+        a.oz = 0
         st.incoming = Math.max(0, st.incoming - 1)
         st.queue.push(a)
         a.place = st.queue.length - 1

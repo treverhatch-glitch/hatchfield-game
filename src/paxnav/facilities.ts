@@ -105,8 +105,10 @@ function deskServiceCell(g: NavGrid, eq: Equip, layer: number, upstream: Field):
     const ox = (t.x + g.margin) * k
     const oy = (t.y + g.margin) * k
     // Cell on t's side of the shared edge, in the middle of it.
-    const cx = dx === 1 ? ox : dx === -1 ? ox + k - 1 : ox + lo
-    const cy = dy === 1 ? oy : dy === -1 ? oy + k - 1 : oy + lo
+    // One extra cell on a half-metre grid puts the body about a metre in front of the counter.
+    const shove = k > 1 ? 1 : 0
+    const cx = dx === 1 ? ox + shove : dx === -1 ? ox + k - 1 - shove : ox + lo
+    const cy = dy === 1 ? oy + shove : dy === -1 ? oy + k - 1 - shove : oy + lo
     if (cx < 0 || cy < 0 || cx >= g.gw || cy >= g.gh) continue
     const c = cy * g.gw + cx
     if (!(g.mask[c] & layer) || g.mask[c] & LANE) continue
@@ -121,11 +123,11 @@ function deskServiceCell(g: NavGrid, eq: Equip, layer: number, upstream: Field):
   return best
 }
 
-/** Service cell for a lane: the middle of its tile. */
+/** Service cell for a lane: the entrance edge of its tile, still on the lane. */
 function laneServiceCell(g: NavGrid, eq: Equip): number {
   const cells = cellsOfTile(g, eq)
   const mid = Math.floor(g.k / 2)
-  return cells[mid * g.k + mid - 1] ?? -1
+  return cells[mid] ?? cells[mid * g.k + mid - 1] ?? -1
 }
 
 /**

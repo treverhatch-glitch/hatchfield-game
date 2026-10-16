@@ -26530,6 +26530,8 @@ export class Game {
       } else if (resolved === 'unload') {
         this.assignClaimLane(f)
         this.setBagStage(f, 'unload_aircraft')
+        const airline = this.airline(f.airline)
+        cargoUnits = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
       }
     }
     this.trucks.push({
