@@ -4,7 +4,7 @@ import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
 import { REAL_AIRFRAMES } from '../../render/aircraft/realworld'
 import { footprintLetter, standRefusal } from '../../stands/index'
-import { checkInGhost, isIntlKind } from './checkInGhost'
+import { checkInGhost, flightIsIntl } from './checkInGhost'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { gameMinToSim, SCHEDULE, turnBand } from './scheduleConfig'
 import { contractSlotWindow, turnTargetSec } from './schedulerBridge'
@@ -174,7 +174,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     const airlineKind = 'kind' in al ? al.kind : undefined
     const biz = 'bizModel' in al ? al.bizModel : undefined
     const pax = airlineKind !== 'cargo' && biz !== 'cargo'
-    const ghost = pax ? checkInGhost(onTo, flight ? isIntlKind(flight.kind) : false) : null
+    const ghost = pax ? checkInGhost(onTo, flight ? flightIsIntl(flight) : false) : null
     const status: TtFlight['status'] =
       slot.status === 'cancelled' ? 'cancelled' : slot.status === 'done' ? 'done' : slot.status
     const win = windowOf(slot)

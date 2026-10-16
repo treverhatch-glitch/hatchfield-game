@@ -45,6 +45,16 @@ export function isIntlKind(kind: string): boolean {
   return kind === 'widebody'
 }
 
+/**
+ * One international test for show-up timing and the arrival passport stage.
+ * A route flag wins once the route carries one. Until then, wide-bodies are international.
+ */
+export function flightIsIntl(flight: { kind?: string; intl?: boolean } | null | undefined): boolean {
+  if (!flight) return false
+  if (typeof flight.intl === 'boolean') return flight.intl
+  return isIntlKind(flight.kind ?? '')
+}
+
 export function checkInCloseAt(std: number, intl: boolean): number {
   const lead = intl ? CHECKIN_CLOSE_INTL_GAME_MIN : CHECKIN_CLOSE_DOM_GAME_MIN
   return std - gameMinToSim(lead)

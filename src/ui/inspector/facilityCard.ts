@@ -14,6 +14,8 @@ const KIND_NAME: Record<EquipKind, string> = {
   shop_counter: 'Shop counter',
   toilet: 'Toilet',
   office_desk: 'Office desk',
+  bag_drop: 'Bag drop',
+  passport_booth: 'Passport booth',
 }
 
 const VEHICLE_NAME: Record<string, string> = {

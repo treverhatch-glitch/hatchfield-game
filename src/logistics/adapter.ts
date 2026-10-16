@@ -4,6 +4,38 @@ import type { MaintenanceMetrics } from './maintenance'
 import { applyFeatureEventEffect, type FeatureEventEffectLike } from './events-bridge'
 import type { DelayCause, LogisticsConfig, LogisticsEvent, TurnaroundOptions } from './types'
 
+export interface BagDock {
+  socket: string
+  dock: 'sort' | 'hall'
+  /** Apron tile of the bag sort building, or null when the bags dock at the hall. */
+  building: string | null
+}
+
+/**
+ * Dock each bag socket to the nearest bags tile (Batch D sort) or, when the
+ * apron has no bags building, to the hall through the same socket record.
+ */
+export function dockBagSockets(
+  sockets: readonly { socket: string; kind: string; x: number; z: number }[],
+  tiles: readonly { id: string; x: number; z: number }[],
+): BagDock[] {
+  return sockets
+    .filter((s) => s.kind === 'bag_out' || s.kind === 'bag_in')
+    .map((s) => {
+      if (!tiles.length) return { socket: s.socket, dock: 'hall' as const, building: null }
+      let best = tiles[0]
+      let bestD = Infinity
+      for (const t of tiles) {
+        const d = (t.x - s.x) ** 2 + (t.z - s.z) ** 2
+        if (d < bestD) {
+          bestD = d
+          best = t
+        }
+      }
+      return { socket: s.socket, dock: 'sort' as const, building: best.id }
+    })
+}
+
 /** What the game sim calls. Kept tiny so sim.ts only needs a handful of lines. */
 export interface LogisticsAdapter {
   /** Call every sim step with elapsed game minutes. */
@@ -14,6 +46,10 @@ export interface LogisticsAdapter {
   paxArrivedAtGate(standId: string, countOrIds: number | string[]): number
   /** Terminal sim: outbound bags ready at make-up (count or bag tag ids). */
   bagsReadyAtMakeup(standId: string, countOrIds: number | string[]): number
+  /** Bag ports docked to the sort building, or to the hall when there is no bags tile. */
+  dockBagPorts(docks: readonly BagDock[]): void
+  /** Ports docked by the last `dockBagPorts` call. */
+  bagPorts(): BagDock[]
   /** True once every service incl. pushback is finished. */
   isReadyToDepart(standId: string): boolean
   /** Minutes the aircraft on this stand is running late (0 if on time). */
@@ -91,6 +127,7 @@ export function createLogisticsAdapter(
 ): LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] } {
   const sim = new LogisticsSim(config)
   const completed: TurnaroundResult[] = []
+  let bagDocks: BagDock[] = []
   const done = new Set<string>()
   sim.on((e: LogisticsEvent) => {
     switch (e.type) {
@@ -186,6 +223,10 @@ export function createLogisticsAdapter(
     },
     paxArrivedAtGate: (standId, countOrIds) => sim.paxArrivedAtGate(standId, countOrIds),
     bagsReadyAtMakeup: (standId, countOrIds) => sim.bagsReadyAtMakeup(standId, countOrIds),
+    dockBagPorts(docks) {
+      bagDocks = docks.slice()
+    },
+    bagPorts: () => bagDocks.slice(),
     isReadyToDepart: (standId) => done.has(standId),
     delayAt(standId) {
       const t = sim.turnaroundAt(standId)

@@ -71,6 +71,12 @@ export interface NavGuest {
   airlineId?: string
   /** Still on a curb trip. The hall walk starts once they are through the doors. */
   curbHold?: 'ride' | 'walk-in' | 'walk-out'
+  /** International arrival. Passport runs only when this is set. */
+  intl?: boolean
+  /** Stand access: stairs, bus, or bridge. Changes the door they use. */
+  boardMethod?: 'stairs' | 'bus' | 'bridge'
+  /** Place in the claim belt sequence. */
+  bagSeq?: number
 }
 
 /** Sim fare persona -> walker purpose. Family fares are leisure or family trips, so they roll. */
@@ -413,7 +419,9 @@ export function hallClaimHall(fit: { layout?: BuildLayout; build?: BuildLayout; 
 /** Hall node each kind of queued kit reports under (badges, info panel). */
 const NODE_OF: Partial<Record<EquipKind, { node: HallNode; label: string }>> = {
   checkin_desk: { node: 'checkin', label: 'Check-in' },
+  bag_drop: { node: 'checkin', label: 'Bag drop' },
   security_lane: { node: 'security', label: 'Security' },
+  passport_booth: { node: 'claim', label: 'Passport' },
   toilet: { node: 'bathroom', label: 'Restrooms' },
   shop_counter: { node: 'shop', label: 'Shops & food' },
   gate_desk: { node: 'gate', label: 'Gate' },
@@ -662,6 +670,8 @@ export class HallNav {
   feedback: GuestFeedback = emptyFeedback()
   /** Reputation the walk has earned or lost and the sim has not taken yet. */
   private repOwed = 0
+  private spentOwed = 0
+  private leftIds: string[] = []
   private signKey = ''
   /** Hired bodies on each post. Null until the sim says; then points follow it. */
   private hired: HiredPosts | null = null
@@ -717,6 +727,16 @@ export class HallNav {
   /** The sim arrival is drawn by the walk, not as an old hall figure. */
   drawsArrival(id: string): boolean {
     return this.live && this.owned.has(id)
+  }
+
+  /** This guest is on the walk, so the hall graph is not their authority. */
+  owns(id: string): boolean {
+    return this.live && this.owned.has(id) && (this.navObj?.has(id) === true || this.arr.has(id))
+  }
+
+  /** Still on the walk, including a missed departure heading for rebooking. */
+  hasWalker(id: string): boolean {
+    return this.navObj?.has(id) === true || this.arr.has(id)
   }
 
   /**
@@ -797,7 +817,17 @@ export class HallNav {
         if (this.seen.has(g.id)) continue
         this.seen.add(g.id)
         // No way from the jet bridge to a curb: the old figure keeps them.
-        if (this.arr.spawn({ id: g.id, gate })) {
+        if (
+          this.arr.spawn({
+            id: g.id,
+            gate,
+            bags: typeof g.bags === 'boolean' ? g.bags : undefined,
+            intl: g.intl,
+            flightId: g.flightId,
+            boardMethod: g.boardMethod,
+            bagSeq: g.bagSeq,
+          })
+        ) {
           this.owned.add(g.id)
           this.roster++
         }
@@ -816,6 +846,7 @@ export class HallNav {
         groupOf: this.groupFor(g),
         bags: g.bags,
         airlineId: g.airlineId,
+        boardMethod: g.boardMethod,
       })
       if (ok) {
         this.depOrder.push(g.id)
@@ -885,14 +916,56 @@ export class HallNav {
     f.outOfStock += fb.outOfStock
     f.spent += fb.spent
     this.repOwed += feedbackReputation(fb)
+    this.spentOwed += fb.spent
     if (gone) this.depOrder = this.depOrder.filter((id) => !gone.has(id))
     for (const e of this.arr.drainEvents()) {
       if (e.kind === 'left') {
         this.left++
         this.roster++
+        this.leftIds.push(e.id)
       } else this.stuck++
     }
     return events
+  }
+
+  /** Shop spend since the last call, so the sim can book it once. */
+  takeSpend(): number {
+    const n = this.spentOwed
+    this.spentOwed = 0
+    return n
+  }
+
+  /** Arrival ids that reached the curb since the last call. */
+  takeLeft(): string[] {
+    const out = this.leftIds
+    this.leftIds = []
+    return out
+  }
+
+  /** Hall node the walker is heading for, so security counts still see the queue. */
+  hallNode(id: string): HallNode | null {
+    const stop = this.navObj?.stopOf(id)
+    if (stop === 'checkin' || stop === 'bagdrop') return 'checkin'
+    if (stop === 'security') return 'security'
+    if (stop === 'toilet') return 'bathroom'
+    if (stop === 'food') return 'food'
+    if (stop === 'shop') return 'shop'
+    if (stop === 'gate' || stop === 'rebook') return 'gate'
+    const arr = this.arr.stopOf(id)
+    if (arr === 'passport' || arr === 'claim') return 'claim'
+    if (arr === 'exit' || arr === 'curb') return 'exit'
+    if (arr === 'toilet') return 'bathroom'
+    if (arr === 'shop') return 'shop'
+    return null
+  }
+
+  pastSecurity(id: string): boolean {
+    return this.navObj?.airside(id) === true
+  }
+
+  /** Bags on the carousel for one flight. Arrivals with a sequence wait on it. */
+  setClaimReleased(flightId: string, n: number) {
+    this.arr.setClaimReleased(flightId, n)
   }
 
   /** Id of the walker in pose slot `i` (departures, then arrivals, then crew). */

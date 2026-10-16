@@ -60,12 +60,23 @@ import { computeField, type Field } from './field.ts'
 import { guestName } from './guestNames.ts'
 import {
   apronCells,
+  boardingTargets,
   buildFacilities,
   facilityPenalty,
   seatCells,
   type Facility,
   type FacilitySet,
 } from './facilities.ts'
+import {
+  boardRoute,
+  departureStops,
+  deplaneDelay,
+  emptyTrace,
+  namedSkip,
+  noteStage,
+  type BoardMethod,
+  type StageTrace,
+} from './stages.ts'
 import { AIR, PRE, buildNavGrid, cellAt, cellX, cellZ, gridBounds, moveOpen, type NavGrid } from './grid.ts'
 
 export type NeedStop = (typeof NEED_STOPS)[number]
@@ -93,6 +104,12 @@ export interface SpawnSpec {
   startNeeds?: Partial<Record<DecayNeed, number>>
   /** Check-in airline. Unset keeps the old "any desk" choice. */
   airlineId?: string
+  /** Online check-in. With no bags, the check-in stage is skipped. */
+  online?: boolean
+  /** Stand boarding method. Unset keeps the instant jet-bridge despawn. */
+  boardMethod?: BoardMethod
+  /** Seats on one bus load. Stairs and the bridge ignore it. */
+  busCapacity?: number
 }
 
 /** One check-in desk's airline, as the sim allocated it. General desks have a null airline. */
@@ -128,6 +145,10 @@ export interface PaxEvent {
   kind: 'boarded' | 'missed' | 'stuck' | 'rebooked'
   id: string
   at: number
+  /** Guest satisfaction (0–100) at the outcome, when this walker is a guest. */
+  sat?: number
+  /** Cash spent at counters on this walk. */
+  spent?: number
 }
 
 /** Everything the guest card shows about one passenger. */
@@ -315,6 +336,20 @@ interface Agent {
   trail: Float32Array | null
   trailHead: number
   trailN: number
+  bags: boolean
+  online: boolean
+  /** Set when a desk accepted the suitcase, so bag drop is not walked again. */
+  deskTook: boolean
+  boardMethod: BoardMethod | null
+  busCapacity: number
+  trace: StageTrace
+  gateScanned: boolean
+  /** Seconds left standing in the boarding door. */
+  boardLeft: number
+  atDoor: boolean
+  boardIndex: number
+  landNoted: boolean
+  airNoted: boolean
 }
 
 const EPS = 1e-4
@@ -353,6 +388,9 @@ export class PaxNav {
   /** Bodies per nav cell, recounted each tick (guests only). */
   private dens = new Uint16Array(0)
   private fb = noFeedback()
+  /** Traces kept after a walker leaves, so a test can read the finished journey. */
+  private traces = new Map<string, StageTrace>()
+  private boardSeq = new Map<string, number>()
   /** Bumped on every `setLayout`. */
   revision = 0
   /** Check-in desks an airline may use. Null keeps every desk open to everyone. */
@@ -553,8 +591,14 @@ export class PaxNav {
     const ox = (r.next() * 2 - 1) * lat
     const oz = (r.next() * 2 - 1) * lat
     const bags = spec.bags ?? r.next() < PAXNAV_TUNING.checkinShare
+    // No bags means the pass is already online, which is the check-in skip.
+    const online = spec.online ?? !bags
     // Guests pick their optional stops from their needs on the way, unless told.
     const needs = spec.needs ?? (this.guests ? [] : NEED_STOPS.filter((n) => r.next() < PAXNAV_TUNING.needShare[n]))
+    const planned = departureStops({ bags, online, needs })
+    const trace = emptyTrace()
+    noteStage(trace, 'CURB_IN')
+    for (const skip of planned.skips) noteStage(trace, skip.stage, skip.reason)
     let speed = PAXNAV_TUNING.walkMps * (1 + (r.next() * 2 - 1) * PAXNAV_TUNING.walkSpread)
     const m = this.guests ? rollMind(spec.id, this.seed, this.now, { purpose: spec.purpose, flags: spec.flags }) : null
     if (m) {
@@ -563,8 +607,9 @@ export class PaxNav {
         if (Number.isFinite(v)) m.needs[NEED_INDEX[k]] = Math.max(0, Math.min(1, v))
       }
     }
-    const stops: StopKind[] = [...(bags ? (['checkin'] as const) : []), 'security', ...needs, 'gate']
+    const stops: StopKind[] = planned.stops
     const gate = this.gateIds.includes(spec.gate) ? spec.gate : (this.gateIds[0] ?? spec.gate)
+    if (!this.gateIds.length) noteStage(trace, 'GATE_HOLD', namedSkip('GATE_HOLD'))
     const a: Agent = {
       id: spec.id,
       cell,
@@ -602,6 +647,18 @@ export class PaxNav {
       trail: null,
       trailHead: 0,
       trailN: 0,
+      bags,
+      online,
+      deskTook: false,
+      boardMethod: spec.boardMethod ?? null,
+      busCapacity: spec.busCapacity ?? 60,
+      trace,
+      gateScanned: false,
+      boardLeft: 0,
+      atDoor: false,
+      boardIndex: -1,
+      landNoted: false,
+      airNoted: false,
     }
     this.agents.push(a)
     this.byId.set(a.id, a)
@@ -635,6 +692,11 @@ export class PaxNav {
       group: null,
       trail: null,
       trailN: 0,
+      trace: { hit: [...lead.trace.hit], skips: lead.trace.skips.map((s) => ({ ...s })) },
+      gateScanned: false,
+      boardLeft: 0,
+      atDoor: false,
+      boardIndex: -1,
     }
     if (!lead.group) {
       lead.group = []
@@ -784,6 +846,39 @@ export class PaxNav {
     return this.choose(a, STOP_KIT[s], s === 'gate' ? a.gate : null)
   }
 
+  /** A landside toilet, shop or cafe before security, when one is actually there. */
+  private pullLandside(a: Agent) {
+    if (a.landNoted || a.layer !== PRE) return
+    const sec = a.stops.indexOf('security')
+    if (sec < 0) return
+    if (a.stops.slice(0, sec).some((s) => (NEED_STOPS as readonly string[]).includes(s))) return
+    const open = this.boardOpen(a)
+    if (this.now + PAXNAV_TUNING.needSlackSec > open) {
+      noteStage(a.trace, 'LANDSIDE_FREE', namedSkip('LANDSIDE_FREE'))
+      a.landNoted = true
+      return
+    }
+    for (const s of NEED_STOPS) {
+      if (!a.stops.includes(s)) continue
+      const f = this.choose(a, STOP_KIT[s], null)
+      if (!f || f.layer !== PRE) continue
+      a.stops = a.stops.filter((x) => x !== s)
+      a.stops.splice(a.stops.indexOf('security'), 0, s)
+      return
+    }
+    noteStage(a.trace, 'LANDSIDE_FREE', namedSkip('LANDSIDE_FREE'))
+    a.landNoted = true
+  }
+
+  private markAirside(a: Agent) {
+    if (a.airNoted || a.layer !== AIR) return
+    const open = this.boardOpen(a)
+    const pending = a.stops.some((s) => (NEED_STOPS as readonly string[]).includes(s))
+    if (pending && this.now + PAXNAV_TUNING.needSlackSec <= open) return
+    noteStage(a.trace, 'AIRSIDE_FREE', namedSkip('AIRSIDE_FREE'))
+    a.airNoted = true
+  }
+
   /** Work out where to go next from the head of `stops`. */
   private plan(a: Agent): void {
     a.fac = null
@@ -791,14 +886,17 @@ export class PaxNav {
     a.place = -1
     a.lineS = -1
     a.path = null
+    this.pullLandside(a)
     let picked = false
     while (a.stops.length) {
       const s = a.stops[0]
       const open = this.boardOpen(a)
       if ((NEED_STOPS as readonly string[]).includes(s) && this.now + PAXNAV_TUNING.needSlackSec > open) {
         a.stops.shift()
+        if (a.layer === AIR && !a.stops.some((n) => (NEED_STOPS as readonly string[]).includes(n))) this.markAirside(a)
         continue
       }
+      if (s === 'gate') this.markAirside(a)
       if (s === 'gate' && a.m && !a.fixedNeeds && !picked && this.now < open && this.pickAmenity(a)) {
         picked = true
         continue
@@ -807,6 +905,7 @@ export class PaxNav {
         // Early: wait at the gate seats until boarding opens.
         a.seat = -1
         if (Number.isFinite(this.seatField(a.gate).dist[a.cell])) {
+          noteStage(a.trace, 'GATE_HOLD')
           a.phase = 'seat'
           return
         }
@@ -815,6 +914,7 @@ export class PaxNav {
       }
       const f = this.chooseFor(a, s)
       if (f) {
+        if (s === 'gate') noteStage(a.trace, 'GATE_HOLD')
         a.fac = f
         this.state(f).incoming++
         a.phase = 'walk'
@@ -827,8 +927,16 @@ export class PaxNav {
         this.remove(a, 'rebooked')
         return
       }
-      // Check-in and the optional stops can be skipped; security and the gate cannot.
+      // Check-in, bag drop and the optional stops can be skipped. Security and the gate cannot.
       if (s !== 'security' && s !== 'gate') {
+        if (s === 'checkin') noteStage(a.trace, 'CHECKIN', namedSkip('CHECKIN'))
+        if (s === 'bagdrop') noteStage(a.trace, 'BAG_DROP', a.deskTook ? 'desk already took the bags' : namedSkip('BAG_DROP'))
+        if (s === 'toilet' || s === 'food' || s === 'shop') {
+          if (a.layer === PRE) {
+            noteStage(a.trace, 'LANDSIDE_FREE', namedSkip('LANDSIDE_FREE'))
+            a.landNoted = true
+          }
+        }
         a.stops.shift()
         continue
       }
@@ -1171,18 +1279,27 @@ export class PaxNav {
     a.lineS = -1
   }
 
+  private outcome(a: Agent, kind: PaxEvent['kind']): PaxEvent {
+    const mind = (a.lead ?? a).m
+    return { kind, id: a.id, at: this.now, sat: mind?.sat, spent: mind?.spent }
+  }
+
   private remove(a: Agent, kind: PaxEvent['kind'] | null) {
     this.leaveFacility(a)
     if (a.seat >= 0) this.seatTaken.delete(a.seat)
+    if (kind === 'boarded') noteStage(a.trace, 'BOARD')
     a.dead = true
     this.byId.delete(a.id)
-    if (kind) this.events.push({ kind, id: a.id, at: this.now })
+    this.traces.set(a.id, a.trace)
+    if (kind) this.events.push(this.outcome(a, kind))
     // The group goes with the leader.
     for (const f of a.group ?? []) {
       if (f.dead) continue
+      if (kind === 'boarded') noteStage(f.trace, 'BOARD')
       f.dead = true
       this.byId.delete(f.id)
-      if (kind) this.events.push({ kind, id: f.id, at: this.now })
+      this.traces.set(f.id, f.trace)
+      if (kind) this.events.push(this.outcome(f, kind))
     }
   }
 
@@ -1426,9 +1543,30 @@ export class PaxNav {
       return
     }
     if (s) this.served(a, f, s)
+    if (s === 'checkin') noteStage(a.trace, 'CHECKIN')
+    if (s === 'bagdrop') noteStage(a.trace, 'BAG_DROP')
+    if (s === 'security') noteStage(a.trace, 'SECURITY')
+    if (s === 'toilet' || s === 'food' || s === 'shop') {
+      if (a.layer === AIR) {
+        noteStage(a.trace, 'AIRSIDE_FREE')
+        a.airNoted = true
+      } else {
+        noteStage(a.trace, 'LANDSIDE_FREE')
+        a.landNoted = true
+      }
+    }
+    if (f.takesBags && a.stops[0] === 'bagdrop') {
+      a.deskTook = true
+      a.stops.shift()
+      noteStage(a.trace, 'BAG_DROP', 'desk already took the bags')
+    }
     if (f.kind === 'security_lane') a.layer = AIR
     if (f.kind === 'gate_desk') {
+      noteStage(a.trace, 'GATE_QUEUE')
+      a.gateScanned = true
       a.phase = 'board'
+      a.atDoor = false
+      a.boardLeft = 0
       return
     }
     this.plan(a)
@@ -1530,10 +1668,37 @@ export class PaxNav {
     return null
   }
 
+  private boardField(a: Agent): Field {
+    const method = a.boardMethod ?? 'stairs'
+    return this.field(`b:${a.gate}:${method}`, () =>
+      computeField(this.grid, boardingTargets(this.grid, a.gate, method), AIR, this.fac.basePenalty),
+    )
+  }
+
   private stepBoard(a: Agent, dt: number) {
-    const res = this.follow(a, this.apronField(a.gate), dt)
-    // No jet bridge door: they board from the desk.
-    if (res === true || res === 'lost') this.remove(a, 'boarded')
+    if (!a.boardMethod) {
+      const res = this.follow(a, this.apronField(a.gate), dt)
+      // No jet bridge door: they board from the desk.
+      if (res === true || res === 'lost') this.remove(a, 'boarded')
+      return
+    }
+    if (!a.atDoor) {
+      const res = this.follow(a, this.boardField(a), dt)
+      if (res !== true && res !== 'lost') return
+      a.atDoor = true
+      a.boardIndex = this.boardSeq.get(a.gate) ?? 0
+      this.boardSeq.set(a.gate, a.boardIndex + 1)
+      a.boardLeft = deplaneDelay(a.boardMethod, a.boardIndex, a.busCapacity)
+    }
+    const route = boardRoute(a.boardMethod, a.busCapacity)
+    if (a.boardMethod === 'bus') {
+      const riding = this.agents.filter(
+        (o) => !o.dead && o.gate === a.gate && o.phase === 'board' && o.atDoor && o.boardLeft < a.boardLeft,
+      ).length
+      if (riding >= route.capacity) return
+    }
+    a.boardLeft -= dt
+    if (a.boardLeft <= 0) this.remove(a, 'boarded')
   }
 
   // ---------------------------------------------------------------- read-outs
@@ -1614,6 +1779,31 @@ export class PaxNav {
   /** Is this passenger still walking? */
   has(id: string): boolean {
     return this.byId.has(id)
+  }
+
+  /** Stages this departure hit or skipped. Readable after they leave. */
+  stageTrace(id: string): StageTrace | null {
+    return this.byId.get(id)?.trace ?? this.traces.get(id) ?? null
+  }
+
+  /** The stop they are making, for the hall card. Null once they have left. */
+  stopOf(id: string): StopKind | null {
+    const a = this.byId.get(id)
+    if (!a) return null
+    const lead = a.lead ?? a
+    if (lead.phase === 'board') return 'gate'
+    return lead.stops[0] ?? null
+  }
+
+  /** Past the security lane. */
+  airside(id: string): boolean {
+    const a = this.byId.get(id)
+    return a ? a.layer === AIR : false
+  }
+
+  /** True once the gate desk has scanned this passenger. */
+  scanned(id: string): boolean {
+    return this.byId.get(id)?.gateScanned ?? false
   }
 
   /** Guest card for one passenger; null for plain walkers and unknown ids. */

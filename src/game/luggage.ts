@@ -1,3 +1,5 @@
+import { BUILD_TUNING } from '../terminalbuild/config.ts'
+import type { BuildLayout } from '../terminalbuild/types.ts'
 import type { BagFlowStage } from './types.ts'
 
 /**
@@ -21,6 +23,14 @@ export interface BagBook {
   claimLeft: number
   /** Seconds the current drop has sat in the hold-bag scanner. */
   screenT: number
+  /** Outbound units that have reached the bag_out port. */
+  atPortOut: number
+  /** Inbound units that have reached the bag_in port. */
+  atPortIn: number
+  /** Seconds accumulated toward the next outbound port unit. */
+  portOutT: number
+  /** Seconds accumulated toward the next claim unit. */
+  portInT: number
 }
 
 export interface LuggageMotion {
@@ -47,6 +57,45 @@ export function freshBook(flightId: string, units: number): BagBook {
     offloaded: 0,
     claimLeft: 0,
     screenT: 0,
+    atPortOut: 0,
+    atPortIn: 0,
+    portOutT: 0,
+    portInT: 0,
+  }
+}
+
+/** Seconds for one bag to ride a belt of this direction. Zero when the layout has no such belt. */
+export function portLegSec(layout: BuildLayout, dir: 'out' | 'in'): number {
+  let tiles = 0
+  for (const belt of layout.belts ?? []) if (belt.dir === dir) tiles += belt.tiles.length
+  const metres = tiles * (layout.tileM && layout.tileM > 0 ? layout.tileM : 1)
+  const mps = BUILD_TUNING.beltMps
+  return mps > 0 ? metres / mps : 0
+}
+
+/**
+ * Port transit. `dropped` reaches `atPortOut` at one unit per outbound belt time.
+ * `unloaded` reaches `atPortIn` immediately (the cart already arrived), then
+ * `onClaim` grows at one unit per inbound belt time. Never lowers `onClaim`.
+ */
+export function advancePortLegs(book: BagBook, dt: number, outSec: number, inSec: number): void {
+  const step = Number.isFinite(dt) && dt > 0 ? dt : 0
+  if (!(outSec > 0)) book.atPortOut = Math.max(book.atPortOut, book.dropped)
+  else if (book.dropped > book.atPortOut) {
+    book.portOutT += step
+    while (book.atPortOut < book.dropped && book.portOutT >= outSec) {
+      book.portOutT -= outSec
+      book.atPortOut += 1
+    }
+  }
+  book.atPortIn = Math.max(book.atPortIn, book.unloaded)
+  if (!(inSec > 0)) book.onClaim = Math.max(book.onClaim, book.atPortIn)
+  else if (book.atPortIn > book.onClaim) {
+    book.portInT += step
+    while (book.onClaim < book.atPortIn && book.portInT >= inSec) {
+      book.portInT -= inSec
+      book.onClaim += 1
+    }
   }
 }
 

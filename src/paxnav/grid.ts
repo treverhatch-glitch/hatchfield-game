@@ -9,7 +9,7 @@
  * security, AIR cells after it. Only a security lane joins them.
  */
 import { EQUIP_SPEC, ZONE_SIDE } from '../terminalbuild/config.ts'
-import { beltTileSet, fittingSpec, fittingTiles } from '../terminalbuild/fittings.ts'
+import { appendWalkEquipment, beltTileSet, fittingSpec, fittingTiles } from '../terminalbuild/fittings.ts'
 import { floorLinks, type FloorLink } from '../terminalbuild/floors.ts'
 import { edgeKey, edgeBetween, edgeTiles, indexLayout, isFloor, outsideDoors, tileKey, type GridIndex } from '../terminalbuild/grid.ts'
 import type { BuildLayout, Tile } from '../terminalbuild/types.ts'
@@ -23,6 +23,8 @@ export const AIR = 2
 export const LANE = 4
 /** Outside pavement at a curb door. Passengers appear here. */
 export const CURB = 8
+/** Sterile arrivals: claim and the arrivals corridor. Departures never carry this bit. */
+export const ARR = 16
 
 export interface NavGrid {
   layout: BuildLayout
@@ -54,6 +56,7 @@ const OPEN_E = 1
 const OPEN_S = 2
 
 export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
+  layout = appendWalkEquipment(layout)
   const T = PAXNAV_TUNING
   // 1 m tiles use 0.5 m cells. Legacy 4 m tiles keep the 1 m cells the tests pin.
   const k = tileM <= 1 ? 2 : T.cellsPerTile

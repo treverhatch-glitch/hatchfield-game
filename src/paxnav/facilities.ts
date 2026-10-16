@@ -6,12 +6,13 @@
  * side. Each one gets a marked queue line that runs from the service cell
  * back toward where people come from, turning when it meets a wall or kit.
  */
-import { EQUIP_SPEC } from '../terminalbuild/config.ts'
+import { EQUIP_SPEC, ZONE_SIDE } from '../terminalbuild/config.ts'
 import { edgeBetween, edgeKey, outsideDoors, tileKey } from '../terminalbuild/grid.ts'
-import type { Equip, EquipKind, Room, Tile } from '../terminalbuild/types.ts'
+import type { DoorKind, Equip, EquipKind, Room, Tile } from '../terminalbuild/types.ts'
 import { PAXNAV_TUNING } from './config.ts'
 import { computeField, type Field } from './field.ts'
-import { AIR, LANE, PRE, cellsOfTile, moveOpen, tileOfCell, type NavGrid } from './grid.ts'
+import { AIR, ARR, LANE, PRE, cellsOfTile, moveOpen, tileOfCell, type NavGrid } from './grid.ts'
+import type { BoardMethod } from './stages.ts'
 
 export interface Facility {
   /** Equipment id. */
@@ -35,9 +36,31 @@ export interface Facility {
    * do not serve. Defaults open; the hall sets it from staffing.
    */
   staffed: boolean
+  /** A check-in desk that accepts the suitcase. A kiosk does not. */
+  takesBags: boolean
 }
 
-const QUEUED_KIT: readonly EquipKind[] = ['checkin_desk', 'security_lane', 'gate_desk', 'toilet', 'shop_counter']
+const QUEUED_KIT: readonly EquipKind[] = ['checkin_desk', 'bag_drop', 'security_lane', 'gate_desk', 'toilet', 'shop_counter', 'passport_booth']
+
+function kitLayer(g: NavGrid, eq: Equip): number {
+  if (eq.kind === 'passport_booth') return ARR
+  if (eq.kind === 'checkin_desk' || eq.kind === 'bag_drop' || eq.kind === 'security_lane') return PRE
+  const zone = g.layout.zones[eq.y]?.[eq.x]
+  if (zone && ZONE_SIDE[zone] === 'landside') return PRE
+  if (zone === 'retail') {
+    const nearLand = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ].some(([dx, dy]) => {
+      const z = g.layout.zones[eq.y + dy]?.[eq.x + dx]
+      return Boolean(z && ZONE_SIDE[z] === 'landside')
+    })
+    if (nearLand) return PRE
+  }
+  return AIR
+}
 
 export function serviceSecOf(eq: Equip): number {
   const base = EQUIP_SPEC[eq.kind].serviceSec
@@ -161,7 +184,7 @@ export function buildFacilities(g: NavGrid): FacilitySet {
   const pending: { eq: Equip; layer: number; service: number; up: Field }[] = []
   for (const eq of g.layout.equipment) {
     if (!QUEUED_KIT.includes(eq.kind)) continue
-    const layer = eq.kind === 'checkin_desk' || eq.kind === 'security_lane' ? PRE : AIR
+    const layer = kitLayer(g, eq)
     const up = layer === PRE ? upPre : upAir
     const service = eq.kind === 'security_lane' ? laneServiceCell(g, eq) : deskServiceCell(g, eq, layer, up)
     if (service < 0 || !(g.mask[service] & layer) || taken[service]) continue
@@ -181,6 +204,7 @@ export function buildFacilities(g: NavGrid): FacilitySet {
       lane,
       serviceSec: serviceSecOf(eq),
       staffed: true,
+      takesBags: eq.kind === 'bag_drop' || (eq.kind === 'checkin_desk' && !eq.id.includes('kiosk')),
     }
     const pen = lanePen.slice()
     if (lane >= 0) for (const c of cellsOfTile(g, eq)) pen[c] = 0
@@ -276,4 +300,53 @@ export function apronCells(g: NavGrid, roomId: string): number[] {
   }
   const own = pick(true)
   return own.length ? own : pick(false)
+}
+
+/** Inside face of the given door kinds, on `layer`, in this room when it has one. */
+export function doorFaceCells(g: NavGrid, roomId: string, kinds: readonly DoorKind[], layer: number): number[] {
+  const doors = outsideDoors(g.layout, [...kinds])
+  const pick = (only: boolean) => {
+    const out: number[] = []
+    for (const { door, tile } of doors) {
+      if (only && roomId && roomOf(g, tile)?.id !== roomId) continue
+      const lo = Math.floor((g.k - PAXNAV_TUNING.doorCells) / 2)
+      const span = g.tileM <= 1 ? g.k : PAXNAV_TUNING.doorCells
+      const ox = (tile.x + g.margin) * g.k
+      const oy = (tile.y + g.margin) * g.k
+      const east = door.dir === 'E' && door.x === tile.x
+      const west = door.dir === 'E' && door.x !== tile.x
+      const south = door.dir === 'S' && door.y === tile.y
+      for (let i = lo; i < lo + span; i++) {
+        const cx = east ? ox + g.k - 1 : west ? ox : ox + i
+        const cy = south ? oy + g.k - 1 : door.dir === 'S' ? oy : oy + i
+        const c = cy * g.gw + cx
+        if (c >= 0 && c < g.mask.length && g.mask[c] & layer) out.push(c)
+      }
+    }
+    return out
+  }
+  const own = roomId ? pick(true) : []
+  return own.length ? own : pick(false)
+}
+
+/**
+ * Cells the boarding method walks to. Stairs stop on the apron door.
+ * A bus steps one cell further in, so the load can stand inside the door.
+ * A bridge uses the bridge door, which is a different opening.
+ */
+export function boardingTargets(g: NavGrid, roomId: string, method: BoardMethod): number[] {
+  if (method === 'bridge') {
+    const bridge = doorFaceCells(g, roomId, ['gate_bridge'], AIR)
+    if (bridge.length) return bridge
+  }
+  const apron = doorFaceCells(g, roomId, ['gate_apron', 'apron'], AIR)
+  if (method !== 'bus') return apron
+  const inward: number[] = []
+  for (const c of apron) {
+    const step = [c + g.gw, c - g.gw, c + 1, c - 1].find(
+      (n) => n >= 0 && n < g.mask.length && Math.abs((n % g.gw) - (c % g.gw)) <= 1 && g.mask[n] & AIR && !apron.includes(n),
+    )
+    if (step != null) inward.push(step)
+  }
+  return inward.length ? inward : apron
 }

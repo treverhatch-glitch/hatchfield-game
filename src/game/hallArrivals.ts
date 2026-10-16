@@ -19,25 +19,36 @@
 import { createPaxRng, type PaxRng } from '../pax/rng.ts'
 import {
   AIR,
+  ARR,
   LANE,
   PAXNAV_TUNING,
   PRE,
   apronCells,
+  arrivalsDoorCells,
+  boardingTargets,
   buildFacilities,
   buildNavGrid,
   cellAt,
   cellX,
   cellZ,
+  claimZoneKeys,
   computeField,
+  deplaneDelay,
   facilityPenalty,
+  freshJourney,
   moveOpen,
+  noteStage,
+  paintSterileArrivals,
   stepOpen,
+  sterileHall,
   tileOfCell,
+  type BoardMethod,
   type Facility,
   type FacilitySet,
   type Field,
   type NavGrid,
   type PaxNav,
+  type StageTrace,
 } from '../paxnav/index.ts'
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
 import type { BuildLayout, Equip, Tile } from '../terminalbuild/types.ts'
@@ -52,9 +63,9 @@ export interface ClaimHall {
   belts: Tile[]
 }
 
-export type ArrivalStop = 'toilet' | 'shop' | 'claim' | 'exit' | 'curb'
+export type ArrivalStop = 'toilet' | 'shop' | 'passport' | 'claim' | 'exit' | 'curb'
 
-export type ArrivalPhase = 'walk' | 'queue' | 'service' | 'claim' | 'exit' | 'curb' | 'stuck'
+export type ArrivalPhase = 'deplane' | 'walk' | 'queue' | 'service' | 'claim' | 'exit' | 'curb' | 'stuck'
 
 export interface ArrivalSpec {
   id: string
@@ -64,6 +75,15 @@ export interface ArrivalSpec {
   bags?: boolean
   /** Stops before the claim / exit. Rolled when unset. */
   needs?: ('toilet' | 'shop')[]
+  /** International arrival: queue at passport before claim. Never skipped. */
+  intl?: boolean
+  /** Own bag's place in the claim sequence. Unset keeps the timed wait. */
+  bagSeq?: number
+  flightId?: string
+  /** How they left the aircraft. Unset keeps the jet-bridge spawn. */
+  boardMethod?: BoardMethod
+  deplaneIndex?: number
+  busCapacity?: number
 }
 
 export interface ArrivalEvent {
@@ -98,6 +118,14 @@ interface Arrival {
   retryAt: number
   stuckSaid: boolean
   dead: boolean
+  flightId: string
+  intl: boolean
+  bagSeq: number | null
+  trace: StageTrace
+  deplaneLeft: number
+  method: BoardMethod | null
+  /** Stepped on a security lane or a security-zone cell. */
+  sawSecurity: boolean
 }
 
 const EPS = 1e-4
@@ -146,11 +174,17 @@ export class HallArrivals {
   private gateIds: string[] = []
   private layoutKey: BuildLayout | null = null
   private claimKey: ClaimHall | null = null
+  /** ARR on a sterile claim hall, AIR on the legacy prefab. */
+  private side = AIR
+  private sterile = false
+  private passports: Facility[] = []
+  private claimReleased = new Map<string, number>()
+  private journeys = new Map<string, StageTrace>()
   left = 0
 
-  constructor(seed = HALL_ARRIVAL_TUNING.seed, tileM = BUILD_TUNING.tileMetres) {
+  constructor(seed: number = HALL_ARRIVAL_TUNING.seed, tileM?: number) {
     this.rng = createPaxRng(seed)
-    this.tileM = tileM
+    this.tileM = tileM ?? BUILD_TUNING.tileMetres
   }
 
   get count(): number {
@@ -189,6 +223,9 @@ export class HallArrivals {
       const z = g.layout.zones[t.y]?.[t.x]
       if (z && ZONE_SIDE[z] === 'security') mask[c] &= ~PRE
     }
+    this.sterile = sterileHall(dep)
+    this.side = this.sterile ? ARR : AIR
+    if (this.sterile) paintSterileArrivals(g, claimZoneKeys(dep))
     this.grid = g
     this.depGrid = buildNavGrid(dep, this.tileM)
     this.dep = buildFacilities(this.depGrid)
@@ -199,14 +236,14 @@ export class HallArrivals {
     const exits: number[] = []
     const n4 = [1, -1, g.gw, -g.gw]
     for (let c = 0; c < mask.length; c++) {
-      if (!(mask[c] & AIR)) continue
+      if (!(mask[c] & this.side)) continue
       if (mask[c] & PRE) {
         if (Number.isFinite(this.curb.dist[c])) exits.push(c)
         continue
       }
       for (const s of n4) {
         const n = c + s
-        if (n < 0 || n >= mask.length || mask[n] & AIR || !(mask[n] & PRE)) continue
+        if (n < 0 || n >= mask.length || mask[n] & this.side || !(mask[n] & PRE)) continue
         if (Math.abs(s) === 1 && Math.floor(n / g.gw) !== Math.floor(c / g.gw)) continue
         if (!stepOpen(g, c, n) || !Number.isFinite(this.curb.dist[n])) continue
         exits.push(c)
@@ -214,9 +251,10 @@ export class HallArrivals {
         break
       }
     }
-    this.exitField = computeField(g, exits, AIR, this.dep.basePenalty)
+    this.exitField = computeField(g, exits, this.side, this.dep.basePenalty)
     this.spots = this.claimSpots(g, claim)
-    this.claimField = this.spots.size ? computeField(g, [...this.spots], AIR, this.dep.basePenalty) : null
+    this.claimField = this.spots.size ? computeField(g, [...this.spots], this.side, this.dep.basePenalty) : null
+    this.passports = buildFacilities(g).list.filter((f) => f.kind === 'passport_booth')
     this.spotTaken.clear()
     this.lines.clear()
     this.occStale = true
@@ -260,7 +298,9 @@ export class HallArrivals {
     const floor = new Set(claim.tiles.map((t) => `${t.x},${t.y}`))
     const reach = HALL_ARRIVAL_TUNING.claimReachCells
     for (let c = 0; c < g.mask.length; c++) {
-      if (!(g.mask[c] & AIR) || !(g.mask[c] & PRE)) continue
+      if (this.sterile) {
+        if (!(g.mask[c] & ARR)) continue
+      } else if (!(g.mask[c] & AIR) || !(g.mask[c] & PRE)) continue
       const t = tileOfCell(g, c)
       if (!floor.has(`${t.x},${t.y}`)) continue
       const cx = c % g.gw
@@ -296,9 +336,9 @@ export class HallArrivals {
   private facField(f: Facility): Field {
     let F = this.fields.get(f.id)
     if (!F) {
-      F = computeField(this.grid!, [f.service], AIR, facilityPenalty(this.depGrid!, this.dep!, f))
+      F = computeField(this.grid!, [f.service], f.layer, facilityPenalty(this.depGrid!, this.dep!, f))
       // Down the line cell by cell, as the departures do.
-      for (let i = 1; i < f.line.length; i++) if (this.grid!.mask[f.line[i]] & AIR) F.next[f.line[i]] = f.line[i - 1]
+      for (let i = 1; i < f.line.length; i++) if (this.grid!.mask[f.line[i]] & f.layer) F.next[f.line[i]] = f.line[i - 1]
       this.fields.set(f.id, F)
     }
     return F
@@ -317,10 +357,22 @@ export class HallArrivals {
     const gate = this.gateIds.includes(spec.gate) ? spec.gate : (this.gateIds[0] ?? spec.gate)
     const out = this.exitField!
     const reachable = (cells: number[]) => cells.filter((c) => Number.isFinite(out.dist[c]))
-    // A gate_apron door on the airside does not reach the curb until a sterile
-    // corridor exists. Stairs and bus arrivals use the claim hall's arrivals door.
-    let ok = reachable(apronCells(g, gate))
-    if (!ok.length) ok = reachable(apronCells(g, ''))
+    // Stairs and a bus come in through the arrivals door. A bridge uses the
+    // bridge socket. No method keeps the jet-bridge cells the prefab tests pin.
+    let ok: number[] = []
+    if (spec.boardMethod === 'bridge') ok = reachable(boardingTargets(g, gate, 'bridge'))
+    else if (spec.boardMethod === 'stairs' || spec.boardMethod === 'bus') {
+      ok = this.sterile ? reachable(arrivalsDoorCells(g)) : reachable(boardingTargets(g, gate, spec.boardMethod))
+    }
+    if (!ok.length && !spec.boardMethod) {
+      ok = reachable(apronCells(g, gate))
+      if (!ok.length) ok = reachable(apronCells(g, ''))
+    }
+    if (!ok.length) ok = reachable(arrivalsDoorCells(g))
+    if (!ok.length) {
+      ok = reachable(apronCells(g, gate))
+      if (!ok.length) ok = reachable(apronCells(g, ''))
+    }
     if (!ok.length) return false
     const r = this.rng
     const T = HALL_ARRIVAL_TUNING
@@ -330,6 +382,10 @@ export class HallArrivals {
     const oz = (r.next() * 2 - 1) * lat
     const bags = spec.bags ?? r.next() < T.bagShare
     const needs = spec.needs ?? (['toilet', 'shop'] as const).filter((n) => r.next() < T.needShare[n])
+    const intl = spec.intl === true
+    const journey = freshJourney({ intl, bags, needs })
+    const method = spec.boardMethod ?? null
+    const deplaneLeft = method ? deplaneDelay(method, spec.deplaneIndex ?? 0, spec.busCapacity) : 0
     const speed = PAXNAV_TUNING.walkMps * (1 + (r.next() * 2 - 1) * PAXNAV_TUNING.walkSpread)
     const a: Arrival = {
       id: spec.id,
@@ -341,10 +397,10 @@ export class HallArrivals {
       oz,
       yaw: 0,
       speed,
-      layer: AIR,
-      stops: [...needs, ...(bags ? (['claim'] as const) : []), 'exit', 'curb'],
+      layer: this.side,
+      stops: journey.stops,
       gate,
-      phase: 'walk',
+      phase: deplaneLeft > 0 ? 'deplane' : 'walk',
       fac: null,
       lineS: -1,
       serviceLeft: 0,
@@ -355,11 +411,23 @@ export class HallArrivals {
       retryAt: 0,
       stuckSaid: false,
       dead: false,
+      flightId: spec.flightId ?? '',
+      intl,
+      bagSeq: spec.bagSeq ?? null,
+      trace: journey.trace,
+      deplaneLeft,
+      method,
+      sawSecurity: false,
     }
     this.agents.push(a)
     this.byId.set(a.id, a)
-    this.plan(a)
+    if (a.phase !== 'deplane') this.plan(a)
     return true
+  }
+
+  /** How many of this flight's bags are on the carousel. Arrivals with a sequence wait for theirs. */
+  setClaimReleased(flightId: string, n: number) {
+    this.claimReleased.set(flightId, n)
   }
 
   // ---------------------------------------------------------------- planning
@@ -371,7 +439,7 @@ export class HallArrivals {
     while (a.stops.length) {
       const s = a.stops[0]
       if (s === 'toilet' || s === 'shop') {
-        const f = a.layer === AIR ? this.choose(a, NEED_KIT[s]) : null
+        const f = a.layer === this.side ? this.choose(a, NEED_KIT[s]) : null
         if (f) {
           a.fac = f
           a.phase = 'walk'
@@ -380,9 +448,21 @@ export class HallArrivals {
         a.stops.shift()
         continue
       }
+      if (s === 'passport') {
+        const f = this.choosePass(a)
+        if (f) {
+          a.fac = f
+          a.phase = 'walk'
+          return
+        }
+        // An international arrival never skips passport.
+        this.stick(a)
+        return
+      }
       if (s === 'claim') {
-        if (a.layer === AIR && this.claimField && Number.isFinite(this.claimField.dist[a.cell])) {
+        if (a.layer === this.side && this.claimField && Number.isFinite(this.claimField.dist[a.cell])) {
           a.phase = 'claim'
+          noteStage(a.trace, 'CLAIM')
           return
         }
         a.stops.shift()
@@ -401,6 +481,7 @@ export class HallArrivals {
         }
         if (Number.isFinite(this.exitField!.dist[a.cell])) {
           a.phase = 'exit'
+          noteStage(a.trace, 'EXIT')
           return
         }
         this.stick(a)
@@ -409,6 +490,7 @@ export class HallArrivals {
       // curb
       if (a.layer === PRE && Number.isFinite(this.curb!.dist[a.cell])) {
         a.phase = 'curb'
+        noteStage(a.trace, 'LANDSIDE_FREE')
         return
       }
       this.stick(a)
@@ -429,10 +511,32 @@ export class HallArrivals {
   private remove(a: Arrival) {
     this.leaveLine(a)
     if (a.spot >= 0) this.freeSpot(a.spot)
+    noteStage(a.trace, 'CURB_OUT')
+    if (!a.trace.hit.includes('LANDSIDE_FREE') && !a.trace.skips.some((s) => s.stage === 'LANDSIDE_FREE')) {
+      noteStage(a.trace, 'LANDSIDE_FREE', 'no need')
+    }
     a.dead = true
     this.byId.delete(a.id)
+    this.journeys.set(a.id, a.trace)
     this.left++
     this.events.push({ kind: 'left', id: a.id, cell: a.cell })
+  }
+
+  private choosePass(a: Arrival): Facility | null {
+    let best: Facility | null = null
+    let bestT = Infinity
+    for (const f of this.passports) {
+      if (!f.staffed && this.passports.some((p) => p.staffed)) continue
+      const d = this.facField(f).dist[a.cell]
+      if (!Number.isFinite(d)) continue
+      const t = (d * this.grid!.cellM) / a.speed + (this.lines.get(f.id)?.length ?? 0) * f.serviceSec
+      if (!f.staffed) continue
+      if (t < bestT) {
+        bestT = t
+        best = f
+      }
+    }
+    return best
   }
 
   /** Toilet / shop with the soonest service: walk plus everyone ahead, departures included. */
@@ -440,7 +544,7 @@ export class HallArrivals {
     let best: Facility | null = null
     let bestT = Infinity
     for (const f of this.dep!.list) {
-      if (f.kind !== kind || f.layer !== AIR) continue
+      if (f.kind !== kind || f.layer !== a.layer) continue
       const d = this.facField(f).dist[a.cell]
       if (!Number.isFinite(d)) continue
       const t = (d * this.grid!.cellM) / a.speed + (this.ahead(f) + (this.lines.get(f.id)?.length ?? 0)) * f.serviceSec
@@ -493,7 +597,15 @@ export class HallArrivals {
     for (const a of this.agents) {
       if (a.dead) continue
       switch (a.phase) {
+        case 'deplane':
+          a.deplaneLeft -= dt
+          if (a.deplaneLeft <= 0) {
+            a.phase = 'walk'
+            this.plan(a)
+          }
+          break
         case 'walk':
+          this.noteSecurity(a)
           this.stepWalk(a, dt)
           break
         case 'queue':
@@ -502,7 +614,8 @@ export class HallArrivals {
         case 'service':
           a.serviceLeft -= dt
           if (a.serviceLeft <= 0) {
-            a.stops.shift()
+            const done = a.stops.shift()
+            if (done === 'passport') noteStage(a.trace, 'PASSPORT')
             this.plan(a)
           }
           break
@@ -576,13 +689,17 @@ export class HallArrivals {
   private stepClaim(a: Arrival, dt: number) {
     if (a.spot >= 0 && a.cell === a.spot && !a.path) {
       // At the belt, waiting for the bag.
-      a.claimLeft -= dt
-      if (a.claimLeft <= 0) {
-        this.freeSpot(a.spot)
-        a.spot = -1
-        a.stops.shift()
-        this.plan(a)
+      if (a.bagSeq != null) {
+        const released = this.claimReleased.get(a.flightId) ?? 0
+        if (released < a.bagSeq) return
+      } else {
+        a.claimLeft -= dt
+        if (a.claimLeft > 0) return
       }
+      this.freeSpot(a.spot)
+      a.spot = -1
+      a.stops.shift()
+      this.plan(a)
       return
     }
     const res = this.follow(a, a.path ? null : this.claimField, dt)
@@ -639,7 +756,7 @@ export class HallArrivals {
         const v = u + s
         if (v < 0 || v >= g.mask.length || parent.has(v) || !this.spots.has(v)) continue
         if (Math.abs(s) === 1 && Math.floor(v / g.gw) !== Math.floor(u / g.gw)) continue
-        if (!moveOpen(g, u, v, AIR)) continue
+        if (!moveOpen(g, u, v, this.side)) continue
         parent.set(v, u)
         q.push(v)
       }
@@ -716,6 +833,32 @@ export class HallArrivals {
 
   cellOf(id: string): number {
     return this.byId.get(id)?.cell ?? -1
+  }
+
+  /** Stages this arrival hit or skipped. Readable after they leave. */
+  journey(id: string): StageTrace | null {
+    return this.byId.get(id)?.trace ?? this.journeys.get(id) ?? null
+  }
+
+  /** Current stop, for the hall card. */
+  stopOf(id: string): ArrivalStop | null {
+    const a = this.byId.get(id)
+    if (!a) return null
+    if (a.phase === 'deplane') return null
+    return a.stops[0] ?? null
+  }
+
+  has(id: string): boolean {
+    return this.byId.has(id)
+  }
+
+  private noteSecurity(a: Arrival) {
+    const g = this.grid
+    if (!g) return
+    if (g.mask[a.cell] & LANE) a.sawSecurity = true
+    const t = tileOfCell(g, a.cell)
+    const z = g.layout.zones[t.y]?.[t.x]
+    if (z && ZONE_SIDE[z] === 'security') a.sawSecurity = true
   }
 
   /** Layer an arrival walks now: AIR before the claim / exit, PRE after. */

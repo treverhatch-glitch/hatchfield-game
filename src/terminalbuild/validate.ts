@@ -36,6 +36,38 @@ export interface Validation {
 
 const RANK: Record<FindingSeverity, number> = { blocker: 0, warning: 1, tip: 2 }
 
+/** A staffed booth sits on the sterile walk, closer to the arrivals door than the carousel. */
+function passportBeforeClaim(l: BuildLayout): boolean {
+  const booths = (l.fittings ?? []).filter((f) => f.kind === 'passport_booth' && f.staffed !== false)
+  if (!booths.length) return false
+  const doors = outsideDoors(l, ['arrivals_in'])
+  if (!doors.length) return false
+  const sterile = (x: number, y: number) => {
+    const z = l.zones[y]?.[x]
+    return z === 'claim' || z === 'arrivals'
+  }
+  const starts = doors.map((d) => d.tile).filter((t) => sterile(t.x, t.y))
+  if (!starts.length) return false
+  const res = flood(starts, (_from, to) => isFloor(l, to.x, to.y) && sterile(to.x, to.y))
+  let boothD = Infinity
+  for (const booth of booths) {
+    for (const t of fittingTiles(booth)) {
+      const d = res.dist.get(tileKey(t.x, t.y))
+      if (d != null) boothD = Math.min(boothD, d)
+    }
+  }
+  if (!Number.isFinite(boothD)) return false
+  let claimD = Infinity
+  for (const piece of l.fittings ?? []) {
+    if (piece.kind !== 'claim_carousel') continue
+    for (const t of fittingTiles(piece)) {
+      const d = res.dist.get(tileKey(t.x, t.y))
+      if (d != null) claimD = Math.min(claimD, d)
+    }
+  }
+  return !Number.isFinite(claimD) || boothD < claimD
+}
+
 /** Tiles a passenger can stand on to use this kit. */
 export function serviceTiles(l: BuildLayout, ix: GridIndex, eq: Equip): Tile[] {
   return around(eq).filter((t) => standable(l, ix, t, 'depart') && edgeOpen(ix, eq, t, 'depart'))
@@ -118,7 +150,7 @@ function roomTiles(r: { x: number; y: number; w: number; h: number }): Tile[] {
   return out
 }
 
-export function validateLayout(l: BuildLayout): Validation {
+export function validateLayout(l: BuildLayout, opts?: { intlArrival?: boolean }): Validation {
   const ix = indexLayout(l)
   const F: Finding[] = []
   const add = (f: Finding) => F.push(f)
@@ -320,6 +352,20 @@ export function validateLayout(l: BuildLayout): Validation {
       detail: why,
       fix: piece.kind === 'passport_booth' ? 'Move the booth into baggage claim or the arrivals corridor.' : 'Move it into the security room.',
       cells: [{ x: Math.floor(piece.x), y: Math.floor(piece.y) }],
+    })
+  }
+
+  // 6c. An international arrival must pass a staffed booth before the carousel.
+  if (opts?.intlArrival && !passportBeforeClaim(l)) {
+    const door = outsideDoors(l, ['arrivals_in'])[0]
+    add({
+      id: 'passport_missing',
+      severity: 'blocker',
+      blocksFlow: true,
+      title: 'International arrivals need passport control',
+      detail: 'This flight is international, and its arrival path does not cross a staffed passport booth before baggage claim.',
+      fix: 'Staff a passport booth in the claim hall, between the arrivals door and the carousel.',
+      cells: door ? [{ x: door.tile.x, y: door.tile.y }] : [],
     })
   }
 

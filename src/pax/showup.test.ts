@@ -9,6 +9,7 @@ import {
   TIMED_LEAD_GAME_MIN,
   checkInCloseAt,
   gameMinToSim,
+  flightIsIntl,
   isIntlKind,
   planShowUp,
   type ShowTag,
@@ -56,6 +57,10 @@ describe('planShowUp', () => {
   it('closes international check-in earlier than domestic', () => {
     expect(isIntlKind('widebody')).toBe(true)
     expect(isIntlKind('narrowbody')).toBe(false)
+    expect(flightIsIntl({ kind: 'widebody' })).toBe(true)
+    expect(flightIsIntl({ kind: 'narrowbody' })).toBe(false)
+    expect(flightIsIntl({ kind: 'widebody', intl: false })).toBe(false)
+    expect(flightIsIntl({ kind: 'narrowbody', intl: true })).toBe(true)
     const std = 80
     const dom = planShowUp({ std, now: 0, tags, intl: false })
     const intl = planShowUp({ std, now: 0, tags, intl: true })

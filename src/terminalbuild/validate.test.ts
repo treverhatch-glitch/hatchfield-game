@@ -26,4 +26,17 @@ describe('fitting room rules', () => {
     const v = validateLayout(layout)
     expect(v.findings.some((f) => f.id === 'room_rule:bad-pass')).toBe(true)
   })
+
+  it('requires a staffed booth only when an international arrival is scheduled', () => {
+    const clean = split1f()
+    expect(validateLayout(clean).findings.some((f) => f.title === 'International arrivals need passport control')).toBe(false)
+    const blocked = validateLayout(clean, { intlArrival: true })
+    expect(blocked.findings.some((f) => f.id === 'passport_missing' && f.title === 'International arrivals need passport control' && f.blocksFlow)).toBe(true)
+    const staffed = split1f()
+    staffed.fittings = [...(staffed.fittings ?? []), { id: 'pass-1', kind: 'passport_booth', x: 4, y: 8, floor: 0, rot: 0, wear: 0, staffed: true }]
+    expect(validateLayout(staffed, { intlArrival: true }).findings.some((f) => f.id === 'passport_missing')).toBe(false)
+    const closed = split1f()
+    closed.fittings = [...(closed.fittings ?? []), { id: 'pass-1', kind: 'passport_booth', x: 4, y: 8, floor: 0, rot: 0, wear: 0, staffed: false }]
+    expect(validateLayout(closed, { intlArrival: true }).findings.some((f) => f.id === 'passport_missing')).toBe(true)
+  })
 })

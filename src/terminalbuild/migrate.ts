@@ -25,6 +25,8 @@ const EQUIP_KIND: Record<EquipKind, FittingKind> = {
   shop_counter: 'shop_counter',
   toilet: 'wc_block',
   office_desk: 'bench',
+  bag_drop: 'bag_drop',
+  passport_booth: 'passport_booth',
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

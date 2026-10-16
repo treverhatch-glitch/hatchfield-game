@@ -120,6 +120,12 @@ export interface HallGuest {
    * Unset keeps the walk's own bag roll. Not the checked-bag flag above.
    */
   bags?: boolean
+  /** International arrival. Passport runs only when this is true. */
+  intl?: boolean
+  /** Stand access the walker uses as a door and a duration. */
+  boardMethod?: 'stairs' | 'bus' | 'bridge'
+  /** Place on the claim belt. The carousel releases bags in this order. */
+  bagSeq?: number
   /** Onward flight for a through-checked bag. */
   connectFlightId?: string | null
   /** Standing at the lost-bag desk. */

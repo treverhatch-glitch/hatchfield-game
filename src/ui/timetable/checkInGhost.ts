@@ -3,6 +3,7 @@ import {
   CHECKIN_CLOSE_INTL_GAME_MIN,
   LEISURE_LEAD_GAME_MIN,
   checkInCloseAt,
+  flightIsIntl,
   isIntlKind,
   leadSecForTag,
 } from '../../pax/showup'
@@ -19,4 +20,4 @@ export function checkInCloseMin(intl: boolean): number {
   return intl ? CHECKIN_CLOSE_INTL_GAME_MIN : CHECKIN_CLOSE_DOM_GAME_MIN
 }
 
-export { LEISURE_LEAD_GAME_MIN, isIntlKind }
+export { LEISURE_LEAD_GAME_MIN, flightIsIntl, isIntlKind }

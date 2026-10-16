@@ -61,10 +61,11 @@ export const CREW_TUNING = {
 }
 
 /** Stops a passenger can make, and the kit that serves each. */
-export type StopKind = 'checkin' | 'security' | 'toilet' | 'food' | 'shop' | 'gate' | 'rebook'
+export type StopKind = 'checkin' | 'bagdrop' | 'security' | 'toilet' | 'food' | 'shop' | 'gate' | 'rebook'
 
 export const STOP_KIT: Record<StopKind, EquipKind> = {
   checkin: 'checkin_desk',
+  bagdrop: 'bag_drop',
   security: 'security_lane',
   toilet: 'toilet',
   food: 'shop_counter',

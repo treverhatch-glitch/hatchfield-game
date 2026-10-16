@@ -629,10 +629,26 @@ export const ITEM_TO_FITTING: Partial<Record<string, FittingKind>> = {
 export const FITTING_EQUIP: Partial<Record<FittingKind, EquipKind>> = {
   checkin_desk: 'checkin_desk',
   checkin_kiosk: 'checkin_desk',
+  bag_drop: 'bag_drop',
   security_lane: 'security_lane',
   gate_desk: 'gate_desk',
   wc_block: 'toilet',
   shop_counter: 'shop_counter',
+  passport_booth: 'passport_booth',
+}
+
+/** Fittings the walk serves, added beside equipment that is already placed. The layout object is unchanged when nothing is missing. */
+export function appendWalkEquipment(layout: BuildLayout): BuildLayout {
+  const have = new Set(layout.equipment.map((e) => e.id))
+  const extra: Equip[] = []
+  for (const f of layout.fittings ?? []) {
+    const kind = FITTING_EQUIP[f.kind]
+    if (!kind || have.has(f.id)) continue
+    extra.push({ id: f.id, kind, x: Math.floor(f.x), y: Math.floor(f.y), wear: f.wear, floor: f.floor })
+    have.add(f.id)
+  }
+  if (!extra.length) return layout
+  return { ...layout, equipment: [...layout.equipment, ...extra] }
 }
 
 export function equipForFitting(f: Fitting, at: { x: number; y: number }): Equip | null {

@@ -39,6 +39,8 @@ export type EquipKind =
   | 'shop_counter'
   | 'toilet'
   | 'office_desk'
+  | 'bag_drop'
+  | 'passport_booth'
 
 /**
  * A tile edge. `E` is the east side of (x, y), `S` the south side.

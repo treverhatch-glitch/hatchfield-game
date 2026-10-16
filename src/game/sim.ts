@@ -235,6 +235,8 @@ import {
   toggleDoor,
   wallRun,
   split1f,
+  APRON_CELL_M,
+  terminalSockets,
   fittingRoomViolation,
   isSecurityKit,
   takeFittingSocket,
@@ -384,6 +386,7 @@ import {
 } from '../inbound/index.ts'
 import { RIVAL, RivalAirport, type PlayerSnapshot, type Walkaway } from '../rival/index.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
+import { dockBagSockets } from '../logistics/adapter.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { shownPhase } from '../logistics/serviceFlow.ts'
 import type { VehicleType } from '../logistics/types.ts'
@@ -461,11 +464,13 @@ import { bagWorkDuration, describeBagStage } from './bags'
 import {
   BAG_RECORD_SEC,
   advanceBagTags,
+  advancePortLegs,
   advanceScreen,
   checkedPieceCount,
   freshBook,
   keepPrefabBags,
   makeBagTag,
+  portLegSec,
   markClaimLate,
   ownerClaimReady,
   type BagBook,
@@ -506,7 +511,7 @@ import {
   PLANNED_TURN_SEC,
   SHOWUP_LEAD_GAME_MIN,
   checkInCloseAt,
-  isIntlKind,
+  flightIsIntl,
   planShowUp,
   type ShowTag,
   type ShowUpPlan,
@@ -3127,7 +3132,7 @@ export class Game {
         airlineId: plan.airlineId,
         std: plan.std,
         pax: Math.max(plan.tags?.length ?? 0, flight?.pax ?? 0),
-        longHaul: Boolean(plan.intl) || (flight ? isIntlKind(flight.kind) : false),
+        longHaul: Boolean(plan.intl) || (flight ? flightIsIntl(flight) : false),
       })
     }
     for (const flight of this.flights) {
@@ -3144,7 +3149,7 @@ export class Game {
         airlineId: flight.airline,
         std: flight.std ?? this.clock + 60,
         pax: flight.pax,
-        longHaul: isIntlKind(flight.kind),
+        longHaul: flightIsIntl(flight),
       })
     }
     return out
@@ -9130,7 +9135,7 @@ export class Game {
     const cap = fit?.capGuests ?? 40
     const key = fit ? this.hallKey(fit) : null
     const pop = key
-      ? this.hallGuests.filter((g) => !g.preview && !g.dead && g.hallId === key).length
+      ? this.hallGuests.filter((g) => !g.preview && !g.dead && g.hallId === key && !this.hallNav.owns(g.id)).length
       : this.hallGuests.filter((g) => !g.preview).length
     const crowd = pop > cap ? 1 / (1 + (pop - cap) * 0.08) : 1
     const allow = fit?.bagAllowance ?? 9999
@@ -9541,6 +9546,12 @@ export class Game {
         }
       }
       if (prefab) keepPrefabBags(book, f.bagStage)
+      const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.activeHall()
+      const layout = fit?.layout
+      const outSec = layout ? portLegSec(layout, 'out') : 0
+      const inSec = layout ? portLegSec(layout, 'in') : 0
+      advancePortLegs(book, dt, outSec, inSec)
+      this.hallNav.setClaimReleased(f.id, book.onClaim)
     }
     const clock = this.bagClock()
     const fresh = advanceBagTags(this.bagTags, dt, clock)
@@ -9912,6 +9923,7 @@ export class Game {
     if (!open.size) return
     const hallId = this.hallKey(fit)
     const mode = this.standPaxMode(f.stand)
+    const boardMethod = mode === 'jetway' ? 'bridge' : mode === 'bus' ? 'bus' : 'stairs'
     const count = this.hallBodyCount(f)
     const a = this.airline(f.airline)
     const departWave: HallGuest[] = []
@@ -9920,6 +9932,9 @@ export class Game {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
       g.serviceCabin = cabinFromGuest(tag, a.persona, g.id)
+      g.intl = flightIsIntl(f)
+      g.boardMethod = boardMethod
+      if (job === 'arrive') g.bagSeq = i + 1
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
@@ -9969,7 +9984,7 @@ export class Game {
   /** Fallback wave (boarding with no banked plan, or a direct seed). Drips — never a single dump. */
   private releaseDepartureWave(wave: HallGuest[], f: Flight, open: Set<HallNode>) {
     const std = f.std ?? this.clock + PLANNED_TURN_SEC
-    const intl = isIntlKind(f.kind)
+    const intl = flightIsIntl(f)
     const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
     const persona = this.airline(f.airline).persona
     const hallId = fit ? this.hallKey(fit) : ''
@@ -10356,7 +10371,7 @@ export class Game {
     if (!plan || f.cargo) return
     const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.fitByKey(plan.hallId) ?? this.fits[0]
     plan.flightId = f.id
-    plan.intl = isIntlKind(f.kind)
+    plan.intl = flightIsIntl(f)
     if (fit) plan.hallId = this.hallKey(fit)
     f.std = plan.std
     for (const g of this.hallGuests) {
@@ -10788,6 +10803,19 @@ export class Game {
     this.sampleGuestRoute(g)
   }
 
+  /** Bag ports dock to the nearest bags tile, or to the hall when the apron has none. */
+  private syncBagDocks(fit: TerminalFit) {
+    const layout = fit.layout
+    if (!layout) return
+    const sockets = terminalSockets(layout, fit.origin, this.hallKey(fit))
+    const bags = tilesOf(this.tiles, 'bags').map((p) => ({
+      id: `${p.c},${p.r}`,
+      x: (p.c - (SIZE - 1) / 2) * APRON_CELL_M,
+      z: (p.r - (SIZE - 1) / 2) * APRON_CELL_M,
+    }))
+    this.ground?.dockBagPorts(dockBagSockets(sockets, bags))
+  }
+
   /** Feed the active hall's walkers: re-read the layout on edits, admit released departures and arrivals, step. */
   tickHallNav(step: number) {
     const fit = this.activeHall()
@@ -10810,13 +10838,17 @@ export class Game {
     const starterHall = Boolean(fit.premade && !fit.redesigned && (fit.tier ?? 1) === 1)
     this.hallNav.setCheckinPace(starterHall && this.clock >= OPENING_SEC ? STARTER_CHECKIN_PACE : 1)
     this.hallNav.setShopStock(this.foodShelf, this.shopShelf)
+    this.syncBagDocks(fit)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
       if (f?.std != null) return f.std
       const slot = flightId.startsWith('slot:') ? flightId.slice(5) : null
       return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
     })
-    this.hallNav.tick(step)
+    const walked = this.hallNav.tick(step)
+    this.applyWalkerAuthority(walked)
+    const spent = this.hallNav.takeSpend()
+    if (spent > 0) this.earn(spent, 'Shops', undefined, 'retail_sales', false)
     this.applyHallWaits()
     this.applyHallMood()
     // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
@@ -10884,6 +10916,12 @@ export class Game {
         if (open.size) this.openDepartingGuest(g, open)
       }
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
+      if (this.hallNav.owns(g.id)) {
+        const node = this.hallNav.hallNode(g.id)
+        if (node) g.node = node
+        if (this.hallNav.pastSecurity(g.id)) g.clearedSec = true
+        continue
+      }
       const open = this.openForGuest(g)
       if (!open.size) continue
       if (g.releaseAt != null) {
@@ -11257,11 +11295,62 @@ export class Game {
     }
   }
 
-  /** Headcount against the live ceiling. Preview, curb trips, and not-yet-released guests do not count. */
+  /** Headcount against the live ceiling. Preview, curb trips, not-yet-released guests, and walking passengers do not count. */
   private hallHeadcount(): number {
     return this.hallGuests.filter(
-      (g) => !g.preview && !g.curbHold && (g.releaseAt == null || g.releaseAt <= this.clock),
+      (g) =>
+        !g.preview &&
+        !g.curbHold &&
+        (g.releaseAt == null || g.releaseAt <= this.clock) &&
+        !this.hallNav.owns(g.id),
     ).length
+  }
+
+  /**
+   * Boarded, missed, and left come from the walkers. The hall graph no longer
+   * sets `dead` for a guest the walk owns.
+   */
+  private applyWalkerAuthority(events: { kind: string; id: string }[]) {
+    if (!events.length && this.hallNav.passengers === 0) {
+      this.hallNav.takeLeft()
+      return
+    }
+    const byId = new Map<string, HallGuest>()
+    for (const g of this.hallGuests) byId.set(g.id, g)
+    for (const e of events) {
+      const g = byId.get(e.id)
+      if (!g || g.dead) continue
+      if (e.kind === 'boarded') {
+        g.needs.boarding = 0
+        g.dead = true
+        g.lost = false
+        g.thought = 'Boarded'
+        this.paxServed += 1
+        this.queueReputation(0.4)
+      } else if (e.kind === 'missed') {
+        g.happiness = Math.max(0, g.happiness - 30)
+        this.missedFlights += 1
+        this.queueReputation(-0.8)
+        const aid = this.guestAirlineId(g)
+        if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
+        if (!this.hallNav.hasWalker(e.id)) {
+          g.dead = true
+          g.lost = false
+        }
+      } else if (e.kind === 'rebooked') {
+        g.dead = true
+        g.lost = false
+        g.thought = 'Rebooked'
+      }
+    }
+    for (const id of this.hallNav.takeLeft()) {
+      const g = byId.get(id)
+      if (!g || g.dead) continue
+      g.thought = 'Left the airport'
+      g.dead = true
+      this.paxServed += 1
+      this.queueReputation(g.happiness >= 55 ? 0.35 : 0.1)
+    }
   }
 
   /**

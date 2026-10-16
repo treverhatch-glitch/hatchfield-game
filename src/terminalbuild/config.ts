@@ -154,6 +154,8 @@ export const EQUIP_SPEC: Record<EquipKind, EquipSpec> = {
   shop_counter: { label: 'Shop counter', rooms: ['retail'], servesPax: true, walkThrough: false, serviceSec: 60, build: 7_000, upkeepPerDay: 12 },
   toilet: { label: 'Toilet block', rooms: ['toilets'], servesPax: true, walkThrough: false, serviceSec: 90, build: 9_000, upkeepPerDay: 18 },
   office_desk: { label: 'Office desk', rooms: ['office'], servesPax: false, walkThrough: false, serviceSec: 0, build: 4_000, upkeepPerDay: 8 },
+  bag_drop: { label: 'Bag drop', rooms: ['checkin'], servesPax: true, walkThrough: false, serviceSec: 40, build: 12_000, upkeepPerDay: 18 },
+  passport_booth: { label: 'Passport booth', rooms: [], servesPax: true, walkThrough: false, serviceSec: 20, build: 18_000, upkeepPerDay: 22 },
 }
 
 /** Gemini interior plates the player can paint. Ids match `INTERIOR_TILES`. */
