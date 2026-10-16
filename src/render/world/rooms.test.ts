@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { blankView, rect, starterGame } from './fixtures'
 import { terminals } from './layout'
-import { planTerminal, walkerAt } from './plan'
-import { canStep, NAV_CLEAR, navPath, PUBLIC_ROOMS, roomAt, roomEdges, squareAt, STERILE_ROOMS, type RoomPlan } from './rooms'
+import { planTerminal } from './plan'
+import { canStep, navPath, PUBLIC_ROOMS, roomEdges, squareAt, STERILE_ROOMS, type RoomPlan } from './rooms'
 
 function starterRooms(): RoomPlan {
   const [t] = terminals(starterGame())
@@ -83,35 +83,13 @@ describe('terminal rooms', () => {
     expect(visited.has('office')).toBe(false)
   })
 
-  it('crowd walkers stay in public rooms; staff walk the back office', () => {
+  it('does not bake decorative crowd routes into the apron plan', () => {
     const [t] = terminals(starterGame())
-    const plan = planTerminal(t, { walkersPerCell: 1 })
-    const pax = plan.walkers.filter((w) => !w.staff)
-    expect(pax.length).toBeGreaterThan(15)
-    for (const w of pax) {
-      for (const p of w.pts) expect(PUBLIC_ROOMS.has(roomAt(plan.rooms, p.x, p.z)!.kind)).toBe(true)
-    }
-    expect(plan.walkers.some((w) => w.staff)).toBe(true)
-  })
-
-  it('walkers keep a body radius off walls and never cross furniture', () => {
-    const [t] = terminals(starterGame())
-    const plan = planTerminal(t, { walkersPerCell: 2 })
-    const rp = plan.rooms
-    const segDist = (x: number, z: number, w: { x0: number; z0: number; x1: number; z1: number }) => {
-      const dx = w.x1 - w.x0
-      const dz = w.z1 - w.z0
-      const k = Math.max(0, Math.min(1, ((x - w.x0) * dx + (z - w.z0) * dz) / (dx * dx + dz * dz || 1)))
-      return Math.hypot(x - w.x0 - dx * k, z - w.z0 - dz * k)
-    }
-    for (const w of plan.walkers) {
-      const len = w.cum[w.cum.length - 1]
-      for (let d = 0; d <= len; d += 0.1) {
-        const p = walkerAt({ ...w, phase: 0, speed: 1 }, d)
-        for (const wall of rp.walls) if (!wall.header) expect(segDist(p.x, p.z, wall)).toBeGreaterThan(NAV_CLEAR - 0.02)
-        expect(rp.blocked[squareAt(rp, p.x, p.z)]).toBe(0)
-      }
-    }
+    const plan = planTerminal(t, { walkersPerCell: 2, density: 1 })
+    expect(plan.walkers).toEqual([])
+    expect(plan.people).toEqual([])
+    expect(plan.props).toEqual([])
+    expect(plan.rooms.rooms.length).toBeGreaterThan(0)
   })
 
   it('room outlines close and one-deep halls still connect', () => {

@@ -179,7 +179,7 @@ import {
 import { hangarFootprintCells } from './buildingFootprint'
 import { footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
-import { AIRCRAFT_VISUAL_SCALE, getAircraftSpec } from '../render/aircraft/specs'
+import { AIRCRAFT_VISUAL_SCALE, getAircraftSpec, WORLD_PER_METER } from '../render/aircraft/specs'
 import { BAG_ROOM_TUGS, BAG_UNITS_PER_CART, heavyBagLoad, planTugTrains } from './tugTrains'
 import { bridgeMirror, envelopeLetter, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
@@ -243,7 +243,12 @@ import {
   ITEM_TO_FITTING,
   equipForFitting,
   fittingSize,
+  fittingSpec,
+  fittingRefund,
+  placeFitting,
+  removeFitting,
   type EditResult,
+  type FittingKind,
   type InteriorEdit,
   type RoomKind,
 } from '../terminalbuild/index.ts'
@@ -15985,6 +15990,48 @@ export class Game {
     return true
   }
 
+  /**
+   * Place a catalog fitting on a socket, or on the footprint at (x, y).
+   * The layout the walk and the renderer share is the one that changes.
+   */
+  placeLayoutFitting(kind: FittingKind, x: number, y: number, rot: 0 | 1 | 2 | 3 = 0): boolean {
+    const fit = this.activeHall()
+    const layout = fit?.layout?.version === 2 ? fit.layout : null
+    const spec = fittingSpec(kind)
+    if (!fit || !layout) return false
+    const placed = placeFitting(layout, kind, { x, y, rot })
+    if ('error' in placed) {
+      this.pushNews(`${spec.label}: ${placed.error}`, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(spec.cost, spec.label)) return false
+    fit.layout = placed.layout
+    this.hallRev++
+    this.pushNews(`${spec.label} placed — $${spec.upkeep}/day upkeep.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
+  }
+
+  /** Sell a layout fitting and refund the catalog share. */
+  sellLayoutFitting(id: string): boolean {
+    const fit = this.activeHall()
+    const layout = fit?.layout
+    if (!fit || !layout) return false
+    const gone = removeFitting(layout, id)
+    if ('error' in gone) return false
+    const spec = fittingSpec(gone.fitting.kind)
+    const refund = fittingRefund(gone.fitting.kind)
+    fit.layout = gone.layout
+    this.credit(refund, 'refunds', spec.label)
+    this.hallRev++
+    this.pushNews(`${spec.label} sold — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
+  }
+
   /** Bulldoze a placed hall item for a partial refund. Prefab bundle pieces stay. */
   removeHallItem(itemId: string): boolean {
     const fit = this.activeHall()
@@ -23205,6 +23252,23 @@ export class Game {
       if (parsed?.host === 'fire' && list.some((item) => item.id === 'alarm_bell')) return scrambleSeconds(true)
     }
     return scrambleSeconds(false)
+  }
+
+  /**
+   * `gate_bridge` doors, in world units, for the apron rotunda.
+   * S1 publishes none until a bridge door is cut in the facade.
+   */
+  get bridgeSockets(): { x: number; z: number }[] {
+    const out: { x: number; z: number }[] = []
+    for (const fit of this.fits) {
+      const layout = fit.layout
+      if (!layout) continue
+      for (const s of terminalSockets(layout, fit.origin, this.hallKey(fit))) {
+        if (s.kind !== 'gate_bridge') continue
+        out.push({ x: s.x * WORLD_PER_METER, z: s.z * WORLD_PER_METER })
+      }
+    }
+    return out
   }
 
   /** Jet bridges bought on this stand. The mesh and the boarding clock both read it. */

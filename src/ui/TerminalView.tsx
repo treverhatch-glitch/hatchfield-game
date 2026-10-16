@@ -10,7 +10,8 @@ import { registerHallTools } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
 import { sharedSettings } from '../features/settings/settings.ts'
 import { GUEST_GLANCE } from '../paxnav/guestConfig.ts'
-import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
+import { HallWorld, type HallBuildMode, type HallHover } from '../render/interior/InteriorView'
+import { fittingSpec } from '../terminalbuild/fittings.ts'
 import { shownWorld } from '../render/viewCue'
 import { WalkerCard, WalkerOnlyCard } from './WalkerCard'
 import {
@@ -172,6 +173,18 @@ function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover |
         <span className={hover.check?.ok === false ? 'bad' : 'good'}>
           {hover.check?.reason ?? (hover.target ? 'Click to pick up' : 'Click an item')}
         </span>
+      </div>
+    )
+  }
+  if (build.kind === 'fitting') {
+    const spec = fittingSpec(build.fitting)
+    return (
+      <div className="kit-tip" style={style} data-testid="kit-tip">
+        <strong>{spec.label}</strong>
+        <span>
+          {money(spec.cost)} · ${spec.upkeep}/day
+        </span>
+        <span className={hover.check?.ok ? 'good' : 'bad'}>{hover.check?.reason ?? 'Click a socket or a free footprint'}</span>
       </div>
     )
   }

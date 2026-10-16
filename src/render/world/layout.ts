@@ -385,12 +385,27 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     }
     if (!best || best.d > range) continue
     const v = DIR_VEC[best.side]
-    const root = {
-      x: cellX(best.cell.c) + v.dc * CELL * 0.5,
-      z: cellZ(best.cell.r) + v.dr * CELL * 0.5,
-    }
     const sx = cellX(s.c)
     const sz = cellZ(s.r)
+    const sockets = view.bridgeSockets ?? []
+    let socket: { x: number; z: number } | undefined = sockets[0]
+    if (sockets.length > 1) {
+      let bestD = Infinity
+      for (const candidate of sockets) {
+        const d = Math.hypot(candidate.x - sx, candidate.z - sz)
+        if (d < bestD) {
+          bestD = d
+          socket = candidate
+        }
+      }
+    }
+    if (socket && Math.hypot(socket.x - sx, socket.z - sz) > range * CELL) socket = undefined
+    const root = socket
+      ? { x: socket.x, z: socket.z }
+      : {
+          x: cellX(best.cell.c) + v.dc * CELL * 0.5,
+          z: cellZ(best.cell.r) + v.dr * CELL * 0.5,
+        }
     const spec = getAircraftSpec(standPreviewId(s.cls, s.scale))
     const dock = bridgeDoorsMeters(spec)[0]
     const nose = DIR_VEC[OPPOSITE[s.entry]]
@@ -403,7 +418,7 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     // Nose-in: the facade is ahead of the nose. Shift the rotunda out to the door line
     // so the tunnel runs beside the fuselage instead of through it.
     const noseIn = nose.dc * towardC + nose.dr * towardR > 0
-    if (noseIn && dock) {
+    if (!socket && noseIn && dock) {
       // Extra half-metre keeps the tunnel box off the skin, not just its centreline.
       const out = dock.z + 0.9
       root.x += port.dc * out * wu

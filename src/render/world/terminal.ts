@@ -67,7 +67,6 @@ import { deskHeaderTexture, fidsBoardTexture, signPanelMaterial, wayfindingSheet
 import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { HALL_NEAR_DIST } from '../hallCamera'
-import { buildHiDetailProps, buildInteriorDressing, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
 import { setNearPropDetail } from '../terminalProps'
 import { CELL, cellX, cellZ } from './view'
 import { facadeOpenings } from './facade'
@@ -152,7 +151,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
     textures,
     surfaces,
     signCache: new Map(),
-    hiDetail: hiDetailOn(quality),
+    hiDetail: quality !== 'low',
     fids,
   }
 }
@@ -273,6 +272,11 @@ export class TerminalBuilding {
     this.radius = clusterRadius(info.cluster)
     this.root.name = `terminal-${opts.index}`
     this.pier = opts.pier === true
+    // Airport view: one scale for anything hung in metres. The shell stays in world units.
+    const metres = new THREE.Group()
+    metres.name = 'terminal-root'
+    metres.scale.setScalar(WORLD_PER_METER)
+    this.root.add(metres)
     this.shell.name = 'terminal-shell'
     this.interiorFloors.name = 'terminal-interior'
     this.shell.add(this.interiorFloors)
@@ -917,9 +921,7 @@ export class TerminalBuilding {
     const logoSlots: THREE.Matrix4[] = []
     const headerSlots: { matrix: THREE.Matrix4; room: number }[] = []
     const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
-    const hi = this.shared.hiDetail === true
     for (const p of this.plan.props) {
-      if (hiDetailOwns(p.kind, hi)) continue
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
       const room = roomAt(this.plan.rooms, p.x, p.z)?.id ?? -1
       if (DESK_KINDS.has(p.kind)) {
@@ -1091,10 +1093,6 @@ export class TerminalBuilding {
       mesh.castShadow = false
       mesh.frustumCulled = false
       this.detail.add(mesh)
-    }
-    if (hi) {
-      this.props.add(buildHiDetailProps(this.plan.props, this.shared.parts, WORLD_PER_METER, FLOOR_Y))
-      this.props.add(buildInteriorDressing(this.plan.rooms, WORLD_PER_METER, FLOOR_Y))
     }
   }
 

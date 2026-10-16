@@ -4,15 +4,17 @@ import * as THREE from 'three'
 import { PeopleRenderer } from '../people/renderer.ts'
 import type { PersonLook } from '../people/types.ts'
 import { crewLook, passengerLook } from '../people/variants.ts'
-import { buildHallDetail, HALL_ITEM_PROP, HALL_REAL_SIZE, hallDetailPlacements } from './hallKitDetail.ts'
-import { layoutItems } from './hallKitMeshes.ts'
+import { WORLD_PER_METER } from './aircraft/specs.ts'
+import { fittingSpec } from '../terminalbuild/fittings.ts'
+import { split1f } from '../terminalbuild/starter/split1f.ts'
+import { buildFittingMeshes, fittingPropType } from './interior/fittings.ts'
+import { buildLayoutShell } from './interior/shell.ts'
 import {
   CAPSULE_SCALE_MAX,
   CAPSULE_SCALE_MIN,
   capsuleStandingM,
 } from './hallNavCrowd.ts'
 import { terminalProp, type TerminalPropType } from './terminalProps/index.ts'
-import { schemeItems, type PlacedItem } from '../game/terminal.ts'
 
 /**
  * Full bounding height of each prop the hall kit actually draws.
@@ -115,24 +117,19 @@ describe('hall scale audit v1', () => {
   })
 
   it('draws every hall prop at its real height and scale 1', () => {
-    const drawn = new Set(Object.values(HALL_ITEM_PROP))
-    for (const type of drawn) {
-      const band = HALL_PROP_HEIGHT_M[type]
-      expect(band, type).toBeTruthy()
+    for (const [type, band] of Object.entries(HALL_PROP_HEIGHT_M)) {
       const h = terminalProp(type as TerminalPropType).size.h
       expect(h, `${type} is ${h.toFixed(3)} m`).toBeGreaterThanOrEqual(band[0])
       expect(h, `${type} is ${h.toFixed(3)} m`).toBeLessThanOrEqual(band[1])
     }
-    const items = schemeItems(1).map((item) => ({ ...item }))
-    const laid = layoutItems(items, 8, 5)
-    const { group } = buildHallDetail(laid, 8, 5)
+    const group = buildFittingMeshes(split1f())
     group.name = 'hall-root'
     group.traverse((obj) => {
       expect(obj.scale.x, obj.name).toBeCloseTo(1, 5)
       expect(obj.scale.y, obj.name).toBeCloseTo(1, 5)
       expect(obj.scale.z, obj.name).toBeCloseTo(1, 5)
     })
-    const hall = readFileSync(new URL('./hallWorld.ts', import.meta.url), 'utf8')
+    const hall = readFileSync(new URL('./interior/InteriorView.ts', import.meta.url), 'utf8')
     const scales = [...hall.matchAll(/\.scale\.set(?:Scalar)?\(([^)]*)\)/g)].map((m) => m[1].replace(/\s/g, ''))
     for (const args of scales) {
       const unit = args === '1,1,1' || args === '1'
@@ -144,23 +141,53 @@ describe('hall scale audit v1', () => {
   })
 
   it('keeps the PR #125 real-size service kit at its authored footprint', () => {
-    for (const type of HALL_REAL_SIZE) {
-      const band = HALL_REAL_FOOTPRINT_M[type]
-      expect(band, type).toBeTruthy()
-      const { w, d } = terminalProp(type).size
+    for (const [type, band] of Object.entries(HALL_REAL_FOOTPRINT_M)) {
+      const { w, d } = terminalProp(type as TerminalPropType).size
       expect(w, `${type} width ${w.toFixed(2)} m`).toBeGreaterThanOrEqual(band.w[0])
       expect(w, `${type} width ${w.toFixed(2)} m`).toBeLessThanOrEqual(band.w[1])
       expect(d, `${type} depth ${d.toFixed(2)} m`).toBeGreaterThanOrEqual(band.d[0])
       expect(d, `${type} depth ${d.toFixed(2)} m`).toBeLessThanOrEqual(band.d[1])
     }
-    const placements = hallDetailPlacements(
-      [...HALL_REAL_SIZE].map((type, i) => {
-        const def = Object.keys(HALL_ITEM_PROP).find((id) => HALL_ITEM_PROP[id] === type) ?? type
-        return { item: { id: `r${i}`, def, c: 0, r: 0, wear: 0, rot: 0 } as PlacedItem, x: i * 20, z: 0 }
-      }),
-      8,
-      5,
-    )
-    for (const p of placements) expect(p.scale, p.type).toBe(1)
+  })
+})
+
+describe('hall scale audit v2', () => {
+  it('keeps catalog footprints within 5% of the builders that were measured', () => {
+    const rows = ['bag_drop', 'claim_carousel', 'passport_booth'] as const
+    for (const kind of rows) {
+      const spec = fittingSpec(kind)
+      const type = fittingPropType(kind)
+      expect(type, kind).toBeTruthy()
+      const box = terminalProp(type!).size
+      expect(Math.abs(spec.w - box.w) / box.w, kind).toBeLessThanOrEqual(0.05)
+      expect(Math.abs(spec.d - box.d) / box.d, kind).toBeLessThanOrEqual(0.05)
+    }
+  })
+
+  it('scales only terminal-root in the airport terminal, and the hall shell stays at 1', () => {
+    const hall = new THREE.Group()
+    hall.name = 'hall-root'
+    hall.add(buildLayoutShell(split1f()))
+    hall.traverse((obj) => {
+      expect(obj.scale.x, obj.name).toBeCloseTo(1, 5)
+      expect(obj.scale.y, obj.name).toBeCloseTo(1, 5)
+      expect(obj.scale.z, obj.name).toBeCloseTo(1, 5)
+    })
+    const src = readFileSync(new URL('./world/terminal.ts', import.meta.url), 'utf8')
+    expect(src).toContain("metres.name = 'terminal-root'")
+    expect(src).toContain('metres.scale.setScalar(WORLD_PER_METER)')
+    const root = new THREE.Group()
+    root.name = 'terminal-0'
+    const metres = new THREE.Group()
+    metres.name = 'terminal-root'
+    metres.scale.setScalar(WORLD_PER_METER)
+    root.add(new THREE.Group(), metres)
+    const scaled: string[] = []
+    root.traverse((obj) => {
+      const unit = Math.abs(obj.scale.x - 1) < 1e-6 && Math.abs(obj.scale.y - 1) < 1e-6 && Math.abs(obj.scale.z - 1) < 1e-6
+      if (!unit) scaled.push(obj.name)
+    })
+    expect(scaled).toEqual(['terminal-root'])
+    expect(metres.scale.x).toBeCloseTo(WORLD_PER_METER, 5)
   })
 })

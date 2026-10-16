@@ -1,10 +1,13 @@
 import { useRef, useState } from 'react'
 import type { Game } from '../game/sim'
-import type { HallBuildMode } from '../render/hallWorld'
+import type { HallBuildMode } from '../render/interior/InteriorView'
 import { StampIcon } from './nav/stampIcons.tsx'
+import { KitGlyph } from './kitGlyph'
 import { useHudBandVar } from './hudBand.ts'
 import { EQUIP_SPEC, FLOOR_PAINTS, ROOM_SPEC, WALL_PAINTS } from '../terminalbuild/config.ts'
-import type { RoomKind } from '../terminalbuild/types.ts'
+import { FITTING_KINDS, fittingSpec } from '../terminalbuild/fittings.ts'
+import { fittingOffered } from '../terminalbuild/interior.ts'
+import type { BuildZone, FittingKind, RoomKind } from '../terminalbuild/types.ts'
 
 const ROOM_KINDS: RoomKind[] = ['checkin', 'security', 'gate', 'retail', 'lounge', 'toilets', 'office', 'bagmakeup']
 
@@ -18,7 +21,8 @@ export function InteriorBar({
   build: HallBuildMode
   setBuild: (mode: HallBuildMode) => void
 }) {
-  const [open, setOpen] = useState<'floor' | 'wall' | 'room' | null>(null)
+  const [open, setOpen] = useState<'floor' | 'wall' | 'room' | 'kit' | null>(null)
+  const [zone, setZone] = useState<BuildZone | null>(null)
   const bar = useRef<HTMLDivElement>(null)
   useHudBandVar(bar, '--hud-interior-bottom', 'bottom')
   const fit = game.activeHall()
@@ -37,6 +41,9 @@ export function InteriorBar({
   return (
     <div ref={bar} className="interior-bar" data-testid="interior-bar" data-hud-panel="interior">
       <div className="kit-tabs">
+        <button type="button" data-testid="interior-kit" className={build?.kind === 'fitting' || open === 'kit' ? 'on' : ''} onClick={() => setOpen(open === 'kit' ? null : 'kit')}>
+          <StampIcon id="zone" /> Fittings
+        </button>
         <button type="button" data-testid="interior-foundation" className={build?.kind === 'foundation' ? 'on' : ''} onClick={() => tool({ kind: 'foundation' })}>
           <StampIcon id="foundation" /> Foundation
         </button>
@@ -69,13 +76,14 @@ export function InteriorBar({
             {ROOM_SPEC[room.kind].label}
           </button>
         ))}
-        {build?.kind === 'foundation' || build?.kind === 'wall' || build?.kind === 'door' || build?.kind === 'floor' || build?.kind === 'wallpaper' || build?.kind === 'room' ? (
+        {build?.kind === 'foundation' || build?.kind === 'wall' || build?.kind === 'door' || build?.kind === 'floor' || build?.kind === 'wallpaper' || build?.kind === 'room' || build?.kind === 'fitting' ? (
           <span className="kit-status" data-testid="interior-status">
             {build.kind === 'foundation' ? 'Foundation · drag indoor floor' : null}
             {build.kind === 'wall' ? (build.erase ? 'Erase · drag a wall' : 'Walls · drag') : null}
             {build.kind === 'door' ? 'Door · click a wall' : null}
             {build.kind === 'floor' ? `Floor · ${FLOOR_PAINTS.find((p) => p.id === build.paint)?.label ?? 'paint'}` : null}
             {build.kind === 'wallpaper' ? `Wallpaper · ${WALL_PAINTS.find((p) => p.id === build.paint)?.label ?? 'paint'}` : null}
+            {build.kind === 'fitting' ? `Placing ${fittingSpec(build.fitting).label} · click a socket or a free footprint` : null}
             {build.kind === 'room' ? `${ROOM_SPEC[build.room].label} · drag across the tiles to designate` : null}
             {' · Esc cancel'}
           </span>
@@ -90,6 +98,36 @@ export function InteriorBar({
           ))
         )}
       </div>
+      {open === 'kit' ? (
+        <div className="kit-cards" data-testid="fitting-palette">
+          <div className="kit-tabs" data-testid="fitting-zones">
+            {(['checkin', 'security', 'gates', 'retail', 'claim', 'arrivals'] as BuildZone[]).map((z) => (
+              <button key={z} type="button" data-testid={`fitting-zone-${z}`} className={zone === z ? 'on' : ''} onClick={() => setZone(zone === z ? null : z)}>
+                {z}
+              </button>
+            ))}
+          </div>
+          {FITTING_KINDS.filter((kind) => fittingOffered(kind, zone, fit?.layout?.stories ?? 1)).map((kind) => {
+            const spec = fittingSpec(kind)
+            return (
+              <button
+                key={kind}
+                type="button"
+                data-testid={`fitting-${kind}`}
+                className={build?.kind === 'fitting' && build.fitting === kind ? 'on' : ''}
+                onClick={() => {
+                  setOpen(null)
+                  setBuild({ kind: 'fitting', fitting: kind as FittingKind, rot: 0 })
+                }}
+              >
+                <KitGlyph id={spec.priceFrom === 'proposed' ? kind : spec.priceFrom.replace(/^equip:/, '')} />
+                <strong>{spec.label}</strong>
+                <span>${spec.cost.toLocaleString('en-US')}</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
       {open === 'floor' ? (
         <div className="kit-cards" data-testid="floor-paints">
           {FLOOR_PAINTS.map((p) => (

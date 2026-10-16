@@ -68,7 +68,6 @@ describe('interior anim clock', () => {
     const files = [
       ...sources(new URL('.', import.meta.url).pathname),
       ...sources(new URL('../terminalProps', import.meta.url).pathname),
-      new URL('../hallWorld.ts', import.meta.url).pathname,
     ]
     for (const file of files) {
       const text = readFileSync(file, 'utf8')

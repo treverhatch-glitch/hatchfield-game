@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from '../game/sim.ts'
 import { spawnHallGuest } from '../game/guests.ts'
-import { overlaySignature } from './hallWorld.ts'
+import { overlaySignature } from './interior/InteriorView.ts'
 
 function hall() {
   const game = new Game()

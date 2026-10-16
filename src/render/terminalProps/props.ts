@@ -623,9 +623,10 @@ function restroom(): Part[] {
 }
 
 // ---------- baggage claim ----------
-function carousel(): Part[] {
+/** Straight-run length in metres. The 2.7 × 1.5 m concept plate stays this size. */
+export function carousel(straightM = 9): Part[] {
   const out: Part[] = []
-  const L = 9, R = 1.6
+  const L = straightM, R = 1.6
   // straight runs
   for (const z of [-R, R]) {
     out.push(box([L, 0.42, 0.9], [0, 0.21, z], 'brushed'))

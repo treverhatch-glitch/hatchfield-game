@@ -4,7 +4,7 @@
  */
 import { DIR_VEC, type Dir, type TerminalInfo } from './layout'
 import { rng } from '../../game/mulberry.ts'
-import { navPath, planRooms, pointInRoom, type RoomKind, type RoomPlan } from './rooms'
+import { planRooms, type RoomPlan } from './rooms'
 import { CELL, cellX, cellZ } from './view'
 
 /** `backoffice` cells split into staff offices (landside half) and the R&D lab. */
@@ -269,50 +269,12 @@ export function planTerminal(
     }
   }
 
-  const rooms = planRooms(t, zones, props, depthN === 1, depthN === 2)
-  const plan: TerminalPlan = { zones, props, people, walkers: [], rooms }
-
-  // Crowd routes follow the passenger flow and go through doorways, never through walls.
-  const perCell = opts.walkersPerCell ?? 1
-  if (perCell > 0) {
-    const n = Math.round(t.cluster.cells.length * perCell * 2.5)
-    const byKind = (k: RoomKind) => rooms.rooms.filter((r) => r.kind === k)
-    const flows = (
-      [
-        ['checkin', 'security'],
-        ['checkin', 'checkin'],
-        ['security', 'airside'],
-        ['airside', 'gate'],
-        ['airside', 'shops'],
-        ['shops', 'gate'],
-        ['gate', 'gate'],
-        ['checkin', 'gate'],
-      ] as [RoomKind, RoomKind][]
-    ).filter(([p, q]) => byKind(p).length && byKind(q).length)
-    const pick = <T,>(list: T[]) => list[Math.floor(rand() * list.length) % list.length]
-    const route = (from: RoomKind, to: RoomKind, staff: boolean) => {
-      for (let tries = 0; tries < 6; tries++) {
-        const a = pointInRoom(rooms, pick(byKind(from)), rand)
-        const b = pointInRoom(rooms, pick(byKind(to)), rand)
-        const pts = navPath(rooms, a, b, { staff, strict: true })
-        if (pts && Math.hypot(b.x - a.x, b.z - a.z) > 1.5) return pts
-      }
-      return null
-    }
-    for (let i = 0; i < n && flows.length; i++) {
-      const [from, to] = flows[i % flows.length]
-      const pts = route(from, to, false)
-      if (!pts || pts.length < 2) continue
-      plan.walkers.push(makeWalker(pts, 0.55 + rand() * 0.5, rand(), paxTint(), rand() < 0.7))
-    }
-    if (byKind('office').length && byKind('lab').length) {
-      for (const [from, to] of [['office', 'lab'], ['office', 'checkin']] as [RoomKind, RoomKind][]) {
-        const pts = route(from, to, true)
-        if (pts && pts.length >= 2) plan.walkers.push({ ...makeWalker(pts, 0.6, rand(), 0, false), staff: true })
-      }
-    }
-  }
-  return plan
+  const rooms = planRooms(t, zones, [], depthN === 1, depthN === 2)
+  // Interior props, baked people and decorative routes are not drawn. The hall renderer owns them.
+  void props
+  void people
+  void opts
+  return { zones, props: [], people: [], walkers: [], rooms }
 }
 
 export function makeWalker(pts: { x: number; z: number }[], speed: number, phase: number, tint: number, bag: boolean): Walker {

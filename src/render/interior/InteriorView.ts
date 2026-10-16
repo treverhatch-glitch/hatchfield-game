@@ -3,15 +3,17 @@
  * Layout follows NODE_POS; rooms appear when furnished. Security is the visual choke.
  */
 import * as THREE from 'three'
-import { HALL_LIGHT } from './look'
-import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
-import { buildHallDetail, hallItemProp, hallPickMesh, hallPropAllowed, pickedFacilityId } from './hallKitDetail'
-import { hiDetailOn } from './world/terminalHiDetail'
-import { readAnimSec } from './interior/animClock'
-import { canvasToPng } from '../camera/capture.ts'
-import { zoomToCursorShift } from '../camera/zoom.ts'
-import { inputMap } from '../input/map.ts'
-import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import { HALL_LIGHT } from '../look'
+import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from '../graphicsPrefs'
+import { readAnimSec } from './animClock'
+import { buildFittingMeshes } from './fittings'
+import { HallPeople } from './people'
+import { pickFacilityId, pickedFacilityId } from './picking'
+import { buildLayoutShell } from './shell'
+import { canvasToPng } from '../../camera/capture.ts'
+import { zoomToCursorShift } from '../../camera/zoom.ts'
+import { inputMap } from '../../input/map.ts'
+import { perf, perfEnd, perfFrame, perfStart } from '../../core/perf'
 import {
   HALL_CAM_DIST,
   HALL_CAM_FAR,
@@ -25,15 +27,15 @@ import {
   HALL_CAM_PITCH,
   HALL_CAM_YAW,
   HALL_OCCLUDE_M,
-} from './hallCamera'
-import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
-import { bake, type BakePiece } from './world/kit'
-import { paintTerrazzo } from './world/raster'
-import { rasterTexture } from './world/textures'
-import type { Game } from '../game/sim'
-import { isAssignKind } from '../hubprogress/assign.ts'
-import { syncLeaseMarks, type LeaseMark } from './leaseBadge.ts'
+} from '../hallCamera'
+import { HALL_EDGES, NODE_POS, type HallNode } from '../../game/guests'
+import { paintTerrazzo } from '../world/raster'
+import { rasterTexture } from '../world/textures'
+import type { Game } from '../../game/sim'
+import { isAssignKind } from '../../hubprogress/assign.ts'
+import { syncLeaseMarks, type LeaseMark } from '../leaseBadge.ts'
 import {
+  cellCenter,
   GRID_C,
   GRID_R,
   HALL_D,
@@ -44,41 +46,31 @@ import {
   type ItemId,
   type PlacedItem,
   type ZoneId,
-} from '../game/terminal'
-import { cellLoad, itemSize, type PlacementCheck } from '../game/terminalKit'
-import {
-  buildGhost,
-  buildKitInstances,
-  disposeKitInstances,
-  hasKitMesh,
-  kitMeshKey,
-  layoutFittings,
-  layoutItems,
-  slotCenter,
-} from './hallKitMeshes'
-import { HallLitterLayer } from './hallLitter'
-import { HallNavCrowd } from './hallNavCrowd'
-import { releasePerfOverlay, retainPerfOverlay } from '../perf'
-import { HallServiceFx } from './hallService'
-import { nearestFacilityId } from '../ui/inspector/facilityCard.ts'
-import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
-import type { HallNav } from '../game/hallNav'
-import { BUILD_TUNING, layoutTileM, type Edge, type RoomKind } from '../terminalbuild/index.ts'
-import { showLegacyHallFurniture } from './hallRooms'
-import { QUALITY } from './world/quality'
-import { setFidsOpen } from '../fids/open'
-import { objectIsFidsBoard } from '../fids/stage'
-import type { RoomPlan } from './world/rooms'
-import { hallQueues, type HallQueue } from '../terminalplay/queues'
-import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
-import { cellCenterInFloor, cellInFloor } from '../game/shellFloor.ts'
-import { hallBaseLayout } from '../game/hallNav.ts'
-import { dragRect, nearestEdge, tileAtPoint, tilesInRect, wallRun } from '../terminalbuild/interior.ts'
-import { interiorEditSig, roomContains, syncInteriorEdit, syncInteriorGhost } from './interiorBuild.ts'
+} from '../../game/terminal'
+import { itemSize, type PlacementCheck } from '../../game/terminalKit'
+import { HallLitterLayer } from '../hallLitter'
+import type { HallNavCrowd } from '../hallNavCrowd'
+import { releasePerfOverlay, retainPerfOverlay } from '../../perf'
+import { HallServiceFx } from '../hallService'
+import { nearestFacilityId } from '../../ui/inspector/facilityCard.ts'
+import { HALL_WALKER_PICK } from '../../game/hallNavData.ts'
+import { BUILD_TUNING, layoutTileM, type FittingKind, type RoomKind } from '../../terminalbuild/index.ts'
+import { fittingSpec } from '../../terminalbuild/fittings.ts'
+import { QUALITY } from '../world/quality'
+import { setFidsOpen } from '../../fids/open'
+import { objectIsFidsBoard } from '../../fids/stage'
+import type { RoomPlan } from '../world/rooms'
+import { hallQueues, type HallQueue } from '../../terminalplay/queues'
+import { footprintHit, footprintSpec, stampFrom } from '../../terminalplay/footprints'
+import { cellCenterInFloor, cellInFloor } from '../../game/shellFloor.ts'
+import { hallBaseLayout } from '../../game/hallNav.ts'
+import { dragRect, nearestEdge, tileAtPoint, tilesInRect, wallRun } from '../../terminalbuild/interior.ts'
+import { interiorEditSig, roomContains, syncInteriorEdit, syncInteriorGhost } from '../interiorBuild.ts'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
   | { kind: 'place'; def: ItemId; rot: number }
+  | { kind: 'fitting'; fitting: FittingKind; rot: number }
   | { kind: 'bulldoze' }
   | { kind: 'move'; itemId: string | null; def: ItemId | null; rot: number }
   | { kind: 'foundation' }
@@ -108,85 +100,33 @@ function nodeWorld(id: HallNode): THREE.Vector3 {
   return new THREE.Vector3((p.x - 0.5) * HALL_W, 0, (p.y - 0.5) * HALL_D)
 }
 
-/** Living-interior floor tints. These multiply the terrazzo; they are not the zone paint. */
-const FLOOR_TINT: Record<ZoneId, string> = {
-  checkin: '#f4f1ea',
-  security: '#f2dca6',
-  gates: '#e2e6ea',
-  arrivals: '#f7f4ee',
-  retail: '#f1d3bc',
-  toilets: '#e7efe9',
-}
-
-const DOC_TINT: Record<string, string> = {
-  landside: '#f7f4ee',
-  checkin: '#f4f1ea',
-  security: '#f2dca6',
-  airside: '#e7eef6',
-  gates: '#e2e6ea',
-  retail: '#f1d3bc',
-  office: '#e6e2da',
-  claim: '#e4eef2',
-  arrivals: '#e4eef2',
-  baggage: '#e6e0d4',
-  bagroom: '#e6e0d4',
-  vertical: '#dedede',
-}
-
-/** Join collinear wall edges so a 1 m hall is not one mesh per metre. */
-function mergedWallRuns(walls: readonly Edge[], dir: 'E' | 'S'): { x: number; y: number; n: number }[] {
-  const groups = new Map<number, number[]>()
-  for (const e of walls) {
-    if (e.dir !== dir) continue
-    const key = dir === 'E' ? e.x : e.y
-    const along = dir === 'E' ? e.y : e.x
-    const list = groups.get(key)
-    if (list) list.push(along)
-    else groups.set(key, [along])
-  }
-  const out: { x: number; y: number; n: number }[] = []
-  for (const [key, list] of groups) {
-    list.sort((a, b) => a - b)
-    let start = list[0]
-    let prev = list[0]
-    const flush = (end: number) => {
-      const n = end - start + 1
-      if (n <= 0) return
-      out.push(dir === 'E' ? { x: key, y: start, n } : { x: start, y: key, n })
+/** Walkway stamps in hall metres. Footprint stamps keep hx/hz; cell stamps fill quarter slots. */
+function walkwaySpots(items: readonly PlacedItem[], cols: number, rows: number): { item: PlacedItem; x: number; z: number }[] {
+  const load = new Map<string, number>()
+  const out: { item: PlacedItem; x: number; z: number }[] = []
+  for (const item of items) {
+    if (item.def !== 'walkway') continue
+    if (item.hx != null && item.hz != null) {
+      out.push({ item, x: item.hx, z: item.hz })
+      continue
     }
-    for (let i = 1; i <= list.length; i++) {
-      if (i < list.length && list[i] === prev + 1) {
-        prev = list[i]
-        continue
-      }
-      flush(prev)
-      if (i < list.length) {
-        start = list[i]
-        prev = list[i]
-      }
+    const key = `${item.c},${item.r}`
+    const start = load.get(key) ?? 0
+    const size = itemSize(itemDef(item.def))
+    load.set(key, start + size)
+    const base = cellCenter(item.c, item.r, cols, rows)
+    if (size >= 4) {
+      out.push({ item, x: base.x, z: base.z })
+      continue
     }
+    const qx = HALL_W / cols / 4
+    const qz = HALL_D / rows / 4
+    const quad = (i: number) => ({ x: (i % 2 ? 1 : -1) * qx, z: (i >= 2 ? 1 : -1) * qz })
+    const a = quad(start)
+    const b = quad(Math.min(3, start + size - 1))
+    out.push({ item, x: base.x + (a.x + b.x) / 2, z: base.z + (a.z + b.z) / 2 })
   }
   return out
-}
-
-const ROOM_COLOR: Partial<Record<HallNode, string>> = {
-  entrance: '#6a8a72',
-  info: '#5a7a8a',
-  checkin: '#4a7a9a',
-  bathroom: '#5a6a70',
-  security: '#c9a227',
-  food: '#8a6a4a',
-  shop: '#7a5a8a',
-  lounge: '#3a6a8a',
-  gate: '#2f6f9a',
-  claim: '#6a7a8a',
-  exit: '#5a8a6a',
-  golf: '#4a8a5a',
-  spa: '#8a6a7a',
-  pool: '#3a7a9a',
-  dayhotel: '#8a7a5a',
-  gaming: '#6a4a7a',
-  waterfall: '#4a8a9a',
 }
 
 export class HallWorld {
@@ -211,7 +151,8 @@ export class HallWorld {
   private drawB: { x: number; y: number } | null = null
   private drawHit = new THREE.Vector3()
   /** Departures and arrivals from the hall's PaxNav. */
-  readonly navCrowd = new HallNavCrowd()
+  readonly people = new HallPeople()
+  readonly navCrowd: HallNavCrowd = this.people.crowd
   /** Check-in and security interiors: desk signs, bag scales, X-ray trays, queue barriers, staff figures. */
   readonly serviceFx = new HallServiceFx()
   /** Lounge badges. Click opens the dedicate picker. */
@@ -224,8 +165,6 @@ export class HallWorld {
   hotspotGroup = new THREE.Group()
   bagGroup = new THREE.Group()
   private perfOverlay = retainPerfOverlay()
-  private beforeLabel!: THREE.Mesh
-  private afterLabel!: THREE.Mesh
   private beltCubes: THREE.Mesh[] = []
   private claimCubes: THREE.Mesh[] = []
   private sortCubes: THREE.Mesh[] = []
@@ -366,18 +305,8 @@ export class HallWorld {
     this.floor.receiveShadow = true
     this.hallRoot.name = 'hall-root'
     this.scene.add(this.hallRoot)
+    this.floor.visible = false
     this.hallRoot.add(this.floor)
-
-    const before = this.makeLabel('BEFORE SECURITY', '#8ee0a8')
-    before.position.set(-HALL_W * 0.28, 0.08, -HALL_D * 0.42)
-    before.rotation.x = -Math.PI / 2
-    this.beforeLabel = before
-    this.hallRoot.add(before)
-    const after = this.makeLabel('AFTER SECURITY', '#7ec3e8')
-    after.position.set(HALL_W * 0.28, 0.08, -HALL_D * 0.42)
-    after.rotation.x = -Math.PI / 2
-    this.afterLabel = after
-    this.hallRoot.add(after)
 
     this.hallRoot.add(this.roomGroup)
     this.interiorEdit.name = 'interior-edit'
@@ -728,8 +657,8 @@ export class HallWorld {
    * one with that point's queue and served count.
    */
   private serviceVolumeId(): string | null {
-    const picks = this.roomGroup.children.filter((obj) => obj.userData.servicePick === true)
-    const hits = this.ray.intersectObjects([...this.serviceFx.facilityTargets(), ...picks], false)
+    const picks = [...this.kitGroup.children, ...this.roomGroup.children]
+    const hits = this.ray.intersectObjects([...this.serviceFx.facilityTargets(), ...picks], true)
     const ranked: { id: string; fromCenter: number }[] = []
     for (const hit of hits) {
       const id = hit.object.userData.facilityId
@@ -857,6 +786,18 @@ export class HallWorld {
     ) {
       return
     }
+    if (this.build.kind === 'fitting') {
+      const tileM = BUILD_TUNING.tileMetres
+      const fit = game.activeHall()
+      const doc = fit?.layout?.version === 2 ? fit.layout : null
+      const tile = doc
+        ? tileAtPoint(hover.hx, hover.hz, layoutTileM(doc), doc.w * layoutTileM(doc), doc.h * layoutTileM(doc), doc.w, doc.h)
+        : tileAtPoint(hover.hx, hover.hz, tileM, HALL_W, HALL_D, 12, 8)
+      if (!tile) return
+      const placed = game.placeLayoutFitting(this.build.fitting, tile.x, tile.y, this.build.rot as 0 | 1 | 2 | 3)
+      if (placed) this.onPlaced?.()
+      return
+    }
     if (this.build.kind === 'place') {
       const foot = footprintSpec(this.build.def) && this.roomPlan
       const placed = foot
@@ -874,7 +815,9 @@ export class HallWorld {
         if (moved) this.onMovePick?.(null, null)
       }
     } else if (hover.target) {
-      game.removeHallItem(hover.target.id)
+      const sold = this.fittingUnder(hover.hx, hover.hz)
+      if (sold) game.sellLayoutFitting(sold)
+      else game.removeHallItem(hover.target.id)
     }
     this.trackHover(e)
   }
@@ -893,10 +836,20 @@ export class HallWorld {
     this.paintZones = on
   }
 
+  /** Fitting id under a hall-metre point, from the pick boxes. */
+  private fittingUnder(hx: number, hz: number): string | null {
+    const ray = new THREE.Raycaster(new THREE.Vector3(hx, 8, hz), new THREE.Vector3(0, -1, 0))
+    return pickFacilityId(ray, this.kitGroup.children, this.zoomScratch)
+  }
+
   /** Green / red ghost on the hovered cell's next free slot. */
   private syncGhost(game: Game) {
     const mode = this.build
     const hover = this.hover
+    if (mode?.kind === 'fitting') {
+      this.syncFittingGhost(game, hover)
+      return
+    }
     const def = mode?.kind === 'place' ? mode.def : mode?.kind === 'move' ? mode.def : null
     if (!mode || !def || !hover) {
       if (this.ghost) this.ghost.visible = false
@@ -905,20 +858,22 @@ export class HallWorld {
     }
     if (!this.ghost || this.ghostDef !== def) {
       if (this.ghost) this.scene.remove(this.ghost)
-      this.ghost = buildGhost(def, this.ghostMat)
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 1.2), this.ghostMat)
+      box.position.y = 0.55
+      this.ghost = new THREE.Group()
+      this.ghost.add(box)
       this.ghostDef = def
       this.scene.add(this.ghost)
     }
     const { cols, rows } = this.zoneGrid()
-    const items = (game.activeHall()?.items ?? []) as PlacedItem[]
     const carried = mode.kind === 'move' ? mode.itemId : null
     const rot = mode.kind === 'move' || mode.kind === 'place' ? mode.rot : 0
     const stamp = footprintSpec(def) && this.roomPlan ? stampFrom(def, hover.hx, hover.hz, rot) : null
-    const loadItems = carried ? items.filter((it) => it.id !== carried) : items
-    const start = Math.min(3, cellLoad(loadItems, hover.c, hover.r))
+    const cw = HALL_W / Math.max(1, cols)
+    const rh = HALL_D / Math.max(1, rows)
     const at = stamp
       ? { x: stamp.hx, z: stamp.hz }
-      : slotCenter(hover.c, hover.r, start, itemSize(itemDef(def)), cols, rows)
+      : { x: -HALL_W / 2 + (hover.c + 0.5) * cw, z: -HALL_D / 2 + (hover.r + 0.5) * rh }
     const check = stamp
       ? game.hallFootprintCheck(def as ItemId, hover.hx, hover.hz, rot, carried ?? undefined)
       : carried
@@ -939,6 +894,39 @@ export class HallWorld {
     } else {
       this.ghostPlate.visible = false
     }
+  }
+
+  /** Footprint plate for a catalog fitting. A socket snap still shows the catalog size. */
+  private syncFittingGhost(game: Game, hover: HallHover | null) {
+    const mode = this.build
+    if (mode?.kind !== 'fitting' || !hover) {
+      if (this.ghost) this.ghost.visible = false
+      this.ghostPlate.visible = false
+      return
+    }
+    const spec = fittingSpec(mode.fitting)
+    const doc = game.activeHall()?.layout
+    const tile = doc ? layoutTileM(doc) : 1
+    const w = doc?.w ?? HALL_W
+    const h = doc?.h ?? HALL_D
+    const ox = (-w * tile) / 2
+    const oz = (-h * tile) / 2
+    const rot = mode.rot % 2 === 0 ? { w: spec.w, d: spec.d } : { w: spec.d, d: spec.w }
+    const x = ox + (Math.floor((hover.hx - ox) / tile) + rot.w / 2) * tile
+    const z = oz + (Math.floor((hover.hz - oz) / tile) + rot.d / 2) * tile
+    if (!this.ghost || this.ghostDef !== mode.fitting) {
+      if (this.ghost) this.scene.remove(this.ghost)
+      const box = new THREE.Mesh(new THREE.BoxGeometry(rot.w, Math.max(0.4, spec.h), rot.d), this.ghostMat)
+      box.position.y = spec.h / 2
+      this.ghost = new THREE.Group()
+      this.ghost.add(box)
+      this.ghostDef = mode.fitting
+      this.scene.add(this.ghost)
+    }
+    this.ghost.position.set(x, 0, z)
+    this.ghostMat.color.set('#4ade80')
+    this.ghost.visible = true
+    this.ghostPlate.visible = false
   }
 
   private onWheel = (e: WheelEvent) => {
@@ -999,125 +987,13 @@ export class HallWorld {
     }
   }
 
-  private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat ?? new THREE.MeshLambertMaterial({ color }))
-    mesh.position.set(x, y, z)
-    this.roomGroup.add(mesh)
-  }
 
-  /** Zone boxes, the carousel and the old columns draw only when the room plan is off. */
+  /** The layout shell is the picture. The old labelled floor stays hidden. */
   private applyRoomLayer() {
-    const legacy = showLegacyHallFurniture(this.roomPlan != null)
-    this.kitGroup.visible = legacy
-    this.beforeLabel.visible = legacy
-    this.afterLabel.visible = legacy
-    this.floor.position.y = legacy ? 0 : -0.05
+    this.kitGroup.visible = true
+    this.floor.visible = false
   }
 
-  /**
-   * Perimeter shell with door gaps, plus walls where security meets the curb side.
-   * When the room interior is up, the nav grid's inner partitions stay off so the
-   * nine rooms are the walls you see. The outer shell still frames the hall.
-   */
-  private buildShell(zones: ZoneId[][], nav: HallNav, rooms: boolean) {
-    const h = 3.15
-    const t = 0.38
-    const y = h / 2
-    const wall = '#d5ddd8'
-    const halfW = HALL_W / 2
-    const halfD = HALL_D / 2
-    const layout = nav.live ? nav.nav?.layout : null
-    if (layout) {
-      // Walkers are live: draw exactly the walls they walk round, gaps at every door.
-      const m = layoutTileM(layout)
-      const o = nav.origin()
-      const drawWalls = rooms ? layout.walls.filter((e) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)) : layout.walls
-      if (m <= 1) {
-        for (const run of mergedWallRuns(drawWalls, 'E')) {
-          this.box(t, h, run.n * m, wall, o.x + (run.x + 1) * m, y, o.z + (run.y + run.n / 2) * m)
-        }
-        for (const run of mergedWallRuns(drawWalls, 'S')) {
-          this.box(run.n * m, h, t, wall, o.x + (run.x + run.n / 2) * m, y, o.z + (run.y + 1) * m)
-        }
-      } else {
-        const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
-        for (const e of drawWalls) {
-          const color = outer(e) ? wall : '#c9a27a'
-          const thick = outer(e) ? t : 0.28
-          if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
-          else this.box(m + thick, h, thick, color, o.x + (e.x + 0.5) * m, y, o.z + (e.y + 1) * m)
-        }
-      }
-      if (m <= 1) {
-        const spanW = layout.w * m
-        const spanD = layout.h * m
-        this.box(spanW + 0.6, 0.18, 0.5, '#e7eee9', o.x + spanW / 2, h, o.z)
-        this.box(spanW + 0.6, 0.18, 0.5, '#e7eee9', o.x + spanW / 2, h, o.z + spanD)
-      } else {
-        this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
-        this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
-      }
-      // No fixed concourse columns: at real size they ran through the carousel and the kit.
-      if (rooms) this.buildSecureWalls(zones)
-      return
-    }
-    // North and south — solid. The roof is gone so the floor stays readable.
-    this.box(HALL_W + t, h, t, wall, 0, y, -halfD)
-    this.box(HALL_W + t, h, t, wall, 0, y, halfD)
-    // West doors at the curb (z ≈ 0). Two wall pieces leave the gap.
-    const door = 4.2
-    const westLen = (HALL_D - door) / 2
-    this.box(t, h, westLen, wall, -halfW, y, -halfD + westLen / 2)
-    this.box(t, h, westLen, wall, -halfW, y, halfD - westLen / 2)
-    // East jetway door, offset toward the gate desks.
-    const eastGapZ = -6.5
-    const eastHalf = (HALL_D - door) / 2
-    this.box(t, h, eastHalf, wall, halfW, y, -halfD + eastHalf / 2 - 1.2)
-    this.box(t, h, eastHalf * 0.72, wall, halfW, y, eastGapZ + door / 2 + (eastHalf * 0.72) / 2)
-    // Cornice only — no roof slab. The jet bridge stays on the apron.
-    this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
-    this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
-    // Columns down the concourse, clear of the doors and the centre walk.
-    for (const x of [-16, -4, 8, 18]) {
-      for (const z of [-11, 11]) {
-        this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
-      }
-    }
-    this.buildSecureWalls(zones)
-  }
-
-  /** Full-height plaster where security meets check-in or arrivals. The gate side stays open. */
-  private buildSecureWalls(zones: ZoneId[][]) {
-    const rows = zones.length
-    const cols = zones[0]?.length ?? 0
-    if (!rows || !cols) return
-    const cw = HALL_W / cols
-    const rh = HALL_D / rows
-    const h = 3.15
-    const t = 0.28
-    const blocks = (a: ZoneId, b: ZoneId) => {
-      if (a === b) return false
-      const air = (z: ZoneId) => z === 'gates' || z === 'retail'
-      if ((a === 'security' && air(b)) || (b === 'security' && air(a))) return false
-      return a === 'security' || b === 'security'
-    }
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const z = zones[r][c]
-        if (!z) continue
-        if (c + 1 < cols && zones[r][c + 1] && blocks(z, zones[r][c + 1])) {
-          const x = -HALL_W / 2 + (c + 1) * cw
-          const zpos = -HALL_D / 2 + (r + 0.5) * rh
-          this.box(t, h, rh * 0.9, '#c9a27a', x, h / 2, zpos)
-        }
-        if (r + 1 < rows && zones[r + 1][c] && blocks(z, zones[r + 1][c])) {
-          const x = -HALL_W / 2 + (c + 0.5) * cw
-          const zpos = -HALL_D / 2 + (r + 1) * rh
-          this.box(cw * 0.9, h, t, '#c9a27a', x, h / 2, zpos)
-        }
-      }
-    }
-  }
 
   rebuildRooms(game: Game) {
     const fit = game.activeHall()
@@ -1127,8 +1003,8 @@ export class HallWorld {
     const paint = zones.map((row) => row.join(',')).join('|')
     const doc = fit?.layout?.version === 2 ? fit.layout : null
     const stuff = doc
-      ? (doc.fittings ?? []).map((f) => `${f.kind}@${f.x},${f.y}r${f.rot}`).join(';')
-      : (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
+      ? `${(doc.fittings ?? []).map((f) => `${f.kind}@${f.x},${f.y}r${f.rot}`).join(';')}|w${doc.walls.length}|d${doc.doors.length}|b${(doc.belts ?? []).length}`
+      : (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}`).join(';')
     const nav = game.hallNav
     const walk = nav.live ? `${nav.nav?.revision}:${nav.nav?.layout.walls.length}:${nav.nav?.layout.doors.length}` : '-'
     const rooms = this.roomPlan ? 'rooms' : 'open'
@@ -1143,85 +1019,37 @@ export class HallWorld {
       else if (mat) mat.dispose()
     })
     this.roomGroup.clear()
-    const cols = zones[0]?.length || GRID_C
-    const rows = zones.length || GRID_R
-    this.buildShell(zones as ZoneId[][], nav, false)
-
-    const cw = HALL_W / cols
-    const rh = HALL_D / rows
-    const floorPieces: BakePiece[] = []
-    const floorGeos: THREE.BufferGeometry[] = []
-    const tint = new THREE.Color()
     if (doc) {
-      const tileM = layoutTileM(doc)
-      const ox = (-doc.w * tileM) / 2
-      const oz = (-doc.h * tileM) / 2
-      const step = 2
-      for (let y0 = 0; y0 < doc.h; y0 += step) {
-        for (let x0 = 0; x0 < doc.w; x0 += step) {
-          const z = doc.zones[y0]?.[x0]
-          if (!z || !doc.floor[y0]?.[x0]) continue
-          const geo = new THREE.PlaneGeometry(step * tileM - 0.04, step * tileM - 0.04)
-          geo.rotateX(-Math.PI / 2)
-          floorGeos.push(geo)
-          floorPieces.push({
-            geo,
-            matrix: new THREE.Matrix4().makeTranslation(ox + (x0 + step / 2) * tileM, 0.02, oz + (y0 + step / 2) * tileM),
-            color: tint.set(DOC_TINT[z] ?? '#f7f4ee').getHex(),
-          })
-        }
+      const shell = buildLayoutShell(doc)
+      this.roomGroup.add(shell)
+      const span = Math.hypot(doc.w, doc.h) * layoutTileM(doc)
+      const need = span / (2 * Math.tan((HALL_CAM_FOV * Math.PI) / 360))
+      this.maxDist = Math.max(HALL_CAM_MAX_DIST, need * 1.35)
+      if (!this.framedHall) {
+        this.dist = Math.min(this.maxDist, Math.max(HALL_CAM_DIST, need * 0.95))
+        this.framedHall = true
+        this.placeCam()
       }
-    } else {
-      for (let r = 0; r < zones.length; r++) {
-        for (let c = 0; c < zones[r].length; c++) {
-          const z = zones[r][c] as ZoneId | null
-          if (!z) continue
-          const pos = this.cellPos(c, r, cols, rows)
-          const geo = new THREE.PlaneGeometry(cw - 0.04, rh - 0.04)
-          geo.rotateX(-Math.PI / 2)
-          floorGeos.push(geo)
-          floorPieces.push({
-            geo,
-            matrix: new THREE.Matrix4().makeTranslation(pos.x, 0.02, pos.z),
-            color: tint.set(FLOOR_TINT[z]).getHex(),
-          })
-        }
+      this.shellBounds = {
+        minX: (-doc.w * layoutTileM(doc)) / 2,
+        maxX: (doc.w * layoutTileM(doc)) / 2,
+        minZ: (-doc.h * layoutTileM(doc)) / 2,
+        maxZ: (doc.h * layoutTileM(doc)) / 2,
       }
-    }
-    const floorGeo = bake(floorPieces, true)
-    for (const geo of floorGeos) geo.dispose()
-    if (floorGeo) {
-      const floor = new THREE.Mesh(
-        floorGeo,
-        new THREE.MeshLambertMaterial({ map: this.terrazzo, vertexColors: true }),
-      )
-      floor.name = 'hall-floor'
-      this.roomGroup.add(floor)
     }
     this.fadeCamKey = ''
-
-    const laid = doc
-      ? layoutFittings(doc)
-      : layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows).filter(({ item }) =>
-          hallPropAllowed(item.def, zones[item.r]?.[item.c] ?? null),
-        )
-    for (const { item: it, x, z } of laid) {
-      if (hasKitMesh(it.def) || hallItemProp(it.def)) continue
-      const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')
-      const tall = String(it.def).includes('security') ? 1.5 : 0.7
-      this.box(1.4, tall, 1.1, worn, x, tall / 2 + 0.05, z)
-    }
-    for (const { item: it, x, z } of laid) this.roomGroup.add(hallPickMesh(it, x, z))
     this.clearKit()
-    if (hiDetailOn(graphicsQuality())) {
-      const { group, rest } = buildHallDetail(laid, cols, rows)
-      this.kitGroup.add(group, buildKitInstances(rest))
-    } else this.kitGroup.add(buildKitInstances(laid))
+    if (doc) this.kitGroup.add(buildFittingMeshes(doc))
     this.applyRoomLayer()
   }
 
+  private framedHall = false
+
   private clearKit() {
-    for (const sub of this.kitGroup.children) disposeKitInstances(sub as THREE.Group)
+    this.kitGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.geometry && mesh.parent === this.kitGroup) mesh.geometry.dispose()
+    })
     this.kitGroup.clear()
   }
 
@@ -1610,7 +1438,7 @@ export class HallWorld {
       this.walkSlats = []
       const cols = fit?.zones?.[0]?.length || GRID_C
       const rows = fit?.zones?.length || GRID_R
-      const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
+      const laid = walkwaySpots((fit?.items ?? []) as PlacedItem[], cols, rows)
       for (const { item, x, z } of laid) {
         if (item.def !== 'walkway') continue
         const rot = ((item.rot ?? 0) * Math.PI) / 2
@@ -1876,3 +1704,6 @@ export function overlaySignature(
   }
   return parts.join('|')
 }
+
+/** Scene and camera for the metre hall. HallWorld is the same class. */
+export { HallWorld as InteriorView }

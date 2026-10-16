@@ -1,62 +1,69 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { schemeItems, schemeZones } from '../game/terminal.ts'
-import { hallDetailPlacements, hallItemProp, hallPropAllowed, HALL_ITEM_PROP } from './hallKitDetail.ts'
+import * as THREE from 'three'
+import { roofHeightM } from '../terminalbuild/scale.ts'
+import { split1f } from '../terminalbuild/starter/split1f.ts'
+import { buildFittingMeshes } from './interior/fittings.ts'
+import { buildLayoutShell } from './interior/shell.ts'
 
-const HALL_SRC = readFileSync(new URL('./hallWorld.ts', import.meta.url), 'utf8')
+const HALL_SRC = readFileSync(new URL('./interior/InteriorView.ts', import.meta.url), 'utf8')
+const INTERIOR_SRC = ['shell.ts', 'fittings.ts', 'people.ts', 'picking.ts']
+  .map((name) => {
+    try {
+      return readFileSync(new URL(`./interior/${name}`, import.meta.url), 'utf8')
+    } catch {
+      return ''
+    }
+  })
+  .join('\n')
 
-describe('hall orphan meshes v1', () => {
+describe('hall orphan meshes v2', () => {
   it('does not parent the apron picture, a bridge, or a vehicle into the hall', () => {
-    expect(HALL_SRC).not.toContain('new TerminalBuilding')
-    expect(HALL_SRC).not.toContain('planTerminal')
-    expect(HALL_SRC).not.toContain('buildInteriorDressing')
-    expect(HALL_SRC).not.toContain('SupplyCartLayer')
-    expect(HALL_SRC).not.toContain('HallFigureBatch')
-    expect(HALL_SRC).not.toContain('jet_bridge')
-    expect(HALL_SRC).not.toContain('placeJetBridge')
-    expect(HALL_SRC).not.toContain('dockAirsideBridge')
-    expect(HALL_SRC).not.toContain('performance.now')
-    expect(HALL_SRC).not.toContain('Date.now')
+    const src = HALL_SRC + INTERIOR_SRC
+    expect(src).not.toContain('new TerminalBuilding')
+    expect(src).not.toContain('planTerminal')
+    expect(src).not.toContain('buildInteriorDressing')
+    expect(src).not.toContain('SupplyCartLayer')
+    expect(src).not.toContain('HallFigureBatch')
+    expect(src).not.toContain('jet_bridge')
+    expect(src).not.toContain('placeJetBridge')
+    expect(src).not.toContain('dockAirsideBridge')
+    expect(src).not.toContain('performance.now')
+    expect(src).not.toContain('Date.now')
     expect(HALL_SRC).toContain("hallRoot.name = 'hall-root'")
-    const drawn = new Set(Object.values(HALL_ITEM_PROP))
-    expect(drawn.has('jet_bridge')).toBe(false)
-    expect(drawn.has('baggage_trolley')).toBe(false)
-    expect(drawn.has('lounge_cluster')).toBe(false)
-    const shell = HALL_SRC.slice(HALL_SRC.indexOf('private buildShell('), HALL_SRC.indexOf('private buildSecureWalls('))
-    const live = shell.slice(0, shell.indexOf('return\n'))
-    expect(live, 'the walk shell draws no fixed concourse columns through placed kit').not.toContain('0.42, h, 0.42')
+    expect(HALL_SRC).not.toContain('BEFORE SECURITY')
+    expect(HALL_SRC).not.toContain('AFTER SECURITY')
+    expect(HALL_SRC).not.toContain('0.42, h, 0.42')
   })
 
-  it('keeps security props out of shops, including Runway Burger', () => {
-    const zones = schemeZones(1)
-    const securityDefs = /security|scanner|xray/
-    for (const item of schemeItems(1)) {
-      const zone = zones[item.r]?.[item.c]
-      if (zone === 'retail' || item.def === 'cafe' || item.def === 'fast_food' || item.def === 'newsagent') {
-        expect(item.def).not.toMatch(securityDefs)
-        const prop = hallItemProp(item.def)
-        expect(prop === 'security_lane' || prop === 'security_lane_ct' || prop === 'body_scanner').toBe(false)
-      }
-      if (securityDefs.test(item.def)) expect(zone).toBe('security')
-    }
-    const burger = hallDetailPlacements(
-      [{ item: { id: 'burger', def: 'fast_food', c: 0, r: 0, wear: 0 }, x: 1, z: 2 }],
-      8,
-      5,
-    )
-    expect(burger.map((p) => p.type)).toEqual(['shop_fastfood'])
-    expect(burger[0].scale).toBe(1)
-    const cafe = hallDetailPlacements(
-      [{ item: { id: 'cafe', def: 'cafe', c: 1, r: 0, wear: 0 }, x: 0, z: 0 }],
-      8,
-      5,
-    )
-    expect(cafe.map((p) => p.type)).toEqual(['shop_coffee'])
-    expect(hallPropAllowed('passport_booth', 'checkin')).toBe(false)
-    expect(hallPropAllowed('passport_booth', 'retail')).toBe(false)
-    expect(hallPropAllowed('passport_booth', 'security')).toBe(false)
-    expect(hallPropAllowed('passport_booth', 'arrivals')).toBe(true)
-    expect(hallPropAllowed('passport_booth', 'claim')).toBe(true)
-    expect(hallPropAllowed('cafe', 'retail')).toBe(true)
+  it('maps every shell and fitting mesh to a layout piece under the roof', () => {
+    const layout = split1f()
+    const shell = buildLayoutShell(layout)
+    const fittings = buildFittingMeshes(layout)
+    const root = new THREE.Group()
+    root.name = 'hall-root'
+    root.add(shell, fittings)
+    const allowed = new Set(['floor', 'wall', 'door', 'fitting', 'belt', 'person'])
+    const beltTiles = new Set<string>()
+    for (const run of layout.belts ?? []) for (const t of run.tiles) beltTiles.add(`${t.x},${t.y}`)
+    root.traverse((obj) => {
+      expect(obj.scale.x, obj.name).toBeCloseTo(1, 5)
+      expect(obj.scale.y, obj.name).toBeCloseTo(1, 5)
+      expect(obj.scale.z, obj.name).toBeCloseTo(1, 5)
+      if (!(obj as THREE.Mesh).isMesh) return
+      let piece = obj.userData.piece as string | undefined
+      for (let up = obj.parent; !piece && up; up = up.parent) piece = up.userData.piece as string | undefined
+      expect(allowed.has(piece), `${obj.name} piece ${piece}`).toBe(true)
+      if (piece === 'belt' && obj.userData.beltTile) expect(beltTiles.has(obj.userData.beltTile)).toBe(true)
+      obj.updateWorldMatrix(true, false)
+      const box = new THREE.Box3().setFromObject(obj)
+      expect(box.max.y, obj.name).toBeLessThanOrEqual(roofHeightM(1) + 0.05)
+    })
+    expect(shell.getObjectByName('hall-floor')).toBeTruthy()
+    const kinds = new Set<string>()
+    root.traverse((obj) => {
+      if (typeof obj.userData.fittingKind === 'string') kinds.add(obj.userData.fittingKind)
+    })
+    expect(kinds.has('jet_bridge')).toBe(false)
   })
 })

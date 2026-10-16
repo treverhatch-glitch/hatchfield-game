@@ -16,7 +16,8 @@ import {
 } from './config.ts'
 import { floorOf } from './floors.ts'
 import { edgeKey, inBounds, isFloor, tileKey } from './grid.ts'
-import type { BuildLayout, BuildZone, Door, Edge, Equip, InteriorEdit, Rect, Room, RoomKind, Tile } from './types.ts'
+import { equipForFitting, fittingRoomViolation, fittingSize, fittingSpec, fittingTiles, takeFittingSocket } from './fittings.ts'
+import type { BuildLayout, BuildZone, Door, Edge, Equip, Fitting, FittingKind, InteriorEdit, Rect, Room, RoomKind, Tile } from './types.ts'
 import { validateLayout } from './validate.ts'
 
 const refund = (price: number) => -Math.round(price * BUILD_TUNING.refundShare)
@@ -377,4 +378,124 @@ export function interiorCost(before: BuildLayout, after: BuildLayout): number {
     }
   }
   return cost
+}
+
+const VERTICAL: ReadonlySet<FittingKind> = new Set(['escalator', 'stairs', 'lift'])
+
+/**
+ * Passport booths are offered only on a sterile arrivals tile.
+ * Stairs, escalators and lifts wait for the second storey.
+ */
+export function fittingOffered(kind: FittingKind, zone: BuildZone | null, stories = 1): boolean {
+  if (VERTICAL.has(kind)) return stories >= 2
+  if (kind === 'passport_booth') return zone === 'claim' || zone === 'arrivals'
+  return true
+}
+
+function tilesFree(layout: BuildLayout, kind: FittingKind, x: number, y: number, rot: number): boolean {
+  const spec = fittingSpec(kind)
+  const size = fittingSize(kind, rot)
+  if (x < 0 || y < 0 || x + size.w > layout.w + 1e-6 || y + size.d > layout.h + 1e-6) return false
+  const want = fittingTiles({ kind, x, y, rot })
+  if (!want.length) return false
+  for (const t of want) {
+    if (!layout.floor[t.y]?.[t.x]) return false
+  }
+  if (!spec.blocksWalk) return true
+  const taken = new Set<string>()
+  for (const f of layout.fittings ?? []) {
+    if (!fittingSpec(f.kind).blocksWalk) continue
+    for (const t of fittingTiles(f)) taken.add(`${t.x},${t.y}`)
+  }
+  return want.every((t) => !taken.has(`${t.x},${t.y}`))
+}
+
+function withPiece(layout: BuildLayout, piece: Fitting): BuildLayout {
+  const fittings = [...(layout.fittings ?? []), piece]
+  const eq = equipForFitting(piece, { x: Math.floor(piece.x), y: Math.floor(piece.y + fittingSize(piece.kind, piece.rot).d) - 1 })
+  const equipment = eq ? [...layout.equipment, eq] : layout.equipment
+  return { ...layout, fittings, equipment }
+}
+
+/**
+ * Place a catalog fitting. A free socket of this kind wins.
+ * Otherwise the footprint sits with its min corner at `at`.
+ */
+export function placeFitting(
+  layout: BuildLayout,
+  kind: FittingKind,
+  at?: { x: number; y: number; rot?: 0 | 1 | 2 | 3 },
+): { layout: BuildLayout; fitting: Fitting } | { error: string } {
+  const socket = takeFittingSocket(layout, kind)
+  const snapped =
+    socket &&
+    (!at ||
+      (at.x >= socket.x - 0.01 &&
+        at.y >= socket.y - 0.01 &&
+        at.x < socket.x + fittingSize(kind, socket.rot).w &&
+        at.y < socket.y + fittingSize(kind, socket.rot).d))
+  if (snapped && socket) {
+    const why = fittingRoomViolation(layout, kind, socket.x, socket.y)
+    if (why) return { error: why }
+    const fitting: Fitting = {
+      id: socket.id,
+      kind,
+      x: socket.x,
+      y: socket.y,
+      floor: 0,
+      rot: socket.rot,
+      wear: 0,
+      staffed: true,
+    }
+    return { layout: withPiece(layout, fitting), fitting }
+  }
+  if (!at) return { error: 'No free socket in the right room.' }
+  const rot = at.rot ?? 0
+  const why = fittingRoomViolation(layout, kind, at.x, at.y)
+  if (why) return { error: why }
+  if (!tilesFree(layout, kind, at.x, at.y, rot)) return { error: 'That footprint does not fit.' }
+  const n = (layout.fittings ?? []).filter((f) => f.kind === kind).length
+  const fitting: Fitting = {
+    id: `fit-${kind}-${n}`,
+    kind,
+    x: at.x,
+    y: at.y,
+    floor: 0,
+    rot,
+    wear: 0,
+    staffed: true,
+  }
+  return { layout: withPiece(layout, fitting), fitting }
+}
+
+/** Take a fitting back off the layout. The caller refunds the catalog price. */
+export function removeFitting(layout: BuildLayout, id: string): { layout: BuildLayout; fitting: Fitting } | { error: string } {
+  const fitting = (layout.fittings ?? []).find((f) => f.id === id)
+  if (!fitting) return { error: 'That piece is not on the layout.' }
+  return {
+    fitting,
+    layout: {
+      ...layout,
+      fittings: (layout.fittings ?? []).filter((f) => f.id !== id),
+      equipment: layout.equipment.filter((e) => e.id !== id),
+    },
+  }
+}
+
+/** Cash returned when a bought fitting is sold. Same share as the rest of the kit. */
+export function fittingRefund(kind: FittingKind): number {
+  return Math.round(fittingSpec(kind).cost * BUILD_TUNING.refundShare)
+}
+
+/** Inspector status. Working when the piece is staffed, connected, and not worn out. */
+export function fittingWorkStatus(
+  fitting: Pick<Fitting, 'kind' | 'staffed' | 'wear'>,
+  opts?: { connected?: boolean; closed?: boolean },
+): 'Working' | 'No staff' | 'Worn out' | 'Not connected' | 'Closed' {
+  if (opts?.closed) return 'Closed'
+  if (opts?.connected === false) return 'Not connected'
+  if (fitting.wear >= 1) return 'Worn out'
+  const needsStaff = fittingSpec(fitting.kind).staff > 0
+  if (needsStaff && fitting.staffed === false) return 'No staff'
+  return 'Working'
 }

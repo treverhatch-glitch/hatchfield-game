@@ -88,7 +88,8 @@ describe('initWorldRender', { timeout: 20_000 }, () => {
     expect(s.terminals).toHaveLength(1)
     expect(s.jetBridges).toBe(0)
     expect(s.airfieldLights).toBeGreaterThan(100)
-    expect(s.terminals[0].staff).toBeGreaterThan(10)
+    // Baked apron staff are gone. The hall walk draws the people.
+    expect(s.terminals[0].staff).toBe(0)
     expect(earth.visible).toBe(false)
     expect(renderer.shadowMap.enabled).toBe(true)
     expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap)

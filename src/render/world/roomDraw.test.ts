@@ -52,10 +52,7 @@ describe('room draw budget', () => {
     const desks = root.children
       .flatMap((group) => group.children)
       .filter((obj) => obj.name === 'props-desks') as THREE.InstancedMesh[]
-    expect(desks.length).toBeGreaterThan(0)
-    expect(desks.every((mesh) => mesh instanceof THREE.InstancedMesh)).toBe(true)
-    const deskInstances = desks.reduce((n, mesh) => n + mesh.count, 0)
-    expect(deskInstances).toBeGreaterThan(desks.length)
+    expect(desks.length).toBe(0)
 
     expect(root.getObjectByName('room-walls')).toBeInstanceOf(THREE.InstancedMesh)
     expect(root.getObjectByName('room-glass')).toBeInstanceOf(THREE.InstancedMesh)
@@ -76,8 +73,7 @@ describe('room draw budget', () => {
     expect(budget.staticGlass).toBe(1)
     expect(budget.hiddenRooms).toBeGreaterThan(0)
     expect(budget.hiddenRooms).toBeLessThan(built.rooms.rooms.length)
-    expect(budget.deskInstances).toBeGreaterThan(0)
-    expect(budget.deskInstances).toBeLessThan(deskInstances)
+    expect(budget.deskInstances).toBe(0)
     expect(budget.signInstances).toBeLessThan(signInstances)
 
     built.dispose()

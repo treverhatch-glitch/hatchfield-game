@@ -51,6 +51,11 @@ export interface WorldView {
   standFlagColor?: (v: Vec) => string | null
   /** Jet bridges bought on this stand. */
   boughtBridges?: (v: Vec) => number
+  /**
+   * Facade bridge sockets in world units. When a hall publishes `gate_bridge`
+   * doors, the rotunda roots on these instead of a guessed facade point.
+   */
+  bridgeSockets?: { x: number; z: number }[]
   /** 0 parks the jet bridge on the terminal. 1 docks the cab on the aircraft. */
   bridgeExtendAt?: (stand: Vec) => number
   /** The aircraft on this stand the bridge docks on. Null leaves the bridge parked. */
