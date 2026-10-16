@@ -819,7 +819,7 @@ import {
   resolvedAirframes,
   type FieldFit,
 } from './rosterMetal.ts'
-import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
+import { standProps, type StandArrival } from '../ramp/standCrew.ts'
 import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
@@ -12584,7 +12584,7 @@ export class Game {
       scene.props.push(...sample.props)
     }
     for (const arrival of this.standArrivals()) {
-      standCrewPeople(arrival, METERS_PER_CELL, scene.people)
+      // Arrival people are drawn once, by LiveTurnaround. Cones and chocks stay here.
       standProps(arrival, METERS_PER_CELL, scene.props)
     }
     return scene

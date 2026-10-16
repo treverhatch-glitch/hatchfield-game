@@ -1,0 +1,45 @@
+{
+  "hash": "Djcpyfsn",
+  "errors": [],
+  "crj700-11-6": {
+    "frames": 96,
+    "beltFrames": 96,
+    "deck": 0.114,
+    "belts": 9,
+    "fuelOff": 0.5430537166556852,
+    "bagOff": 1.1024108723871155,
+    "file": "docs/devlog/media/turnaround-clearance/crj700-11-6-Djcpyfsn.mp4",
+    "still": "docs/devlog/media/turnaround-clearance/crj700-11-6-Djcpyfsn.png"
+  },
+  "b738-11-6": {
+    "frames": 96,
+    "beltFrames": 96,
+    "deck": 0.289,
+    "belts": 9,
+    "fuelOff": 0.6852044552299049,
+    "bagOff": 1.0165860095757189,
+    "file": "docs/devlog/media/turnaround-clearance/b738-11-6-Djcpyfsn.mp4",
+    "still": "docs/devlog/media/turnaround-clearance/b738-11-6-Djcpyfsn.png"
+  },
+  "crj700-11-12": {
+    "frames": 96,
+    "beltFrames": 96,
+    "deck": 0.114,
+    "belts": 9,
+    "fuelOff": 0.5430537166556866,
+    "bagOff": 1.1024108723871153,
+    "file": "docs/devlog/media/turnaround-clearance/crj700-11-12-Djcpyfsn.mp4",
+    "still": "docs/devlog/media/turnaround-clearance/crj700-11-12-Djcpyfsn.png"
+  },
+  "b738-11-12": {
+    "frames": 96,
+    "beltFrames": 96,
+    "deck": 0.289,
+    "belts": 9,
+    "fuelOff": 0.6852044552299053,
+    "bagOff": 1.0165860095757187,
+    "file": "docs/devlog/media/turnaround-clearance/b738-11-12-Djcpyfsn.mp4",
+    "still": "docs/devlog/media/turnaround-clearance/b738-11-12-Djcpyfsn.png"
+  },
+  "broken": []
+}
