@@ -5,6 +5,16 @@ import { LIVERY_ART, engineUv, outwardUv, projectedUv } from './liveryUv'
 import { bakeGeometry } from './merge'
 
 describe('airline livery UVs', () => {
+  it('maintains 1:1 aspect ratio for tail UVs to avoid stretching', () => {
+    const box = { x0: 10, x1: 0, y0: 0, y1: 5 }
+    const rootLead = projectedUv(10, 0, box, 'tail')
+    const tipTrail = projectedUv(0, 5, box, 'tail')
+    expect(rootLead[0]).toBeCloseTo(0)
+    expect(rootLead[1]).toBeCloseTo(0)
+    expect(tipTrail[0]).toBeCloseTo(1)
+    expect(tipTrail[1]).toBeCloseTo(0.5)
+  })
+
   it('publishes the art sizes the strips are drawn to', () => {
     expect(LIVERY_ART.fuselage.w / LIVERY_ART.fuselage.h).toBeCloseTo(4)
     expect(LIVERY_ART.engine.w / LIVERY_ART.engine.h).toBeCloseTo(4)
@@ -13,10 +23,10 @@ describe('airline livery UVs', () => {
 
   it('puts the nose at U 0 and the crown at V 1', () => {
     const box = { x0: 20, x1: -20, y0: 0, y1: 4 }
-    const nose = projectedUv(20, 2, box)
-    const tail = projectedUv(-20, 2, box)
-    const crown = projectedUv(0, 4, box)
-    const belly = projectedUv(0, 0, box)
+    const nose = projectedUv(20, 2, box, 'fuselage')
+    const tail = projectedUv(-20, 2, box, 'fuselage')
+    const crown = projectedUv(0, 4, box, 'fuselage')
+    const belly = projectedUv(0, 0, box, 'fuselage')
     expect(nose[0]).toBeCloseTo(0)
     expect(tail[0]).toBeCloseTo(1)
     expect(crown[1]).toBeCloseTo(1)
@@ -25,12 +35,12 @@ describe('airline livery UVs', () => {
 
   it('flips starboard U so a left-to-right title reads outward', () => {
     const box = { x0: 20, x1: -20, y0: 0, y1: 4 }
-    const port = outwardUv(10, 2, -1, box)
-    const starboard = outwardUv(10, 2, 1, box)
+    const port = outwardUv(10, 2, -1, box, 'fuselage')
+    const starboard = outwardUv(10, 2, 1, box, 'fuselage')
     expect(port[0] + starboard[0]).toBeCloseTo(1)
     expect(port[1]).toBeCloseTo(starboard[1])
-    expect(outwardUv(20, 2, -1, box)[0]).toBeCloseTo(0)
-    expect(outwardUv(20, 2, 1, box)[0]).toBeCloseTo(1)
+    expect(outwardUv(20, 2, -1, box, 'fuselage')[0]).toBeCloseTo(0)
+    expect(outwardUv(20, 2, 1, box, 'fuselage')[0]).toBeCloseTo(1)
   })
 
   it('bakes the starboard flip onto fuselage UVs', () => {

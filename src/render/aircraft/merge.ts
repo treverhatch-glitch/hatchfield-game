@@ -60,7 +60,7 @@ function writeLivery(
     if (mode === 'engine' && local) {
       ;[u, v] = engineUv(x, y, z)
     } else if ((mode === 'fuselage' || mode === 'tail') && box && !local) {
-      ;[u, v] = outwardUv(x, y, z, box)
+      ;[u, v] = outwardUv(x, y, z, box, mode)
     }
     uv[i * 2] = u
     uv[i * 2 + 1] = v

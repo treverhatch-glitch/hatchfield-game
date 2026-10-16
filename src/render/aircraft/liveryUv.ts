@@ -59,9 +59,14 @@ function clamp01(n: number): number {
 }
 
 /** Side-elevation UV from a point already in the aircraft group (meters). */
-export function projectedUv(x: number, y: number, box: LiveryBox): [number, number] {
-  const du = box.x0 - box.x1
-  const dv = box.y1 - box.y0
+export function projectedUv(x: number, y: number, box: LiveryBox, mode?: LiveryMapKind): [number, number] {
+  let du = box.x0 - box.x1
+  let dv = box.y1 - box.y0
+  if (mode === 'tail') {
+    const maxD = Math.max(Math.abs(du), Math.abs(dv))
+    du = du < 0 ? -maxD : maxD
+    dv = dv < 0 ? -maxD : maxD
+  }
   const u = Math.abs(du) < 1e-4 ? 0 : (box.x0 - x) / du
   const v = Math.abs(dv) < 1e-4 ? 0 : (y - box.y0) / dv
   return [clamp01(u), clamp01(v)]
@@ -71,8 +76,8 @@ export function projectedUv(x: number, y: number, box: LiveryBox): [number, numb
  * Port (−Z) keeps nose-to-tail U. Starboard (+Z) flips U so lettering drawn
  * left to right on the plate reads outward from either side.
  */
-export function outwardUv(x: number, y: number, z: number, box: LiveryBox): [number, number] {
-  const [u, v] = projectedUv(x, y, box)
+export function outwardUv(x: number, y: number, z: number, box: LiveryBox, mode?: LiveryMapKind): [number, number] {
+  const [u, v] = projectedUv(x, y, box, mode)
   return z > 0 ? [1 - u, v] : [u, v]
 }
 
