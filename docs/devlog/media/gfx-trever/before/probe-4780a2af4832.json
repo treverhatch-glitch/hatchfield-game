@@ -1,0 +1,397 @@
+{
+  "tag": "before",
+  "hash": "4780a2af4832",
+  "errors": [],
+  "day": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 0,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 88,
+    "avg": {
+      "r": 74,
+      "g": 83,
+      "b": 50
+    },
+    "min": 26,
+    "maps": 260,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {},
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 32.44043034353231,
+      "z": 39.11161313123549
+    }
+  },
+  "night": {
+    "clock": 172.5,
+    "hour": 23,
+    "speed": 0,
+    "flights": 0,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 120,
+    "avg": {
+      "r": 79,
+      "g": 86,
+      "b": 54
+    },
+    "min": 13,
+    "maps": 260,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {},
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 42.07807415217686,
+      "z": 99.5240043767969
+    }
+  },
+  "edge": {
+    "clock": 172.5,
+    "hour": 23,
+    "speed": 0,
+    "flights": 0,
+    "exposure": 0.9057142857142857,
+    "sunI": 0.2850285714285714,
+    "sun": "becce4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 160,
+    "avg": {
+      "r": 45,
+      "g": 46,
+      "b": 41
+    },
+    "min": 1,
+    "maps": 260,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {},
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 749.8599277165648,
+      "z": 787.3036479996438
+    }
+  },
+  "aircraftClose": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.9057142857142857,
+    "sunI": 0.2850285714285714,
+    "sun": "becce4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 36,
+    "avg": {
+      "r": 77,
+      "g": 95,
+      "b": 127
+    },
+    "min": 74,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": -0.7686115144551398,
+      "z": 119.13462443852559
+    }
+  },
+  "zoomClose": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 22,
+    "avg": {
+      "r": 98,
+      "g": 96,
+      "b": 82
+    },
+    "min": 8,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 0.5563452644779066,
+      "z": -27.998690494065613
+    }
+  },
+  "zoomFar": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 240,
+    "avg": {
+      "r": 75,
+      "g": 87,
+      "b": 48
+    },
+    "min": 39,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 82.00437062065983,
+      "z": 121.09091987814986
+    }
+  },
+  "liveryFar": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 260,
+    "avg": {
+      "r": 78,
+      "g": 89,
+      "b": 53
+    },
+    "min": 38,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 191.79240583929692,
+      "z": 188.31890657694328
+    }
+  },
+  "liveryClose": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 32,
+    "avg": {
+      "r": 105,
+      "g": 108,
+      "b": 76
+    },
+    "min": 43,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 12.056060615636046,
+      "z": 118.44108768107338
+    }
+  },
+  "buildings": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 48,
+    "avg": {
+      "r": 111,
+      "g": 113,
+      "b": 82
+    },
+    "min": 39,
+    "maps": 271,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {},
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": 19.35505560994837,
+      "z": -21.48994138871153
+    }
+  },
+  "bridgeBuy": {
+    "ok": true,
+    "bridges": 1
+  },
+  "bridge": {
+    "clock": 60,
+    "hour": 8,
+    "speed": 0,
+    "flights": 1,
+    "exposure": 0.98,
+    "sunI": 2.3649999999999998,
+    "sun": "ede2c4",
+    "pixelRatio": 1,
+    "maxAniso": 16,
+    "dist": 28,
+    "avg": {
+      "r": 87,
+      "g": 92,
+      "b": 73
+    },
+    "min": 3,
+    "maps": 274,
+    "flatStandIn": 20,
+    "maxTex": 2752,
+    "aniso": 16,
+    "lod": {
+      "lod-low": false,
+      "lod-mid": true,
+      "lod-high": true
+    },
+    "bridgeOffset": {
+      "bridge-rotunda": 0,
+      "bridge-tunnel-a": 0,
+      "bridge-tunnel-b": 0,
+      "bridge-stripe-a": 0,
+      "bridge-stripe-b": 0,
+      "bridge-glass-s": 0,
+      "bridge-glass-p": 0,
+      "bridge-cab": 0,
+      "bridge-bellows": 0,
+      "bridge-col-a": 0,
+      "bridge-col-b": 0,
+      "bridge-bogie": 0
+    },
+    "disc": {
+      "x": 0,
+      "z": 0,
+      "found": false
+    },
+    "cam": {
+      "x": -39.25762666404964,
+      "z": -66.6051378559032
+    }
+  },
+  "pan": {
+    "wu": 8.849673491975958,
+    "metresPerSec": 19.665941093279905,
+    "elapsed": 27.105,
+    "dist": 88,
+    "from": {
+      "x": 0,
+      "z": 0,
+      "dist": 88
+    },
+    "to": {
+      "x": 220.93526905587734,
+      "z": -93.40993353691614,
+      "dist": 88
+    }
+  },
+  "pageErrors": []
+}
