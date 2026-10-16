@@ -166,7 +166,7 @@ export class HallServiceFx {
   private readonly signGroup = new THREE.Group()
   private readonly facilityPicks = new THREE.Group()
   private readonly facilityGeo = new THREE.BoxGeometry(2.8, 2.2, 2.2)
-  private readonly facilityMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+  private readonly facilityMat = new THREE.MeshBasicMaterial({ visible: false })
   private readonly signTex = new Map<string, THREE.Texture | null>()
   /** Security lanes. A dedicated lane wears the carrier colour. Empty leaves lanes unplated. */
   lanePlates: { id: string; primary: string; secondary: string; code: string }[] = []
