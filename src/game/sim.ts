@@ -21956,7 +21956,7 @@ export class Game {
     if (site.kind === 'single') {
       const v = site.cells[0]
       if (!v) return
-      this.tiles[v.r][v.c] = site.tile === 'belt' ? 'taxi' : site.tile
+      this.tiles[v.r][v.c] = site.tile
       const key = `${v.c},${v.r}`
       if (site.parkTerm) this.parkTerms[key] = site.parkTerm
       if (site.hotelClass) this.hotelClass[key] = site.hotelClass
