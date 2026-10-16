@@ -1,0 +1,54 @@
+{
+  "hooked": {
+    "ok": true,
+    "gfx": "high",
+    "shadow": 4096,
+    "live": true,
+    "items": [
+      "entrance",
+      "kiosk",
+      "checkin_belt",
+      "queue_rail",
+      "wayfinding",
+      "security_small",
+      "security_small",
+      "secure_exit",
+      "boarding_desk",
+      "seat_row",
+      "wayfinding",
+      "newsagent",
+      "claim_carousel",
+      "bag_system",
+      "bench",
+      "toilet",
+      "toilet",
+      "cafe"
+    ]
+  },
+  "bagDrop": {
+    "cash": 25000,
+    "granted": false,
+    "before": false,
+    "has": true,
+    "cashAfter": 18000,
+    "news": [
+      "T1 food 1 is empty. Brands sent bids.",
+      "Inside the terminal — the kit bar is rooms, desks, and shops. The shell is built on the apron. H or Apron to leave.",
+      "Passenger-focused starter kit down — Hall curb on the public road, two concrete stands facing the gates, one runway linked by taxiway.",
+      "Riverside City plot purchased. Passenger focus — Northline-ready hall kit. $73,000 left. Stamp Starter kit ($48,000) or build freehand."
+    ]
+  },
+  "probe": {
+    "sha": "05153a4d1f54",
+    "gfx": "high",
+    "shadow": 4096,
+    "bagGroup": true,
+    "clock": 482.60613333330195,
+    "passengers": 56
+  },
+  "found": {
+    "flightNo": "PDJ103",
+    "phase": "deboard",
+    "bagStage": "unload_aircraft"
+  }
+}

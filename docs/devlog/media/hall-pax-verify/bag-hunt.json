@@ -1,0 +1,890 @@
+{
+  "found": {
+    "flightNo": "PDJ103",
+    "phase": "deboard",
+    "bagStage": "unload_aircraft"
+  },
+  "tail": [
+    {
+      "clock": 460,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 11.535227272727269,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.9846466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 460.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 11.197727272727269,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.07214666666664926
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 460.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 10.860227272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.15964666666664926
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 460.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 10.522727272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.24714666666664925
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 461,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 10.185227272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.3346466666666492
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 461.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 9.847727272727269,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.42214666666664924
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 461.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 9.510227272727269,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.5096466666666493
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 461.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 9.172727272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.5971466666666493
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 462,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 8.835227272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.6846466666666493
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 462.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 8.497727272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.7721466666666493
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 462.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 8.160227272727267,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.8596466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 462.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 7.822727272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.9471466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 463,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 7.4852272727272675,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.034646666666649395
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 463.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 7.147727272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.12214666666664939
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 463.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 6.810227272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.20964666666664938
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 463.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 6.472727272727267,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.29714666666664935
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 464,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7,
+          "y": 6.135227272727268,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.3846466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 464.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7.2022727272727325,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.4721466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 464.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7.539772727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.5596466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 464.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 7.877272727272732,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.6471466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 465,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 8.214772727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.7346466666666495
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 465.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 8.552272727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.8221466666666495
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 465.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 8.889772727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.9096466666666495
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 465.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 9.227272727272734,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.9971466666666495
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 466,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 9.564772727272732,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.08464666666664944
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 466.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 9.902272727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.17214666666664943
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 466.5,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 10.239772727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.25964666666664943
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 466.7,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "landing",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 10.577272727272733,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.3471466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 467,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "taxi_in",
+          "bag": "pax_deposit",
+          "units": 49,
+          "x": 10.914772727272734,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [],
+      "motion": {
+        "belt": true,
+        "screen": true,
+        "carousel": false,
+        "sort": false,
+        "phase": 0.4346466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    },
+    {
+      "clock": 467.2,
+      "flights": [
+        {
+          "no": "PDJ103",
+          "phase": "deboard",
+          "bag": "unload_aircraft",
+          "units": 49,
+          "x": 11,
+          "y": 6,
+          "stand": {
+            "c": 11,
+            "r": 6
+          }
+        }
+      ],
+      "trucks": [
+        {
+          "id": "trk-474uwk",
+          "mission": "unload",
+          "x": 12.55,
+          "y": 9,
+          "dwell": 0,
+          "cargo": 0,
+          "flightId": "flt-a8djvx"
+        }
+      ],
+      "motion": {
+        "belt": false,
+        "screen": false,
+        "carousel": false,
+        "sort": true,
+        "phase": 0.5221466666666494
+      },
+      "arrivals": 0,
+      "signed": [
+        "air_regional_1"
+      ]
+    }
+  ],
+  "samples": 172
+}

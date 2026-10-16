@@ -1,0 +1,1396 @@
+{
+  "from": 64.12279999999973,
+  "to": 424.20613333330573,
+  "days": 2.000462962962811,
+  "ticks": 4321,
+  "dt": 0.08333333333333333,
+  "samples": 99383,
+  "bodyRadiusM": 0.2,
+  "boxes": 975,
+  "byCat": {
+    "item": 806,
+    "rail": 98,
+    "wall": 43,
+    "parade": 28
+  },
+  "hits": {
+    "queue-post": {
+      "count": 583,
+      "center": 39,
+      "body": 544,
+      "cat": "rail",
+      "examples": [
+        {
+          "item": "queue-post",
+          "position": [
+            -13.76,
+            -14.2
+          ],
+          "time": 64.21,
+          "id": "q-2",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.21,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -26.46,
+            -13.62
+          ],
+          "time": 64.21,
+          "id": "drop-3",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -13.76,
+            -14.2
+          ],
+          "time": 64.29,
+          "id": "q-2",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.29,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -26.46,
+            -13.62
+          ],
+          "time": 64.29,
+          "id": "drop-3",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -13.76,
+            -14.2
+          ],
+          "time": 64.37,
+          "id": "q-2",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-post",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.37,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        }
+      ]
+    },
+    "queue-tape": {
+      "count": 88,
+      "center": 3,
+      "body": 85,
+      "cat": "rail",
+      "examples": [
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.21,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.29,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.37,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.46,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.54,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.62,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.71,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        },
+        {
+          "item": "queue-tape",
+          "position": [
+            -14.37,
+            -13.83
+          ],
+          "time": 64.79,
+          "id": "q-12",
+          "phase": "queue",
+          "how": "body"
+        }
+      ]
+    },
+    "entrance:bundle-entrance-0-0": {
+      "count": 31,
+      "center": 21,
+      "body": 10,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.51,
+            -12.86
+          ],
+          "time": 65.62,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.51,
+            -12.75
+          ],
+          "time": 65.62,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.33,
+            -12.87
+          ],
+          "time": 69.12,
+          "id": "q-0",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.33,
+            -12.75
+          ],
+          "time": 69.12,
+          "id": "q-0",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.35,
+            -12.57
+          ],
+          "time": 72.54,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.35,
+            -12.57
+          ],
+          "time": 72.54,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.35,
+            -12.78
+          ],
+          "time": 72.54,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "entrance:bundle-entrance-0-0",
+          "position": [
+            -20.35,
+            -12.68
+          ],
+          "time": 72.54,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "security_small:bundle-security_small-0-2": {
+      "count": 58560,
+      "center": 9512,
+      "body": 49048,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.45,
+            -0.46
+          ],
+          "time": 66.29,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "body"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -16.44,
+            0.55
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "body"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.61,
+            -0.29
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.7,
+            -0.2
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.78,
+            -0.12
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.86,
+            -0.04
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -15.94,
+            0.05
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-0-2",
+          "position": [
+            -16.03,
+            0.13
+          ],
+          "time": 66.37,
+          "id": "q-11",
+          "phase": "seat",
+          "how": "center"
+        }
+      ]
+    },
+    "kiosk:bundle-kiosk-1-0": {
+      "count": 12,
+      "center": 1,
+      "body": 11,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.45,
+            -12.54
+          ],
+          "time": 66.79,
+          "id": "q-8",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.45,
+            -12.54
+          ],
+          "time": 66.79,
+          "id": "q-8",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.45,
+            -12.54
+          ],
+          "time": 66.79,
+          "id": "q-8",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.36,
+            -12.62
+          ],
+          "time": 66.79,
+          "id": "q-8",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.15,
+            -12.9
+          ],
+          "time": 74.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.15,
+            -12.9
+          ],
+          "time": 74.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -14.15,
+            -12.9
+          ],
+          "time": 74.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "kiosk:bundle-kiosk-1-0",
+          "position": [
+            -13.98,
+            -13.03
+          ],
+          "time": 96.87,
+          "id": "drop-1",
+          "phase": "walk",
+          "how": "body"
+        }
+      ]
+    },
+    "wayfinding:bundle-wayfinding-4-0": {
+      "count": 28,
+      "center": 22,
+      "body": 6,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.05,
+            -11.05
+          ],
+          "time": 68.46,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.44,
+            -11.44
+          ],
+          "time": 68.46,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.36,
+            -11.36
+          ],
+          "time": 68.46,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.15,
+            -10.94
+          ],
+          "time": 76.04,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.15,
+            -10.94
+          ],
+          "time": 76.04,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.7,
+            -11.49
+          ],
+          "time": 76.04,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.62,
+            -11.41
+          ],
+          "time": 76.04,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "wayfinding:bundle-wayfinding-4-0",
+          "position": [
+            0.54,
+            -11.33
+          ],
+          "time": 76.04,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "toilet:bundle-toilet-4-1": {
+      "count": 15,
+      "center": 13,
+      "body": 2,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.43,
+            -10.6
+          ],
+          "time": 68.54,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.51,
+            -10.53
+          ],
+          "time": 68.54,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.59,
+            -10.46
+          ],
+          "time": 68.54,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.45,
+            -10.6
+          ],
+          "time": 76.12,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.55,
+            -10.55
+          ],
+          "time": 76.12,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.42,
+            -10.96
+          ],
+          "time": 83.79,
+          "id": "q-1",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.5,
+            -10.89
+          ],
+          "time": 83.79,
+          "id": "q-1",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "toilet:bundle-toilet-4-1",
+          "position": [
+            -0.59,
+            -10.83
+          ],
+          "time": 83.79,
+          "id": "q-1",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "seat_row:bundle-seat_row-1-3": {
+      "count": 770,
+      "center": 628,
+      "body": 142,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "seat_row:bundle-seat_row-1-3",
+          "position": [
+            -15.51,
+            4.65
+          ],
+          "time": 70.46,
+          "id": "q-3",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "cafe:bundle-cafe-2-3": {
+      "count": 989,
+      "center": 828,
+      "body": 161,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -9.59,
+            -1.48
+          ],
+          "time": 82.62,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -8.22,
+            -1.5
+          ],
+          "time": 82.71,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -6.85,
+            -1.5
+          ],
+          "time": 82.79,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -5.48,
+            -1.5
+          ],
+          "time": 82.87,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -12.53,
+            6.1
+          ],
+          "time": 86.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -12.53,
+            6.1
+          ],
+          "time": 86.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -12.53,
+            6.1
+          ],
+          "time": 86.46,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "cafe:bundle-cafe-2-3",
+          "position": [
+            -12.53,
+            6.21
+          ],
+          "time": 86.54,
+          "id": "solo-1",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "newsagent:bundle-newsagent-1-4": {
+      "count": 234,
+      "center": 194,
+      "body": 40,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.91
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.91
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.91
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.26
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.26
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.37
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.37
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "newsagent:bundle-newsagent-1-4",
+          "position": [
+            -15.35,
+            8.47
+          ],
+          "time": 83.29,
+          "id": "q-6",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    },
+    "security_small:bundle-security_small-4-2": {
+      "count": 62,
+      "center": 52,
+      "body": 10,
+      "cat": "item",
+      "examples": [
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.75,
+            -2.01
+          ],
+          "time": 86.54,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.75,
+            -2.01
+          ],
+          "time": 86.54,
+          "id": "q-2",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.47,
+            -0.69
+          ],
+          "time": 94.04,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.47,
+            -0.69
+          ],
+          "time": 94.04,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "body"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.75,
+            -0.91
+          ],
+          "time": 94.04,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.65,
+            -0.84
+          ],
+          "time": 94.04,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.56,
+            -0.77
+          ],
+          "time": 94.04,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "center"
+        },
+        {
+          "item": "security_small:bundle-security_small-4-2",
+          "position": [
+            0.38,
+            -0.61
+          ],
+          "time": 94.12,
+          "id": "q-12",
+          "phase": "seat",
+          "how": "center"
+        }
+      ]
+    }
+  },
+  "extra": {
+    "wall:shell-wall": {
+      "count": 4,
+      "center": 2,
+      "examples": [
+        {
+          "item": "shell-wall",
+          "position": [
+            -10.55,
+            -4.23
+          ],
+          "time": 69.37,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "shell-wall",
+          "position": [
+            -11.77,
+            -4.23
+          ],
+          "time": 69.46,
+          "id": "q-14",
+          "phase": "walk",
+          "how": "body"
+        },
+        {
+          "item": "shell-wall",
+          "position": [
+            -12.04,
+            -4.14
+          ],
+          "time": 77.12,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        },
+        {
+          "item": "shell-wall",
+          "position": [
+            -12.12,
+            -4.06
+          ],
+          "time": 77.12,
+          "id": "q-10",
+          "phase": "walk",
+          "how": "center"
+        }
+      ]
+    }
+  },
+  "offLine": {
+    "queue": 1035,
+    "samples": 12218,
+    "examples": [
+      {
+        "id": "q-12",
+        "facility": "bundle-checkin_belt-2-0-0",
+        "phase": "queue",
+        "d": 0.67,
+        "position": [
+          -14.37,
+          -13.83
+        ],
+        "time": 64.21
+      },
+      {
+        "id": "drop-1",
+        "facility": "bundle-checkin_belt-2-0-0",
+        "phase": "queue",
+        "d": 1.15,
+        "position": [
+          -14.67,
+          -13.35
+        ],
+        "time": 64.21
+      },
+      {
+        "id": "drop-3",
+        "facility": "bundle-kiosk-1-0-0",
+        "phase": "queue",
+        "d": 0.88,
+        "position": [
+          -26.46,
+          -13.62
+        ],
+        "time": 64.21
+      },
+      {
+        "id": "drop-4",
+        "facility": "bundle-kiosk-1-0-0",
+        "phase": "queue",
+        "d": 1.04,
+        "position": [
+          -23.7,
+          -15.54
+        ],
+        "time": 64.21
+      },
+      {
+        "id": "drop-5",
+        "facility": "bundle-checkin_belt-2-0-0",
+        "phase": "queue",
+        "d": 1.09,
+        "position": [
+          -14.46,
+          -13.41
+        ],
+        "time": 64.21
+      },
+      {
+        "id": "q-12",
+        "facility": "bundle-checkin_belt-2-0-0",
+        "phase": "queue",
+        "d": 0.67,
+        "position": [
+          -14.37,
+          -13.83
+        ],
+        "time": 64.29
+      },
+      {
+        "id": "drop-1",
+        "facility": "bundle-checkin_belt-2-0-0",
+        "phase": "queue",
+        "d": 1.15,
+        "position": [
+          -14.67,
+          -13.35
+        ],
+        "time": 64.29
+      },
+      {
+        "id": "drop-3",
+        "facility": "bundle-kiosk-1-0-0",
+        "phase": "queue",
+        "d": 0.88,
+        "position": [
+          -26.46,
+          -13.62
+        ],
+        "time": 64.29
+      }
+    ]
+  },
+  "joins": {
+    "empty": 32,
+    "queued": 35,
+    "farFromTail": 35,
+    "overRail": 1,
+    "examples": [
+      {
+        "id": "q-3",
+        "facility": "lane-0",
+        "place": 0,
+        "distTail": 11,
+        "distHead": 0,
+        "overRail": false,
+        "time": 66.87,
+        "position": [
+          -14.5,
+          -1.5
+        ],
+        "phase": "service"
+      },
+      {
+        "id": "q-8",
+        "facility": "lane-0",
+        "place": 1,
+        "distTail": 10.3,
+        "distHead": 0.7,
+        "overRail": false,
+        "time": 67.46,
+        "position": [
+          -14.5,
+          -2.2
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-14",
+        "facility": "lane-0",
+        "place": 2,
+        "distTail": 10.29,
+        "distHead": 1.04,
+        "overRail": false,
+        "time": 69.71,
+        "position": [
+          -13.77,
+          -2.23
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-0",
+        "facility": "lane-0",
+        "place": 2,
+        "distTail": 9.6,
+        "distHead": 1.4,
+        "overRail": false,
+        "time": 70.37,
+        "position": [
+          -14.5,
+          -2.9
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-3",
+        "facility": "bundle-newsagent-1-4-0",
+        "place": 0,
+        "distTail": 6,
+        "distHead": 0,
+        "overRail": false,
+        "time": 71.87,
+        "position": [
+          -20.5,
+          9.5
+        ],
+        "phase": "service"
+      },
+      {
+        "id": "q-6",
+        "facility": "lane-0",
+        "place": 2,
+        "distTail": 9.6,
+        "distHead": 1.4,
+        "overRail": false,
+        "time": 73.96,
+        "position": [
+          -14.5,
+          -2.9
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "solo-1",
+        "facility": "lane-0",
+        "place": 3,
+        "distTail": 8.9,
+        "distHead": 2.1,
+        "overRail": false,
+        "time": 75.54,
+        "position": [
+          -14.5,
+          -3.6
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-9",
+        "facility": "lane-0",
+        "place": 3,
+        "distTail": 8.9,
+        "distHead": 2.1,
+        "overRail": false,
+        "time": 77.29,
+        "position": [
+          -14.5,
+          -3.6
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-10",
+        "facility": "lane-0",
+        "place": 4,
+        "distTail": 10.18,
+        "distHead": 1.4,
+        "overRail": false,
+        "time": 77.29,
+        "position": [
+          -13.41,
+          -2.38
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-13",
+        "facility": "lane-0",
+        "place": 4,
+        "distTail": 8.2,
+        "distHead": 2.8,
+        "overRail": false,
+        "time": 81.29,
+        "position": [
+          -14.5,
+          -4.3
+        ],
+        "phase": "queue"
+      },
+      {
+        "id": "q-2",
+        "facility": "lane-1",
+        "place": 0,
+        "distTail": 11,
+        "distHead": 0,
+        "overRail": false,
+        "time": 83.37,
+        "position": [
+          1.5,
+          -1.5
+        ],
+        "phase": "service"
+      },
+      {
+        "id": "q-4",
+        "facility": "lane-0",
+        "place": 4,
+        "distTail": 8.06,
+        "distHead": 2.94,
+        "overRail": false,
+        "time": 84.12,
+        "position": [
+          -14.5,
+          -4.44
+        ],
+        "phase": "queue"
+      }
+    ]
+  }
+}

@@ -1,0 +1,384 @@
+{
+  "drop": {
+    "id": "it-bag_drop-5-0-1",
+    "def": "bag_drop",
+    "c": 5,
+    "r": 0,
+    "wear": 0,
+    "rot": 0
+  },
+  "metrics": [
+    {
+      "id": "lane-0",
+      "kind": "security_lane",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": -14.5,
+          "z": -1.5
+        },
+        {
+          "x": -14.5,
+          "z": -2.5
+        },
+        {
+          "x": -14.5,
+          "z": -3.5
+        },
+        {
+          "x": -14.5,
+          "z": -4.5
+        },
+        {
+          "x": -14.5,
+          "z": -5.5
+        },
+        {
+          "x": -14.5,
+          "z": -6.5
+        },
+        {
+          "x": -14.5,
+          "z": -7.5
+        },
+        {
+          "x": -14.5,
+          "z": -8.5
+        },
+        {
+          "x": -14.5,
+          "z": -9.5
+        },
+        {
+          "x": -14.5,
+          "z": -10.5
+        },
+        {
+          "x": -14.5,
+          "z": -11.5
+        },
+        {
+          "x": -14.5,
+          "z": -12.5
+        }
+      ]
+    },
+    {
+      "id": "lane-1",
+      "kind": "security_lane",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": 1.5,
+          "z": -1.5
+        },
+        {
+          "x": 0.5,
+          "z": -1.5
+        },
+        {
+          "x": -0.5,
+          "z": -1.5
+        },
+        {
+          "x": -1.5,
+          "z": -1.5
+        },
+        {
+          "x": -2.5,
+          "z": -1.5
+        },
+        {
+          "x": -3.5,
+          "z": -1.5
+        },
+        {
+          "x": -4.5,
+          "z": -1.5
+        },
+        {
+          "x": -5.5,
+          "z": -1.5
+        },
+        {
+          "x": -6.5,
+          "z": -1.5
+        },
+        {
+          "x": -7.5,
+          "z": -1.5
+        },
+        {
+          "x": -8.5,
+          "z": -1.5
+        },
+        {
+          "x": -9.5,
+          "z": -1.5
+        }
+      ]
+    },
+    {
+      "id": "bundle-kiosk-1-0-0",
+      "kind": "checkin_desk",
+      "queue": 8,
+      "serving": true,
+      "line": [
+        {
+          "x": -20.5,
+          "z": -14.5
+        },
+        {
+          "x": -21.5,
+          "z": -14.5
+        },
+        {
+          "x": -22.5,
+          "z": -14.5
+        },
+        {
+          "x": -23.5,
+          "z": -14.5
+        },
+        {
+          "x": -24.5,
+          "z": -14.5
+        },
+        {
+          "x": -25.5,
+          "z": -14.5
+        },
+        {
+          "x": -26.5,
+          "z": -14.5
+        },
+        {
+          "x": -27.5,
+          "z": -14.5
+        }
+      ]
+    },
+    {
+      "id": "bundle-checkin_belt-2-0-0",
+      "kind": "checkin_desk",
+      "queue": 3,
+      "serving": true,
+      "line": [
+        {
+          "x": -12.5,
+          "z": -14.5
+        },
+        {
+          "x": -13.5,
+          "z": -14.5
+        },
+        {
+          "x": -14.5,
+          "z": -14.5
+        },
+        {
+          "x": -15.5,
+          "z": -14.5
+        }
+      ]
+    },
+    {
+      "id": "bundle-boarding_desk-0-3-0",
+      "kind": "gate_desk",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": -22.5,
+          "z": 3.5
+        },
+        {
+          "x": -21.5,
+          "z": 3.5
+        },
+        {
+          "x": -20.5,
+          "z": 3.5
+        },
+        {
+          "x": -19.5,
+          "z": 3.5
+        },
+        {
+          "x": -18.5,
+          "z": 3.5
+        },
+        {
+          "x": -17.5,
+          "z": 3.5
+        },
+        {
+          "x": -16.5,
+          "z": 3.5
+        },
+        {
+          "x": -15.5,
+          "z": 3.5
+        },
+        {
+          "x": -14.5,
+          "z": 3.5
+        },
+        {
+          "x": -13.5,
+          "z": 3.5
+        },
+        {
+          "x": -12.5,
+          "z": 3.5
+        },
+        {
+          "x": -11.5,
+          "z": 3.5
+        }
+      ]
+    },
+    {
+      "id": "bundle-newsagent-1-4-0",
+      "kind": "shop_counter",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": -20.5,
+          "z": 9.5
+        },
+        {
+          "x": -20.5,
+          "z": 10.5
+        },
+        {
+          "x": -20.5,
+          "z": 11.5
+        },
+        {
+          "x": -20.5,
+          "z": 12.5
+        },
+        {
+          "x": -20.5,
+          "z": 13.5
+        },
+        {
+          "x": -20.5,
+          "z": 14.5
+        },
+        {
+          "x": -20.5,
+          "z": 15.5
+        }
+      ]
+    },
+    {
+      "id": "bundle-cafe-2-3-0",
+      "kind": "shop_counter",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": -10.5,
+          "z": 3.5
+        },
+        {
+          "x": -10.5,
+          "z": 2.5
+        },
+        {
+          "x": -10.5,
+          "z": 1.5
+        },
+        {
+          "x": -10.5,
+          "z": 0.5
+        },
+        {
+          "x": -10.5,
+          "z": -0.5
+        },
+        {
+          "x": -10.5,
+          "z": -1.5
+        },
+        {
+          "x": -10.5,
+          "z": -2.5
+        },
+        {
+          "x": -10.5,
+          "z": -3.5
+        }
+      ]
+    },
+    {
+      "id": "it-bag_drop-5-0-1-0",
+      "kind": "checkin_desk",
+      "queue": 0,
+      "serving": false,
+      "line": [
+        {
+          "x": 3.5,
+          "z": -14.5
+        },
+        {
+          "x": 2.5,
+          "z": -14.5
+        },
+        {
+          "x": 1.5,
+          "z": -14.5
+        },
+        {
+          "x": 0.5,
+          "z": -14.5
+        },
+        {
+          "x": -0.5,
+          "z": -14.5
+        },
+        {
+          "x": -1.5,
+          "z": -14.5
+        },
+        {
+          "x": -2.5,
+          "z": -14.5
+        },
+        {
+          "x": -3.5,
+          "z": -14.5
+        },
+        {
+          "x": -4.5,
+          "z": -14.5
+        },
+        {
+          "x": -5.5,
+          "z": -14.5
+        },
+        {
+          "x": -6.5,
+          "z": -14.5
+        },
+        {
+          "x": -7.5,
+          "z": -14.5
+        }
+      ]
+    }
+  ],
+  "news": [
+    "Snack bar 1 is empty. Brands sent bids.",
+    "T1 shop 1 is empty. Brands sent bids.",
+    "T1 food 1 is empty. Brands sent bids.",
+    "Inside the terminal — the kit bar is rooms, desks, and shops. The shell is built on the apron. H or Apron to leave.",
+    "Passenger-focused starter kit down — Hall curb on the public road, two concrete stands facing the gates, one runway linked by taxiway.",
+    "Riverside City plot purchased. Passenger focus — Northline-ready hall kit. $73,000 left. Stamp Starter kit ($48,000) or build freehand."
+  ]
+}
