@@ -79,8 +79,9 @@ describe('starter kits', () => {
     expect(standBeltViaSort(first.tiles, stands[0])).toBe(true)
     expect(standBeltViaSort(first.tiles, stands[1])).toBe(true)
     const sort = tilesOf(first.tiles, 'bags')
-    expect(sort).toEqual([{ c: 13, r: 9 }])
-    expect(first.tiles[9][14]).toBe('terminal')
+    expect(sort).toEqual([{ c: 14, r: 9 }])
+    expect(first.tiles[9][15]).toBe('terminal')
+    expect(first.tiles[9][14]).toBe('bags')
     const hallsByKey = new Set(halls.map((p) => key(p.c, p.r)))
     for (const belt of tilesOf(first.tiles, 'belt')) {
       const touchesHall = [
@@ -91,14 +92,15 @@ describe('starter kits', () => {
       ].some(([dc, dr]) => hallsByKey.has(key(belt.c + dc, belt.r + dr)))
       expect(touchesHall, `belt ${belt.c},${belt.r} touches the hall`).toBe(false)
     }
-    expect(bagSortYaw(first.tiles, 13, 9)).toBeCloseTo(-Math.PI / 2)
+    expect(bagSortYaw(first.tiles, 14, 9)).toBeCloseTo(-Math.PI / 2)
     const guard = tilesOf(first.tiles, 'guard')
     expect(guard).toEqual([{ c: 16, r: 4 }])
     const curb = buildNetwork(starterField())
     const onGuard = (cell: { c: number; r: number }) => cell.c === 16 && cell.r === 4
     expect(curb.path.some(onGuard)).toBe(false)
     expect(curb.exit.some(onGuard)).toBe(false)
-    expect(curb.path.at(-1)).toEqual({ c: 17, r: 8 })
+    // The 2×4 hall's east face starts on row 7, so the curb approach ends there.
+    expect(curb.path.at(-1)).toEqual({ c: 17, r: 7 })
     const city = { c: 17, r: 0 }
     for (const stand of stands) {
       const truck = nearestPath(first.tiles, city, [stand], 'truck')
@@ -136,7 +138,10 @@ describe('starter kits', () => {
 
   it('rejects a belt that joins the hall to a stand without the sort', () => {
     const game = field('pax')
+    // Column 14 is the gap between the belt run and the 2-wide hall. A belt
+    // there, joined to the stand run, reaches the hall without the sort.
     game.tiles[8][13] = 'belt'
+    game.tiles[8][14] = 'belt'
     const stand = { c: 11, r: 6 }
     expect(standBeltLinked(game.tiles, stand)).toBe(true)
     expect(standBeltViaSort(game.tiles, stand)).toBe(false)
