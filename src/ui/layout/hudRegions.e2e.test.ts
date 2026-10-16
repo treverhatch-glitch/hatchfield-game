@@ -107,6 +107,7 @@ describe('HUD regions in the browser', () => {
           await page.getByTestId('milestone-stack').waitFor({ state: 'visible' })
           if (await page.getByTestId('phone-peek').count()) await page.getByTestId('phone-peek').click()
           await page.locator('.hud .phone-dock.embedded[data-state="open"]').waitFor({ state: 'visible' })
+          await page.waitForTimeout(400)
           await expectApart(page, `${at} goals + phone + relations`)
           await page.getByTestId('dock-tab-phone').click()
 
@@ -134,6 +135,7 @@ describe('HUD regions in the browser', () => {
           await page.locator('.tt-root[data-open="1"] .tt-dock').waitFor({ state: 'visible' })
           await page.getByTestId('build-airfield').click()
           await page.locator('.hud .build-tray').waitFor({ state: 'visible' })
+          await page.waitForTimeout(500)
           await expectApart(page, `${at} timetable + airfield`)
           await page.getByTestId('build-airfield').click()
           await page.getByTestId('dock-tab-phone').click()

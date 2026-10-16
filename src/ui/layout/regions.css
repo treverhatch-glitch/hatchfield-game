@@ -287,14 +287,15 @@ body:has(.view-layer.live .hall-wrap .interior-bar) .feedback-banner {
 }
 
 .hud:has(.build-tray) .tt-root[data-open='1'] {
-  bottom: calc(var(--region-build) + 152px);
+  bottom: calc(var(--region-build) + 200px);
 }
 
 .hud:has(.build-tray) .tt-root[data-open='1'] .tt-dock {
   height: auto !important;
   min-height: 96px !important;
-  max-height: calc(100vh - var(--hud-top) - 100px - var(--region-build) - 152px) !important;
+  max-height: calc(100vh - var(--hud-top) - 100px - var(--region-build) - 200px) !important;
   overflow: auto;
+  animation: none;
 }
 
 /* Offer sheet stays in the centre column, clear of the flight card. */
