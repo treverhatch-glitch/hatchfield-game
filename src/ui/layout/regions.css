@@ -81,25 +81,40 @@
   display: none;
 }
 
-.left-dock-goals {
-  flex: 0 1 auto;
+.left-dock-goals,
+.left-dock-relations {
+  flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.left-dock-goals .feedback-stack {
+.left-dock-goals .feedback-stack,
+.left-dock-relations .relations-tab {
   position: static;
   width: auto;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
 }
 
-/* Closed phone: a bar at the bottom of the dock, goals above it. Open phone: the whole dock. */
+/* Closed phone sits at the bottom. Open phone shares the column and scrolls. */
 .left-dock-phone:has(.phone-dock.embedded:not([data-state='open'])) {
   flex: 0 0 auto;
   margin-top: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.left-dock:has(.phone-dock.embedded[data-state='open']) .left-dock-goals {
-  display: none;
+.left-dock-phone:has(.phone-dock.embedded[data-state='open']) {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 42%;
+  margin-top: 0;
+  overflow: hidden;
 }
 
 .hud .phone-dock.embedded:not([data-state='open']) .phone-device {
@@ -260,6 +275,33 @@ body:has(.view-layer.live .hall-wrap .interior-bar) .feedback-banner {
   bottom: calc(var(--region-build) + var(--region-gap));
   width: auto;
   z-index: 28;
+}
+
+/*
+ * The airfield tray is position:absolute and grows up into the sheet.
+ * While it is open, cap it and park the timetable in the band above that cap
+ * so the two boxes stay apart at 1280×720 and 1920×1080.
+ */
+.hud:has(.tt-root[data-open='1']) .build-tray {
+  max-height: 128px;
+}
+
+.hud:has(.build-tray) .tt-root[data-open='1'] {
+  bottom: calc(var(--region-build) + 152px);
+}
+
+.hud:has(.build-tray) .tt-root[data-open='1'] .tt-dock {
+  height: auto !important;
+  min-height: 96px !important;
+  max-height: calc(100vh - var(--hud-top) - 100px - var(--region-build) - 152px) !important;
+  overflow: auto;
+}
+
+/* Offer sheet stays in the centre column, clear of the flight card. */
+.hud .negotiation-panel {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: auto;
+  width: min(360px, calc(100vw - var(--region-dock) - var(--region-inspector) - 64px));
 }
 
 .hud .alert-dock {

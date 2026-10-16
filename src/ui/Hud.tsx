@@ -24,6 +24,8 @@ import { BuildTray } from './nav/BuildTray.tsx'
 import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
 import { StatusChip } from './StatusChip.tsx'
 import { ApronFlightCard, FlightCard } from './inspector/FlightCard.tsx'
+import { inspectorCard } from './inspector/facilityCard.ts'
+import { LiveBuildingDock } from './inspector/LiveBuildingDock.tsx'
 import { dockHasRows, runStatusChipAction, statusChipFromGame, statusChipOpensPhone } from './statusChip.ts'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
 import { ScenarioPanel } from './nav/ScenarioPanel.tsx'
@@ -102,7 +104,6 @@ import { StaffHousingPanel } from './StaffHousingPanel'
 import { ACHIEVEMENTS, AchievementToast, type AchievementDef } from '../achievements'
 import { liveBubbles } from '../feedback/stage'
 import { DebugHud } from './DebugHud'
-import { BuildingPanel } from './BuildingPanel'
 import { HALL_ROOMS } from './uiCatalog'
 import {
   BUILD_MENUS,
@@ -301,11 +302,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     return () => setSchedulePlanner(false)
   }, [manageTab])
 
-  const building = game.buildingCard()
-  const buildingName = building?.name ?? ''
+  const building = inspectorCard(game)
+  const buildingId = building?.id ?? ''
   const [dockBuilding, setDockBuilding] = useState('')
-  if (buildingName && buildingName !== dockBuilding) {
-    setDockBuilding(buildingName)
+  if (buildingId && buildingId !== dockBuilding) {
+    setDockBuilding(buildingId)
     setDockTab('building')
   }
   const ticker = game.news.slice(0, 5)
@@ -593,19 +594,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         phone={<Phone game={game} desktop={desktopPhone} openSignal={phoneOpenSignal} embedded />}
         airlines={<RelationsTab game={game} />}
         goals={<FieldGoals />}
-        building={
-          building ? (
-            <BuildingPanel
-              card={building}
-              onClose={() => game.closeBuilding()}
-              onHire={building.hire ? () => game.hireDeskStaff() : undefined}
-              onAction={(id) => game.buildingCardAction(id)}
-              onPreview={(id) => game.previewStandRow(id)}
-            />
-          ) : (
-            <p className="left-dock-note">Select a building on the field.</p>
-          )
-        }
+        building={<LiveBuildingDock game={game} />}
       />
       <AlertStackView game={game} />
       {levelUp != null ? (

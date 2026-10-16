@@ -15,6 +15,7 @@ import {
   serviceProgress,
   subscribeFlightCard,
 } from './flightCard.ts'
+import { liveRevWhen, subscribeLiveWhen } from './live.ts'
 
 function titleColor(flight: Flight, airlineColor: string): string {
   if (flight.kind === 'military') return '#8a9a6a'
@@ -86,7 +87,7 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
           {grade.note ? ` — ${grade.note}` : ''}
         </p>
       ) : null}
-      <p className="phase">
+      <p className="phase" data-testid="flight-phase">
         {aircraft} · {labelPhase(flight.phase, flight.craft)}
         {flight.pax > 0 ? ` · ${flight.pax} pax` : flight.cargo ? ' · freight' : ''}
         {(flight.craft ?? 'jet') === 'jet' ? ` · ${stand}` : ' · helipad'}
@@ -139,6 +140,7 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
 /** Right-edge inspector. Planner stays closed; dismissing does not clear the selection. */
 export function ApronFlightCard({ game }: { game: Game }) {
   const snap = useSyncExternalStore(subscribeFlightCard, flightCardSnapshot, flightCardSnapshot)
+  useSyncExternalStore(subscribeLiveWhen(Boolean(snap)), liveRevWhen(Boolean(snap)), () => 0)
   if (!snap || game.view !== 'apron') return null
   const id = flightCardFlightId()
   const flight = game.flights.find((row) => row.id === id && row.id === game.selectedFlight)

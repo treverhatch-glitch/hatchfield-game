@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Game } from '../../game/sim.ts'
 import type { AssignKind } from '../../hubprogress/assign.ts'
+import { vehiclePhaseLabel } from '../inspector/facilityCard.ts'
+import { liveRevWhen, subscribeLiveWhen } from '../inspector/live.ts'
 
 const KIND_LABEL: Record<AssignKind, string> = {
   desk: 'Desks',
@@ -23,8 +25,11 @@ export function AssignPanel({ game }: { game: Game }) {
   }, [game])
 
   const pick = game.assignPick
+  const vehicleLive = pick?.kind === 'vehicle' && Boolean(pick.id)
+  useSyncExternalStore(subscribeLiveWhen(vehicleLive), liveRevWhen(vehicleLive), () => 0)
   if (!pick && !game.assignBulk) return null
   const kind = pick?.kind ?? 'gate'
+  const pose = vehicleLive ? game.servicePoses().find((row) => row.id === pick?.id) : undefined
   const points = game.assignPoints(kind, pick?.role)
   const point = pick?.id ? points.find((row) => row.id === pick.id) : undefined
   const signed = game.signed
@@ -45,6 +50,12 @@ export function AssignPanel({ game }: { game: Game }) {
           Close
         </button>
       </header>
+      {pose ? (
+        <p className="building-note" data-testid="vehicle-phase">
+          {vehiclePhaseLabel(pose.phase)} · {Math.round((pose.u ?? 0) * 100)}%
+          {pose.waiting ? ' · waiting' : ''}
+        </p>
+      ) : null}
       {point?.blocked ? <p className="muted">{point.blocked}</p> : null}
       {point?.holderName ? (
         <p className="muted" data-testid="assign-holder">

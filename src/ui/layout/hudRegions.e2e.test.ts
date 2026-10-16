@@ -24,6 +24,9 @@ const PANELS: Record<string, string> = {
   coach: '[data-testid="coach"]',
   hints: '[data-testid="hint-panel"]',
   dock: '[data-testid="left-dock"]',
+  goals: '[data-testid="milestone-stack"]',
+  relations: '[data-testid="relations-tab"]',
+  phone: '.hud .phone-dock.embedded',
   build: '[data-hud-panel="build"]',
   'build-tray': '.hud .build-tray',
   alerts: '.hud .alert-dock',
@@ -53,7 +56,7 @@ type HatchProbe = {
 }
 
 describe('HUD regions in the browser', () => {
-  it('keeps every HUD panel apart at 1280×800 and 1920×1080', async () => {
+  it('keeps every HUD panel apart at 1280×720, 1280×800, and 1920×1080', async () => {
     const port = 46121
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
@@ -98,6 +101,15 @@ describe('HUD regions in the browser', () => {
           await page.locator('.hud .alert-dock').first().waitFor({ state: 'visible' })
           await expectApart(page, `${at} apron + phone + alert`)
 
+          // Goals, the open phone, and airline relations share the left dock.
+          await page.getByTestId('dock-tab-airlines').click()
+          await page.getByTestId('relations-tab').waitFor({ state: 'visible' })
+          await page.getByTestId('milestone-stack').waitFor({ state: 'visible' })
+          if (await page.getByTestId('phone-peek').count()) await page.getByTestId('phone-peek').click()
+          await page.locator('.hud .phone-dock.embedded[data-state="open"]').waitFor({ state: 'visible' })
+          await expectApart(page, `${at} goals + phone + relations`)
+          await page.getByTestId('dock-tab-phone').click()
+
           // An open build menu stays in the centre column.
           await page.getByTestId('build-airfield').click()
           await page.locator('.hud .build-tray').waitFor({ state: 'visible' })
@@ -120,8 +132,17 @@ describe('HUD regions in the browser', () => {
           // The timetable tab opens the sheet above the build bar.
           await page.getByTestId('dock-tab-timetable').click()
           await page.locator('.tt-root[data-open="1"] .tt-dock').waitFor({ state: 'visible' })
-          await expectApart(page, `${at} timetable open`)
+          await page.getByTestId('build-airfield').click()
+          await page.locator('.hud .build-tray').waitFor({ state: 'visible' })
+          await expectApart(page, `${at} timetable + airfield`)
+          await page.getByTestId('build-airfield').click()
           await page.getByTestId('dock-tab-phone').click()
+
+          // The short apron check is the overlap case. The hall scene stays on the taller viewports.
+          if (viewport.height < 800) {
+            await page.close()
+            continue
+          }
 
           // Terminal: the build menu is centred and clear of the dock and the top band.
           await page.getByTestId('view-terminal').click()
@@ -154,7 +175,7 @@ describe('HUD regions in the browser', () => {
       // Kill the whole group: `shell: true` makes vite a grandchild that outlives a plain kill and holds the port.
       if (vite.pid) process.kill(-vite.pid, 'SIGTERM')
     }
-  }, 300_000)
+  }, 480_000)
 })
 
 async function openPhoneMessages(page: Page) {

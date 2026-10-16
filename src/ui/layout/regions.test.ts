@@ -26,7 +26,7 @@ describe('HUD regions', () => {
     expect(queued.map((item) => item.id).sort()).toEqual(['assign', 'flight', 'relations'])
   })
 
-  it('keeps the apron panels from overlapping at 1280×800 and 1920×1080', () => {
+  it('keeps the apron panels from overlapping at 1280×720, 1280×800, and 1920×1080', () => {
     for (const viewport of HUD_VIEWPORTS) {
       const label = `${viewport.width}x${viewport.height}`
       expectClear(apronPanels(viewport.width, viewport.height), label)
@@ -35,7 +35,7 @@ describe('HUD regions', () => {
     }
   })
 
-  it('keeps the terminal panels from overlapping at 1280×800 and 1920×1080', () => {
+  it('keeps the terminal panels from overlapping at 1280×720, 1280×800, and 1920×1080', () => {
     for (const viewport of HUD_VIEWPORTS) {
       const label = `${viewport.width}x${viewport.height}`
       const boxes = hallPanels(viewport.width, viewport.height)

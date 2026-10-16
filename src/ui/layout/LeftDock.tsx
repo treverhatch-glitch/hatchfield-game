@@ -39,10 +39,10 @@ export function LeftDock({
             The timetable is open above the build bar.
           </p>
         ) : null}
-        {goals && (tab === 'phone' || tab === 'timetable') ? <div className="left-dock-goals">{goals}</div> : null}
-        <div className="left-dock-pane left-dock-phone" hidden={tab !== 'phone'}>{phone}</div>
-        {tab === 'airlines' ? airlines : null}
+        {goals && tab !== 'building' ? <div className="left-dock-goals">{goals}</div> : null}
+        {tab === 'airlines' ? <div className="left-dock-relations">{airlines}</div> : null}
         {tab === 'building' ? building : null}
+        {tab === 'phone' || tab === 'airlines' ? <div className="left-dock-pane left-dock-phone">{phone}</div> : null}
       </div>
       {queued ? (
         <p className="left-dock-note" data-testid="dock-queue">

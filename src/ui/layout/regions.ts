@@ -7,6 +7,7 @@
 export type Box = { id: string; x: number; y: number; w: number; h: number }
 
 export const HUD_VIEWPORTS = [
+  { width: 1280, height: 720 },
   { width: 1280, height: 800 },
   { width: 1920, height: 1080 },
 ] as const

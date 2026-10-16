@@ -59,6 +59,7 @@ import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
 import { releasePerfOverlay, retainPerfOverlay } from '../perf'
 import { HallServiceFx } from './hallService'
+import { nearestFacilityId } from '../ui/inspector/facilityCard.ts'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge, type RoomKind } from '../terminalbuild/index.ts'
@@ -574,8 +575,16 @@ export class HallWorld {
     const assignHit = this.assignHit()
     if (assignHit) {
       const { kind, id } = assignHit
-      if (this.game.assignBulk && (kind === 'desk' || kind === 'gate')) this.game.toggleAssignSelection(kind, id)
-      else this.game.openAssign(kind, id)
+      if (this.game.assignBulk && (kind === 'desk' || kind === 'gate')) {
+        this.game.toggleAssignSelection(kind, id)
+        return
+      }
+      // A desk or lane click opens that point's card. Dedicate stays on the hub and the paint tool.
+      if (!this.game.assignBulk && (kind === 'desk' || kind === 'lane')) {
+        this.game.selectFacility(id)
+        return
+      }
+      this.game.openAssign(kind, id)
       return
     }
     const walked = this.pickWalker(e.clientX, e.clientY)
@@ -602,7 +611,8 @@ export class HallWorld {
       setFidsOpen(true)
       return
     }
-    const facilityHit = [...queueHits, ...roomHits].find((hit) => {
+    const pointHits = this.ray.intersectObjects(this.serviceFx.facilityTargets(), false)
+    const facilityHit = [...pointHits, ...queueHits, ...roomHits].find((hit) => {
       let obj: THREE.Object3D | null = hit.object
       while (obj) {
         if (typeof obj.userData.facilityId === 'string') return true
@@ -628,6 +638,24 @@ export class HallWorld {
           return
         }
         obj = obj.parent
+      }
+    }
+    if (this.game.hallNav.live) {
+      const ray = this.ray.ray
+      const t = Math.abs(ray.direction.y) > 1e-6 ? (0.9 - ray.origin.y) / ray.direction.y : -1
+      if (t > 0) {
+        const near = nearestFacilityId(
+          this.game.hallNav.metrics(),
+          ray.origin.x + ray.direction.x * t,
+          ray.origin.z + ray.direction.z * t,
+          this.game.hallNav.originX,
+          this.game.hallNav.originZ,
+          3.2,
+        )
+        if (near) {
+          this.game.selectFacility(near)
+          return
+        }
       }
     }
     this.game.selectGuest(null)

@@ -164,6 +164,9 @@ export class HallServiceFx {
   private readonly bags: THREE.InstancedMesh
   private readonly scales: THREE.InstancedMesh
   private readonly signGroup = new THREE.Group()
+  private readonly facilityPicks = new THREE.Group()
+  private readonly facilityGeo = new THREE.BoxGeometry(2.8, 2.2, 2.2)
+  private readonly facilityMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
   private readonly signTex = new Map<string, THREE.Texture | null>()
   /** Security lanes. A dedicated lane wears the carrier colour. Empty leaves lanes unplated. */
   lanePlates: { id: string; primary: string; secondary: string; code: string }[] = []
@@ -171,6 +174,11 @@ export class HallServiceFx {
   /** Desk signs and lane plates. The hall raycasts these. */
   pickTargets(): THREE.Object3D[] {
     return this.signGroup.children
+  }
+
+  /** Invisible volumes on every live service point. A click opens that point's card. */
+  facilityTargets(): THREE.Object3D[] {
+    return this.facilityPicks.children
   }
   private readonly signGeo = new THREE.PlaneGeometry(L.signW, L.signH)
   private readonly signBack = new THREE.MeshLambertMaterial({ color: '#2a2e33' })
@@ -206,8 +214,11 @@ export class HallServiceFx {
     this.bags = make(new THREE.BoxGeometry(0.42, 0.55, 0.26), 128, 'hall-scale-bags')
     this.scales = make(new THREE.BoxGeometry(0.62, 0.06, 0.5), 128, 'hall-bag-scales', new THREE.MeshStandardMaterial({ color: '#9aa3ad', metalness: 0.6, roughness: 0.35 }))
     this.signBack.name = 'shared'
+    this.facilityMat.name = 'shared'
     this.signGroup.name = 'hall-desk-signs'
+    this.facilityPicks.name = 'hall-facility-picks'
     this.group.add(this.signGroup)
+    this.group.add(this.facilityPicks)
     this.staff = new PeopleRenderer(this.group, { capacity: L.maxStaff, lod: PEOPLE_LOD_FULL })
   }
 
@@ -250,6 +261,7 @@ export class HallServiceFx {
       if (mesh.material) disposeMat(mesh.material as THREE.Material)
     })
     this.signGroup.clear()
+    this.placeFacilityPicks(nav)
     let posts = 0
     let tape = 0
     for (const f of metrics) {
@@ -307,6 +319,23 @@ export class HallServiceFx {
     this.stats.desks = this.desks.length
     this.stats.lanes = this.lanes.length
     this.stats.posts = posts
+  }
+
+  /** One pick volume per facility that has a marked line, including undedicated lanes. */
+  private placeFacilityPicks(nav: HallNav) {
+    this.facilityPicks.clear()
+    const ox = nav.originX
+    const oz = nav.originZ
+    for (const facility of nav.metrics()) {
+      const sp = servicePoint(facility, ox, oz)
+      if (!sp) continue
+      const pick = new THREE.Mesh(this.facilityGeo, this.facilityMat)
+      pick.name = `facility-pick:${facility.id}`
+      pick.position.set(sp.px, 1.1, sp.pz)
+      pick.userData.facilityId = facility.id
+      pick.frustumCulled = false
+      this.facilityPicks.add(pick)
+    }
   }
 
   private addLanePlate(
@@ -480,6 +509,8 @@ export class HallServiceFx {
     for (const t of this.signTex.values()) t?.dispose()
     this.signGeo.dispose()
     this.signBack.dispose()
+    this.facilityGeo.dispose()
+    this.facilityMat.dispose()
     this.staff.dispose()
   }
 }
