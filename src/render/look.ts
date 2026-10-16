@@ -149,10 +149,10 @@ export const LIGHT_LOOK = {
   /** Ground bounce under the hemisphere, day and night. */
   hemiGroundDay: 0x6e8a4e,
   hemiGroundNight: 0x1e2a22,
-  /** Ambient lift. Kept small so the sun still owns the shading. */
-  ambientDay: 0.08,
-  /** Night apron stays readable. Black keys hid the field at midnight. */
-  ambientNight: 0.18,
+  /** Ambient lift. High enough that a shadowed apron still reads as daylight at 08:00. */
+  ambientDay: 0.32,
+  /** Night apron stays dim and readable. Near-black keys hid the field at midnight. */
+  ambientNight: 0.7,
   shadowBias: -0.00045,
   shadowNormalBias: 0.04,
 } as const
@@ -184,16 +184,16 @@ export const SUN_DISC = {
 
 /** Tuned sun key over a cooler hemisphere. Noon is sun-led; night is a dim moon. */
 export const DAYLIGHT_KEYS: readonly DaylightKey[] = [
-  { h: 0, top: 0x1a2844, horizon: 0x3a4e72, sun: 0xb7c6e4, sunI: 0.32, hemi: 0x3a4e72, hemiI: 0.36, exposure: 0.9 },
-  { h: 5, top: 0x243456, horizon: 0x4a5e82, sun: 0xc4d2ea, sunI: 0.36, hemi: 0x445880, hemiI: 0.4, exposure: 0.92 },
-  { h: 6.5, top: 0x4a4e86, horizon: 0xff8a4e, sun: 0xff8c48, sunI: 1.45, hemi: 0xc4a090, hemiI: 0.62, exposure: 1.04 },
-  { h: 8, top: 0x5b98d4, horizon: 0xf2d2aa, sun: 0xffe2b8, sunI: 2.75, hemi: 0xc6daf0, hemiI: 0.82, exposure: 0.98 },
-  { h: 11, top: 0x3a7ec4, horizon: 0xd4e6f4, sun: 0xfff0c4, sunI: 3.4, hemi: 0xc5daf4, hemiI: 0.86, exposure: 1.0 },
-  { h: 16, top: 0x3a7ec4, horizon: 0xd0e2f0, sun: 0xffebbc, sunI: 3.25, hemi: 0xc5daf4, hemiI: 0.84, exposure: 1.0 },
-  { h: 18.2, top: 0x6a5a98, horizon: 0xff9450, sun: 0xff7a38, sunI: 2.05, hemi: 0xd0a898, hemiI: 0.7, exposure: 0.98 },
-  { h: 19.3, top: 0x3a3058, horizon: 0xe06848, sun: 0xff7040, sunI: 0.85, hemi: 0xa08090, hemiI: 0.5, exposure: 1.06 },
-  { h: 20.5, top: 0x243456, horizon: 0x4a5e82, sun: 0xc4d2ea, sunI: 0.36, hemi: 0x445880, hemiI: 0.4, exposure: 0.92 },
-  { h: 24, top: 0x1a2844, horizon: 0x3a4e72, sun: 0xb7c6e4, sunI: 0.32, hemi: 0x3a4e72, hemiI: 0.36, exposure: 0.9 },
+  { h: 0, top: 0x284060, horizon: 0x466080, sun: 0xb7c6e4, sunI: 0.32, hemi: 0x5a7094, hemiI: 0.9, exposure: 1.28 },
+  { h: 5, top: 0x304868, horizon: 0x506888, sun: 0xc4d2ea, sunI: 0.36, hemi: 0x627898, hemiI: 0.95, exposure: 1.3 },
+  { h: 6.5, top: 0x4a4e86, horizon: 0xff8a4e, sun: 0xff8c48, sunI: 1.45, hemi: 0xc4a090, hemiI: 0.85, exposure: 1.28 },
+  { h: 8, top: 0x6aace0, horizon: 0xf6dcc0, sun: 0xffe2b8, sunI: 2.75, hemi: 0xd4e6f6, hemiI: 1.35, exposure: 1.72 },
+  { h: 11, top: 0x4a92d4, horizon: 0xe4f0fa, sun: 0xfff0c4, sunI: 3.4, hemi: 0xd4e8f8, hemiI: 1.28, exposure: 1.55 },
+  { h: 16, top: 0x4a92d4, horizon: 0xe0eef8, sun: 0xffebbc, sunI: 3.25, hemi: 0xd4e8f8, hemiI: 1.24, exposure: 1.52 },
+  { h: 18.2, top: 0x6a5a98, horizon: 0xff9450, sun: 0xff7a38, sunI: 2.05, hemi: 0xd0a898, hemiI: 0.95, exposure: 1.22 },
+  { h: 19.3, top: 0x3a3058, horizon: 0xe06848, sun: 0xff7040, sunI: 0.85, hemi: 0xa08090, hemiI: 0.72, exposure: 1.18 },
+  { h: 20.5, top: 0x304868, horizon: 0x506888, sun: 0xc4d2ea, sunI: 0.36, hemi: 0x627898, hemiI: 0.95, exposure: 1.3 },
+  { h: 24, top: 0x284060, horizon: 0x466080, sun: 0xb7c6e4, sunI: 0.32, hemi: 0x5a7094, hemiI: 0.9, exposure: 1.28 },
 ]
 
 /** Filmic grade applied after tone mapping, on Medium and High. */

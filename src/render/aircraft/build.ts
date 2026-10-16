@@ -267,17 +267,23 @@ function addWing(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
   const { spec, wingX, wingY } = frame
   if (frame.tier === 'low') {
+    // Two swept halves. One full-span box reads as a flat cross from above.
+    const semi = spec.spanM / 2
     const chord = (spec.rootChord + spec.tipChord) / 2
-    const mesh = addBox(
-      frame,
-      [chord, spec.thickness, spec.spanM],
-      [wingX, wingY, 0],
-      'wing',
-      'mesh',
-      undefined,
-      false,
-    )
-    mesh.name = 'wing'
+    const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi * 0.45
+    const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi * 0.5
+    for (const sign of [1, -1] as const) {
+      const mesh = addBox(
+        frame,
+        [chord, Math.max(0.12, spec.thickness), semi * 0.92],
+        [wingX - sweep, wingY + lift, sign * semi * 0.48],
+        'wing',
+        'mesh',
+        undefined,
+        false,
+      )
+      mesh.name = 'wing'
+    }
     return
   }
   const mesh = new THREE.Mesh(
@@ -286,7 +292,8 @@ function addWing(frame: Frame) {
   mesh.position.set(wingX, wingY, 0)
   mesh.name = 'wing'
   addMesh(frame, mesh, 'wing', 'mesh', true)
-  if (spec.winglet !== 'none') {
+  if (spec.winglet === 'none') return
+  {
     const semi = spec.spanM / 2
     const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi
     const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi

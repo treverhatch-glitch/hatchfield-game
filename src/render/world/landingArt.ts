@@ -3,6 +3,7 @@
  * Files stay at the size they were generated. Nothing here resamples them.
  */
 import * as THREE from 'three'
+import { raiseAnisotropy } from './textureRegistry'
 
 export const LANDING_DIR = 'art/textures/landing'
 
@@ -142,7 +143,7 @@ export function landingTexture(id: LandingId, anisotropy = 8): THREE.Texture | n
   if (typeof document === 'undefined') return null
   const hit = cache.get(id)
   if (hit) {
-    hit.anisotropy = Math.max(hit.anisotropy, anisotropy)
+    raiseAnisotropy(hit, anisotropy)
     return hit
   }
   const loader = new THREE.TextureLoader()
@@ -152,10 +153,7 @@ export function landingTexture(id: LandingId, anisotropy = 8): THREE.Texture | n
   const wrap = CLAMP.has(id) ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
   tex.wrapS = wrap
   tex.wrapT = wrap
-  tex.magFilter = THREE.LinearFilter
-  tex.minFilter = THREE.LinearMipmapLinearFilter
-  tex.generateMipmaps = true
-  tex.anisotropy = anisotropy
+  raiseAnisotropy(tex, anisotropy)
   cache.set(id, tex)
   return tex
 }

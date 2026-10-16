@@ -480,9 +480,17 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
   if (ribs) ribs.repeat.set(3, 14)
   const bodyM = new THREE.MeshLambertMaterial(ribs ? { color: PROP_LOOK.bridge, map: ribs } : { color: PROP_LOOK.bridge })
   const darkM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bellows })
-  const glassM = new THREE.MeshBasicMaterial({ color: 0x9cc8e6 })
+  const glassM = new THREE.MeshBasicMaterial({ color: 0x9cc8e6, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })
   const rotM = new THREE.MeshLambertMaterial({ color: 0xaab2bb })
-  const stripeM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridgeStripe })
+  const stripeM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridgeStripe, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })
+  const bodyOuter = bodyM.clone()
+  bodyOuter.polygonOffset = true
+  bodyOuter.polygonOffsetFactor = -2
+  bodyOuter.polygonOffsetUnits = -2
+  const bodyCab = bodyM.clone()
+  bodyCab.polygonOffset = true
+  bodyCab.polygonOffsetFactor = -1
+  bodyCab.polygonOffsetUnits = -1
   const mats = { body: bodyM, dark: darkM, glass: glassM, stripe: stripeM, rotunda: rotM }
   const rotGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.6, 12)
   rotGeo.translate(0, 0.8 + 0.22, 0)
@@ -496,7 +504,8 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
     pivot.position.set(b.root.x, 0, b.root.z)
     bridge.add(pivot)
     for (const part of bridgeParts(b)) {
-      const mesh = new THREE.Mesh(part.kind === 'rotunda' ? rotGeo : beam, mats[part.slot])
+      const mat = part.name === 'bridge-tunnel-b' ? bodyOuter : part.name === 'bridge-cab' ? bodyCab : mats[part.slot]
+      const mesh = new THREE.Mesh(part.kind === 'rotunda' ? rotGeo : beam, mat)
       mesh.name = part.name
       mesh.castShadow = part.slot === 'body' || part.slot === 'rotunda'
       applyBridgePart(mesh, part)
@@ -505,7 +514,7 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
     group.add(bridge)
   }
   group.userData.geos = [rotGeo]
-  return { group, mats: [bodyM, darkM, glassM, rotM, stripeM] }
+  return { group, mats: [bodyM, darkM, glassM, rotM, stripeM, bodyOuter, bodyCab] }
 }
 
 /** Elevated edge light: base, frangible stem, and can. The lens is a second draw so it can take the lamp colour. */

@@ -156,7 +156,10 @@ function loadPlate(id: string, slot: LiverySlotName, into: AirlineLiveryTex) {
     liveryFile(id, slot, quality),
     (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace
-      tex.anisotropy = quality === 'high' ? 8 : quality === 'med' ? 4 : 2
+      tex.anisotropy = quality === 'high' ? 16 : quality === 'med' ? 8 : 4
+      tex.magFilter = THREE.LinearFilter
+      tex.minFilter = THREE.LinearMipmapLinearFilter
+      tex.generateMipmaps = true
       tex.wrapS = THREE.ClampToEdgeWrapping
       tex.wrapT = THREE.ClampToEdgeWrapping
       tex.needsUpdate = true
@@ -290,16 +293,17 @@ varying float vLiverySlot;`,
         `#include <color_fragment>
 {
   vec4 liveryTex = vec4(0.0);
-  if (vLiverySlot < 0.5) liveryTex = texture2D(liveryFuselage, vLiveryUv);
-  else if (vLiverySlot < 1.5) liveryTex = texture2D(liveryTail, vLiveryUv);
-  else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv);
+  // Bias toward the sharper mip so a small aircraft keeps its plate instead of a white average.
+  if (vLiverySlot < 0.5) liveryTex = texture2D(liveryFuselage, vLiveryUv, -2.5);
+  else if (vLiverySlot < 1.5) liveryTex = texture2D(liveryTail, vLiveryUv, -2.5);
+  else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv, -2.5);
   vec3 liveryLinear = sRGBTransferEOTF(vec4(liveryTex.rgb, 1.0)).rgb;
   diffuseColor.rgb = mix(diffuseColor.rgb, liveryLinear, liveryTex.a);
 }`,
       )
     material.userData.liveryShader = shader
   }
-  material.customProgramCacheKey = () => 'livery-maps-v1'
+  material.customProgramCacheKey = () => 'livery-maps-v2'
   material.needsUpdate = true
 }
 

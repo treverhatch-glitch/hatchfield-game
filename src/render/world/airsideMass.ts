@@ -9,8 +9,9 @@ import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { mountSockets } from '../socketMount'
 import { MODEL_SIZE } from '../vehicleModels'
-import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from './buildingSkin'
+import { metreUv, skinBox, skinMaterial, tankUv, tint, yardMaterial } from './buildingSkin'
 import { exteriorTexture } from './exteriorArt'
+import { artTexture, type ArtTextureId } from './textureRegistry'
 import { mountServiceBay, mountSign } from './buildingSign'
 import { addParapet, addVault, softenBuilding } from './roundMass'
 
@@ -18,6 +19,16 @@ const wu = (meters: number) => meters * WORLD_PER_METER
 
 function wall(target: Parameters<typeof skinMaterial>[0], part: Parameters<typeof skinMaterial>[1]) {
   return skinMaterial(target, part)
+}
+
+function plated(color: string, id: ArtTextureId, roughness: number, metalness = 0.25): THREE.MeshStandardMaterial {
+  const map = artTexture(id, 16)
+  return new THREE.MeshStandardMaterial({
+    color: map ? tint(color, 0.4) : color,
+    map: map ?? undefined,
+    roughness,
+    metalness,
+  })
 }
 
 function based(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
@@ -176,11 +187,11 @@ export function addFuelFarm(g: THREE.Group) {
   const roof = skinMaterial('fuel_farm', 'roof')
   const trim = skinMaterial('fuel_farm', 'trim')
   const bandMat = new THREE.MeshStandardMaterial({ color: '#2d6a4f', roughness: 0.4, metalness: 0.2 })
-  const steel = new THREE.MeshStandardMaterial({ color: '#8b949e', roughness: 0.4, metalness: 0.55 })
-  const dark = new THREE.MeshStandardMaterial({ color: '#3a4048', roughness: 0.45, metalness: 0.5 })
-  const concrete = new THREE.MeshStandardMaterial({ color: '#c9c6bf', roughness: 0.82 })
-  const earth = new THREE.MeshStandardMaterial({ color: '#5d7a3a', roughness: 0.95 })
-  const canopyMat = new THREE.MeshStandardMaterial({ color: '#c5ccd3', roughness: 0.55, metalness: 0.35 })
+  const steel = plated('#8b949e', 'tank_steel', 0.4, 0.55)
+  const dark = plated('#3a4048', 'tank_steel', 0.45, 0.5)
+  const concrete = plated('#c9c6bf', 'apron_concrete', 0.82, 0.05)
+  const earth = plated('#5d7a3a', 'gravel_yard', 0.95, 0.02)
+  const canopyMat = plated('#c5ccd3', 'hangar_cladding', 0.55, 0.35)
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   yard.rotation.x = -Math.PI / 2
@@ -364,9 +375,10 @@ export function addCargoShed(g: THREE.Group) {
 
 /** Capture pad, fluid tank, and a truck bay beside the boom. */
 export function addDeicePad(g: THREE.Group) {
+  const padMap = artTexture('apron_concrete', 16)
   const pad = new THREE.Mesh(
     metreUv(new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95), 4, WORLD_PER_METER),
-    new THREE.MeshLambertMaterial({ color: '#3a4a58' }),
+    new THREE.MeshLambertMaterial({ color: padMap ? '#d5d8dc' : '#3a4a58', map: padMap ?? undefined }),
   )
   pad.rotation.x = -Math.PI / 2
   pad.position.y = 0.04

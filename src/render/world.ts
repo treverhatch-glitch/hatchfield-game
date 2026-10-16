@@ -28,7 +28,7 @@ import {
 import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimeline } from './flightPose'
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
-import { ORBIT_DEFAULT_DIST, orbitFromLook } from '../camera/orbit.ts'
+import { ORBIT_DEFAULT_DIST, orbitFromLook, panZoomScale } from '../camera/orbit.ts'
 import { zoomToCursorShift } from '../camera/zoom.ts'
 import { APRON_MAX_DIST, noteMaxZoomFrame } from './viewBudget'
 import { TRANSITION_SEC, beginCue, clearCue, cueCanSkip, sectionWeights } from './viewCue'
@@ -363,6 +363,8 @@ export class World {
   hit = new THREE.Vector3()
   private zoomScratch = new THREE.Vector3()
   sun: THREE.DirectionalLight
+  /** Farmland-coloured disc that follows the camera so a pan never opens a black void. */
+  private groundDisc!: THREE.Mesh
   onHover: (v: Vec | null) => void = () => {}
   onClick: (v: Vec, shift: boolean) => void = () => {}
   /** Fired when a pan or orbit drag actually moves, so follow cam can let go. */
@@ -449,12 +451,16 @@ export class World {
     this.scene.add(new THREE.AmbientLight('#b9c9a8', 0.28))
 
     const earth = new THREE.Mesh(
-      new THREE.CircleGeometry(420, 48),
-      new THREE.MeshLambertMaterial({ color: '#2d5a34' }),
+      new THREE.CircleGeometry(2400, 64),
+      new THREE.MeshLambertMaterial({ color: '#6d8a4a' }),
     )
+    earth.name = 'world-ground-disc'
     earth.rotation.x = -Math.PI / 2
-    earth.position.y = -0.08
-    earth.receiveShadow = true
+    // Under the plot and the farmland ring. Those surfaces win where they exist.
+    earth.position.y = -0.15
+    earth.receiveShadow = false
+    earth.frustumCulled = false
+    this.groundDisc = earth
     this.scene.add(earth)
 
     this.gateGroup.name = 'gate-bridges'
@@ -611,8 +617,9 @@ export class World {
     right.cross(this.camera.up).normalize()
     forward.y = 0
     forward.normalize()
-    this.pivot.addScaledVector(right, rightAmt)
-    this.pivot.addScaledVector(forward, forwardAmt)
+    const span = panZoomScale(this.dist)
+    this.pivot.addScaledVector(right, rightAmt * span)
+    this.pivot.addScaledVector(forward, forwardAmt * span)
     this.placeCam()
   }
 
@@ -2300,6 +2307,8 @@ export class World {
     this.syncMroDoors(game)
     this.wr.update(game, this.camera, dt)
     this.syncHeadlights()
+    this.groundDisc.position.x = this.camera.position.x
+    this.groundDisc.position.z = this.camera.position.z
     setAircraftLamp(this.wr.dayNightSample.aircraft)
     perfEnd('world.wr', t)
     t = perfStart()

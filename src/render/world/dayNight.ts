@@ -54,12 +54,12 @@ export const DAY_NIGHT = {
 /** Rig values a full-night override blends toward. Matches the midnight key. */
 export const NIGHT_FLOOR = {
   sunIntensity: 0.32,
-  hemiIntensity: 0.36,
-  exposure: 0.9,
+  hemiIntensity: 0.9,
+  exposure: 1.28,
   sunColor: 0xb7c6e4,
-  hemiSky: 0x3a4e72,
+  hemiSky: 0x5a7094,
   hemiGround: 0x1e2a22,
-  ambient: 0.18,
+  ambient: 0.7,
   stars: 1,
 } as const
 

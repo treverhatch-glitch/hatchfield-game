@@ -59,7 +59,8 @@ export interface Settings {
   dayNightCycle: boolean
   /**
    * WASD and arrow pan, as a multiple of the base speed.
-   * 1 is the old pace. The default is quicker.
+   * 1 is a slow apron walk. The default (2) crosses the starter apron in a few
+   * seconds at the boot zoom. Orbit distance scales the same pace.
    */
   cameraSpeed: number
 }
