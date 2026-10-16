@@ -10,13 +10,13 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | --- | --- |
 | Seed | 1 |
 | First red line | none in 16 days |
-| Peak | in-game day 15, check-in desk, the passenger being served, 335 nav seconds |
+| Peak | in-game day 8, check-in desk, the passenger being served, 338 nav seconds |
 | Red line | 360 nav seconds at check-in. The four-stall curb meters the rides, so the wait stays under it |
 | Signed | `air_regional_1`, `zoomjet` |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
-Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them. Walking passengers own the desks, so the peak is day 15: the passenger being served, 335 nav seconds, nobody waiting behind them. That is under the 360-second red line, and neither check-in nor security flags inside 16 days. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. The belts reach the stands only through the sort, against the west face. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
+Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them. Walking passengers own the desks, so the peak is day 8: the passenger being served, 338 nav seconds, nobody waiting behind them. That is under the 360-second red line, and neither check-in nor security flags inside 16 days. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. The belts reach the stands only through the sort, against the west face. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
 
 ## What changed
 
@@ -25,4 +25,4 @@ The same seed used to never raise the flag. One regional wave is spread across t
 1. Check-in `bottleneckSec` in `src/game/hallNavData.ts`, from 900 to 360 nav seconds. 360 sits above the opening peak. Security stays at 600. The first red line is the desks.
 2. `STARTER_CHECKIN_PACE` in `src/game/openingData.ts`, set to 3. Prefab I check-in keeps the normal pace through the opening. Once the clock passes 600 seconds, those desks take three times as long. The same short queue then waits about 413 nav seconds. An expanded hall goes back to pace 1.
 
-Day 6 is past the opening and in the band the hall pacing note already described. Another desk or a security lane clears the line. Prefab II is what opens a third carrier.
+The peak stays under the red line through day 16. Another desk or a security lane is what would clear a longer line. Prefab II is what opens a third carrier.
