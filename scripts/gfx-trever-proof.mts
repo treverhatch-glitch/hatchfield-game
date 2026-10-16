@@ -17,6 +17,9 @@ const browser = await chromium.launch({
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
 })
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } })
+await page.addInitScript(() => {
+  ;(globalThis as unknown as { __name?: (fn: unknown) => unknown }).__name = (fn) => fn
+})
 const errors: string[] = []
 page.on('pageerror', (err) => errors.push(err.message))
 
@@ -46,18 +49,14 @@ async function boot() {
 }
 
 function frames(n: number) {
-  return page.evaluate(
-    (count) =>
-      new Promise<void>((resolve) => {
-        let left = count
-        const step = () => {
-          if (left-- <= 0) resolve()
-          else requestAnimationFrame(step)
-        }
-        requestAnimationFrame(step)
-      }),
-    n,
-  )
+  return page.evaluate(`new Promise((resolve) => {
+    let left = ${n}
+    const step = () => {
+      if (left-- <= 0) resolve()
+      else requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  })`)
 }
 
 async function settle() {
@@ -163,9 +162,17 @@ async function probe() {
     const lod: Record<string, boolean> = {}
     const bridgeOffset: Record<string, number> = {}
     w.scene.traverse((obj) => {
-      const mesh = obj as { name?: string; visible?: boolean; material?: { map?: { image?: { width?: number; naturalWidth?: number }; anisotropy?: number }; polygonOffset?: boolean; polygonOffsetFactor?: number } | Array<{ map?: { image?: { width?: number; naturalWidth?: number }; anisotropy?: number }> }> }
+      const mesh = obj as {
+        name?: string
+        visible?: boolean
+        material?: {
+          map?: { image?: { width?: number; naturalWidth?: number }; anisotropy?: number }
+          polygonOffsetFactor?: number
+        }
+      }
       if (mesh.name && mesh.name.startsWith('lod-')) lod[mesh.name] = Boolean(mesh.visible)
-      const mats = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : []
+      const raw = mesh.material as { map?: { image?: { width?: number; naturalWidth?: number }; anisotropy?: number }; polygonOffsetFactor?: number } | undefined
+      const mats = raw ? [raw] : []
       for (const mat of mats) {
         const img = mat.map?.image
         const width = img?.naturalWidth || img?.width || 0
@@ -174,9 +181,7 @@ async function probe() {
           maxTex = Math.max(maxTex, width)
           aniso = Math.max(aniso, mat.map?.anisotropy || 0)
         } else if (mat.map) flat++
-        if (mesh.name && mesh.name.startsWith('bridge-') && 'polygonOffsetFactor' in mat) {
-          bridgeOffset[mesh.name] = (mat as { polygonOffsetFactor?: number }).polygonOffsetFactor ?? 0
-        }
+        if (mesh.name && mesh.name.startsWith('bridge-')) bridgeOffset[mesh.name] = mat.polygonOffsetFactor ?? 0
       }
     })
     const disc = { x: 0, z: 0, found: false }
@@ -280,11 +285,13 @@ async function panMetres() {
   await page.locator('canvas').click()
   const a = await pivotSpan()
   await page.keyboard.down('ArrowRight')
-  await page.waitForTimeout(3000)
+  const t0 = Date.now()
+  await frames(90)
+  const elapsed = (Date.now() - t0) / 1000
   await page.keyboard.up('ArrowRight')
   const b = await pivotSpan()
-  const wu = Math.hypot(b.x - a.x, b.z - a.z) / 3
-  return { wu, metresPerSec: wu / 0.45, dist: b.dist, from: a, to: b }
+  const wu = Math.hypot(b.x - a.x, b.z - a.z) / Math.max(0.05, elapsed)
+  return { wu, metresPerSec: wu / 0.45, elapsed, dist: b.dist, from: a, to: b }
 }
 
 const report: Record<string, unknown> = { tag, hash, errors }
