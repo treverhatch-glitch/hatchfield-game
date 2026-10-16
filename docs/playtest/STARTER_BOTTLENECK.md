@@ -10,15 +10,15 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | --- | --- |
 | Seed | 1 |
 | First red line | in-game day 6 |
-| Clock | 1066 sim seconds (the opening ends at 600) |
+| Clock | 916 sim seconds (the opening ends at 600) |
 | Facility | check-in desk |
 | Queue | 3 waiting |
-| Estimated wait | 446 nav seconds |
+| Estimated wait | 368 nav seconds |
 | Signed | `air_regional_1`, `zoomjet` |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
-Desks at 12 a minute let Zoomjet sign beside the regional. The first red line is day 6 at clock 1066. Both starter exits are in use, so the first flagged queue is 3 people and the wait is 446 nav seconds. The bowser loading beside the farm, one cell off the tank, is what moved the earlier day-6 mark (clock 932); the second carrier brings it forward from the day-7 mark that bowser change produced on its own. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
+Desks at 12 a minute let Zoomjet sign beside the regional. The first red line is day 6 at clock 916. Both starter exits are in use, so the first flagged queue is 3 people and the wait is 368 nav seconds. The guard is off the passenger road and the belts reach the stands only through the sort, which is what moved this mark off clock 1066. The bowser loading beside the farm, one cell off the tank, is what moved the earlier day-6 mark (clock 932); the second carrier brings it forward from the day-7 mark that bowser change produced on its own. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
 
 ## What changed
 
