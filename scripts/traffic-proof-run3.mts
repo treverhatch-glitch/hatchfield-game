@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
 
 const sha = (process.env.PROOF_SHA ?? execSync('git rev-parse --short=12 HEAD', { encoding: 'utf8' })).trim()
 const only = new Set((process.env.PROOF_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean))
@@ -386,7 +386,7 @@ if (want('busy-no-overlap')) {
   await record(
     'busy-no-overlap',
     12 * 8,
-    (list) => {
+    () => {
       return { c: 17, r: 9 }
     },
     36,
