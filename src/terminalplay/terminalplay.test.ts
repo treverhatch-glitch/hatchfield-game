@@ -260,12 +260,19 @@ describe('prefab pace', () => {
       'depart',
     )
     let early = 0
+    let reachedGate = 0
     for (let i = 0; i < 160; i++) {
       game.tick(0.5)
       early = Math.max(early, game.securityQueueCount())
+      reachedGate = Math.max(
+        reachedGate,
+        game.hallGuests.filter((g) => g.flightId === 'early-bank' && (g.node === 'gate' || g.clearedSec === true)).length,
+      )
     }
-    // One flight drips through the layby. Security peaks at one, under the red line of 8.
-    expect(early).toBe(1)
+    // One flight drips through the four-stall layby. Security's queue stays
+    // empty, under the red line of 8, and passengers still reach the gate.
+    expect(early).toBe(0)
+    expect(reachedGate).toBe(7)
 
     game.clock = 800
     for (let n = 0; n < 3; n++) {
@@ -286,10 +293,9 @@ describe('prefab pace', () => {
     expect(late).toHaveLength(39)
     expect(late.every((g) => g.arriveMode === 'dropoff' && g.curbHold === 'ride')).toBe(true)
 
-    // Three banks due together take taxis. The layby meters them, so security
-    // stays at one. All three stalls (rows 8, 9 and 10) take a taxi. Two can
-    // sit at once: a drop-off stop is 1.2s and the next taxi is still pulling in.
-    // The rest queue on the approach. Curb load is those cars, not the rate model.
+    // Three banks due together take taxis. The four-stall layby (rows 7–10)
+    // meters them, so security stays at one. Two taxis sit in a stall at once.
+    // The rest wait on the approach. Curb load follows the cars in the stalls.
     let security = 0
     let maxStop = 0
     const rows = new Set<number>()
@@ -300,7 +306,7 @@ describe('prefab pace', () => {
       security = Math.max(security, game.securityQueueCount())
       const view = game.landsideView()
       const trips = view.vehicles.filter((v) => v.orderId)
-      const stopped = trips.filter((v) => v.state === 'stop' && v.c < 16.85 && v.r > 7 && v.r < 11)
+      const stopped = trips.filter((v) => v.state === 'stop' && v.r >= 6.5 && v.r < 10.5)
       maxStop = Math.max(maxStop, stopped.length)
       maxQueue = Math.max(maxQueue, trips.filter((v) => v.state === 'queue').length)
       maxBusy = Math.max(maxBusy, view.curbBusy)
@@ -308,9 +314,9 @@ describe('prefab pace', () => {
     }
     expect(security).toBe(1)
     expect(maxStop).toBe(2)
-    expect([...rows].sort((a, b) => a - b)).toEqual([8, 9, 10])
-    expect(maxQueue).toBe(18)
-    expect(maxBusy).toBeGreaterThan(2)
-    expect(maxBusy).toBeLessThan(2.5)
+    expect([...rows].sort((a, b) => a - b)).toEqual([7, 8, 9, 10])
+    expect(maxQueue).toBe(16)
+    expect(maxBusy).toBeGreaterThan(2.5)
+    expect(maxBusy).toBeLessThan(3.2)
   })
 })
