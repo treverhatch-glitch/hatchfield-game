@@ -166,6 +166,16 @@ export function BuildingPanelView({
   )
 }
 
+/**
+ * A placed fitting is inspected on the right. The left dock does not repeat
+ * its queue, so the hall has one inspector at a time.
+ */
+export function dockYieldsToFitting(cardId: string | null | undefined, fittingIds: Iterable<string>): boolean {
+  if (!cardId) return false
+  for (const id of fittingIds) if (id === cardId) return true
+  return false
+}
+
 export function BuildingPanel({
   card,
   onClose,

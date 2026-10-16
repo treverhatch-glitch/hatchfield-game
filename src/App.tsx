@@ -205,6 +205,8 @@ function hudSnapshot(): string {
         game.securityQueueCount(),
         game.lostPaxCount(),
         game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
+        // Selection only. Queue, served, and wear for a fitting stay on the
+        // card, which reads hallNav.metrics() from terminalVersion at 4 Hz.
         game.selectedFacility ?? '',
         game.showFlows ? 1 : 0,
         game.advice.map((a) => a.id).join(','),

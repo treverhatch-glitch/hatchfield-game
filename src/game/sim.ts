@@ -245,6 +245,7 @@ import {
   fittingSize,
   fittingSpec,
   fittingRefund,
+  fittingWorkStatus,
   placeFitting,
   removeFitting,
   type EditResult,
@@ -253,6 +254,8 @@ import {
   type RoomKind,
 } from '../terminalbuild/index.ts'
 import { BUILD_TUNING } from '../terminalbuild/config.ts'
+import { repairCost } from '../maintenance/wear.ts'
+import { bumpTerminalVersion } from './terminalVersion.ts'
 import {
   hintKind,
   mergeHints,
@@ -1754,6 +1757,8 @@ export class Game {
   selectedGuest: string | null = null
   /** Clicked desk, lane, shop, or queue marker inside the terminal. */
   selectedFacility: string | null = null
+  /** Set by the inspector Move action until the next floor click relocates that fitting. */
+  fittingMoveId: string | null = null
   /** Cell key of the building open in the left info panel. Not saved. */
   selectedBuilding: string | null = null
   /** Bumps when the hall layout changes so the HUD repaints. */
@@ -9013,6 +9018,14 @@ export class Game {
   facilityInfo(id: string): { title: string; lines: string[] } | null {
     const fit = this.activeHall()
     if (!fit) return null
+    const piece = fit.layout?.version === 2 ? (fit.layout.fittings ?? []).find((row) => row.id === id) : undefined
+    if (piece) {
+      const spec = fittingSpec(piece.kind)
+      return {
+        title: spec.label,
+        lines: [spec.blurb, spec.stage, `At ${Math.round(piece.x)}, ${Math.round(piece.y)}`],
+      }
+    }
     const cols = fit.zones?.[0]?.length ?? 8
     const rows = fit.zones?.length ?? 5
     const catalog = facilitiesFromItems((fit.items ?? []) as PlacedItem[], cols, rows)
@@ -10998,6 +11011,7 @@ export class Game {
     this.applyHallMood()
     // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
     this.queueReputation(this.hallNav.takeReputation())
+    bumpTerminalVersion()
   }
 
   /** Thoughts a walker has about the hall (lost, nowhere to sit, crowded, empty shelf) move the fare's happiness too. */
@@ -15997,20 +16011,46 @@ export class Game {
   placeLayoutFitting(kind: FittingKind, x: number, y: number, rot: 0 | 1 | 2 | 3 = 0): boolean {
     const fit = this.activeHall()
     const layout = fit?.layout?.version === 2 ? fit.layout : null
-    const spec = fittingSpec(kind)
     if (!fit || !layout) return false
-    const placed = placeFitting(layout, kind, { x, y, rot })
+    let source = layout
+    let carried: { id: string; kind: FittingKind; wear: number; staffed?: boolean; gateId?: string } | undefined
+    if (this.fittingMoveId) {
+      const gone = removeFitting(layout, this.fittingMoveId)
+      if ('error' in gone) this.fittingMoveId = null
+      else {
+        source = gone.layout
+        carried = gone.fitting
+        kind = gone.fitting.kind
+      }
+    }
+    const spec = fittingSpec(kind)
+    const placed = placeFitting(source, kind, { x, y, rot })
     if ('error' in placed) {
       this.pushNews(`${spec.label}: ${placed.error}`, 'bad')
       this.emit()
       return false
     }
-    if (!this.spend(spec.cost, spec.label)) return false
-    fit.layout = placed.layout
+    if (!carried && !this.spend(spec.cost, spec.label)) return false
+    let next = placed.layout
+    if (carried) {
+      const id = placed.fitting.id
+      const wear = carried.wear
+      const staffed = carried.staffed
+      const gateId = carried.gateId
+      next = {
+        ...next,
+        fittings: (next.fittings ?? []).map((row) => (row.id === id ? { ...row, wear, staffed, gateId } : row)),
+        equipment: next.equipment.map((row) => (row.id === id ? { ...row, wear } : row)),
+      }
+      this.fittingMoveId = null
+      this.selectedFacility = id
+    }
+    fit.layout = next
     this.hallRev++
-    this.pushNews(`${spec.label} placed — $${spec.upkeep}/day upkeep.`, 'ok')
+    this.pushNews(carried ? `${spec.label} moved.` : `${spec.label} placed — $${spec.upkeep}/day upkeep.`, 'ok')
     this.refreshAdvice()
     this.emit()
+    bumpTerminalVersion()
     return true
   }
 
@@ -16024,12 +16064,86 @@ export class Game {
     const spec = fittingSpec(gone.fitting.kind)
     const refund = fittingRefund(gone.fitting.kind)
     fit.layout = gone.layout
+    if (this.selectedFacility === id) this.selectedFacility = null
+    if (this.fittingMoveId === id) this.fittingMoveId = null
     this.credit(refund, 'refunds', spec.label)
     this.hallRev++
     this.pushNews(`${spec.label} sold — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
     this.refreshAdvice()
     this.emit()
+    bumpTerminalVersion()
     return true
+  }
+
+  /** Kind of the fitting waiting to be moved, if the inspector armed one. */
+  fittingMoveKind(): FittingKind | null {
+    const id = this.fittingMoveId
+    if (!id) return null
+    return this.activeHall()?.layout?.fittings?.find((row) => row.id === id)?.kind ?? null
+  }
+
+  /** Arm a floor click that relocates this fitting. The piece is already paid for. */
+  beginFittingMove(id: string): boolean {
+    const piece = this.activeHall()?.layout?.fittings?.find((row) => row.id === id)
+    if (!piece) return false
+    this.fittingMoveId = id
+    this.pushNews(`Click the floor to move the ${fittingSpec(piece.kind).label}.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  /**
+   * Staff or unstaff the layout piece. The walk still treats its equipment as
+   * staffed; the card status reads this flag.
+   */
+  setFittingStaffed(id: string, staffed: boolean): boolean {
+    const piece = this.activeHall()?.layout?.fittings?.find((row) => row.id === id)
+    if (!piece) return false
+    piece.staffed = staffed
+    this.hallRev++
+    this.pushNews(`${fittingSpec(piece.kind).label} ${staffed ? 'staffed' : 'unstaffed'}.`, 'ok')
+    this.emit()
+    bumpTerminalVersion()
+    return true
+  }
+
+  /** Pay wear down to zero. A fresh piece has nothing to repair. */
+  repairLayoutFitting(id: string): boolean {
+    const piece = this.activeHall()?.layout?.fittings?.find((row) => row.id === id)
+    if (!piece) return false
+    const spec = fittingSpec(piece.kind)
+    const bill = repairCost(spec.cost, piece.wear / 100)
+    if (bill > 0 && !this.spend(bill, `${spec.label} repair`)) return false
+    piece.wear = 0
+    const equip = this.activeHall()?.layout?.equipment.find((row) => row.id === id)
+    if (equip) equip.wear = 0
+    this.hallRev++
+    this.pushNews(bill > 0 ? `${spec.label} repaired — $${bill.toLocaleString('en-US')}.` : `${spec.label} does not need repair.`, 'ok')
+    this.emit()
+    bumpTerminalVersion()
+    return true
+  }
+
+  /**
+   * International arrival flights due inside the next game hour, plus any
+   * international arrival already walking the hall.
+   */
+  intlArrivalsDue(windowSec = 60 / GAME_MINUTES_PER_SIM_SECOND): number {
+    const horizon = this.clock + windowSec
+    const ids = new Set<string>()
+    for (const slot of this.schedule) {
+      if (slot.status === 'done' || slot.status === 'cancelled') continue
+      const eta = slot.eta + (slot.delaySec || 0)
+      if (eta < this.clock || eta > horizon) continue
+      const frame = slot.airframeId ? AIRFRAMES[slot.airframeId] : undefined
+      if (!flightIsIntl(frame ? { kind: frame.kind } : null)) continue
+      ids.add(slot.flightId ?? slot.id)
+    }
+    for (const guest of this.hallGuests) {
+      if (!guest.intl || guest.job !== 'arrive' || guest.dead) continue
+      ids.add(guest.flightId || guest.id)
+    }
+    return ids.size
   }
 
   /** Bulldoze a placed hall item for a partial refund. Prefab bundle pieces stay. */
@@ -21342,6 +21456,8 @@ export class Game {
   }
 
   private facilityReading(id: string): Reading | null {
+    const one = this.queueReadingForFitting(id)
+    if (one) return one
     if (id === 'checkin' || id === 'security') return this.queueReading(id, id === 'checkin' ? 'Check-in' : 'Security')
     if (id.startsWith('item:')) {
       const fit = this.activeHall()
@@ -21388,6 +21504,32 @@ export class Game {
       upkeepPerDay: 0,
       demand: 0,
       bays: [{ inUse: false }],
+    }
+  }
+
+  /** One fitting's queue, served count, and throughput. The aggregate nodes stay in queueReading. */
+  private queueReadingForFitting(id: string): Reading | null {
+    const fit = this.activeHall()
+    const piece = fit?.layout?.version === 2 ? (fit.layout.fittings ?? []).find((row) => row.id === id) : undefined
+    if (!piece) return null
+    const spec = fittingSpec(piece.kind)
+    const metric = this.hallNav.live ? this.hallNav.metrics().find((row) => row.id === id) : undefined
+    const serviceSec = metric?.serviceSec || spec.serviceSec
+    const throughput = metric?.serving && serviceSec > 0 ? 60 / serviceSec : 0
+    const connected = !this.hallNav.live || spec.servers <= 0 || Boolean(metric)
+    return {
+      id,
+      name: spec.label,
+      upkeepPerDay: spec.upkeep,
+      staffNeeded: spec.staff,
+      staffAssigned: piece.staffed === false ? 0 : spec.staff,
+      demand: metric && (metric.queueLength > 0 || metric.serving) ? 1 : 0,
+      throughputPerMin: throughput,
+      unit: 'pax/min',
+      queueLength: metric?.queueLength ?? 0,
+      queueKind: 'passengers',
+      bays: [{ label: `Served ${metric?.served ?? 0}`, inUse: Boolean(metric?.serving) }],
+      note: fittingWorkStatus(piece, { connected }),
     }
   }
 
@@ -28105,6 +28247,7 @@ export class Game {
     this.tickMarket(step)
     this.tickHall(step)
     this.tickHallNav(step)
+    bumpTerminalVersion()
     this.tickLuggage(step)
     this.tickWeather(step)
     this.noteMapClimate()

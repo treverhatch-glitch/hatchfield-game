@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
-import { BuildingPanel } from '../BuildingPanel.tsx'
+import { BuildingPanel, dockYieldsToFitting } from '../BuildingPanel.tsx'
 import type { Game } from '../../game/sim.ts'
 import { facilityLiveKey, inspectorCard } from './facilityCard.ts'
 import { subscribeLiveInspector } from './live.ts'
@@ -15,6 +15,10 @@ export function LiveBuildingDock({ game }: { game: Game }) {
     }
   }, [game])
   useSyncExternalStore(subscribe, () => facilityLiveKey(game), () => '')
+  const fittingIds = game.activeHall()?.layout?.fittings?.map((row) => row.id) ?? []
+  if (dockYieldsToFitting(game.selectedFacility, fittingIds)) {
+    return <p className="left-dock-note">This piece is open in the inspector.</p>
+  }
   const card = inspectorCard(game)
   if (!card) return <p className="left-dock-note">Select a building on the field.</p>
   return (

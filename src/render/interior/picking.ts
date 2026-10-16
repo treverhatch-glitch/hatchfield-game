@@ -18,7 +18,16 @@ export function pickedFacilityId(hits: readonly { id: string; fromCenter: number
   return metric?.id ?? item?.id ?? null
 }
 
-/** Walk parents until a mesh names the fitting or service point it belongs to. */
+/** True when this mesh is the click target for one placed fitting. */
+export function meshSelectsFitting(obj: { userData: { facilityId?: unknown } }, fittingId: string): boolean {
+  return obj.userData.facilityId === fittingId
+}
+
+/**
+ * Walk parents until a mesh names the fitting or service point it belongs to.
+ * Layout meshes set `userData.facilityId` to the fitting id, so a lane click
+ * selects that lane and not a neighbouring box.
+ */
 export function facilityIdOf(obj: THREE.Object3D | null): string | null {
   let cur: THREE.Object3D | null = obj
   while (cur) {

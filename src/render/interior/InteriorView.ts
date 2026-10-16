@@ -549,6 +549,14 @@ export class HallWorld {
       return
     }
     if (e.button !== 0 || Math.hypot(dx, dy) > 6 || !this.game) return
+    if (this.game.fittingMoveId) {
+      const tile = this.fittingTile(e)
+      const kind = this.game.fittingMoveKind()
+      if (tile && kind) {
+        if (this.game.placeLayoutFitting(kind, tile.x, tile.y, 0)) this.onPlaced?.()
+        return
+      }
+    }
     if (this.build) {
       this.buildClick(e)
       return
@@ -1607,6 +1615,17 @@ export class HallWorld {
     const kind = this.build?.kind
     if (kind === 'foundation' || kind === 'wall' || kind === 'door' || kind === 'floor' || kind === 'wallpaper' || kind === 'room') return kind
     return null
+  }
+
+  /** Metre tile under the cursor on a version-2 layout. Move uses this. */
+  private fittingTile(e: PointerEvent): { x: number; y: number } | null {
+    this.aim(e)
+    const hit = new THREE.Vector3()
+    if (!this.ray.ray.intersectPlane(this.floorPlane, hit)) return null
+    const doc = this.game?.activeHall()?.layout
+    if (!doc || doc.version !== 2) return null
+    const tileM = layoutTileM(doc)
+    return tileAtPoint(hit.x, hit.z, tileM, doc.w * tileM, doc.h * tileM, doc.w, doc.h)
   }
 
   /** Build tile under the cursor, inside the hall box the walk uses. */

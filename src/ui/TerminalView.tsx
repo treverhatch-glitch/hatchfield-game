@@ -13,6 +13,7 @@ import { GUEST_GLANCE } from '../paxnav/guestConfig.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/interior/InteriorView'
 import { fittingSpec } from '../terminalbuild/fittings.ts'
 import { shownWorld } from '../render/viewCue'
+import { FittingCard } from './inspector/FittingCard.tsx'
 import { WalkerCard, WalkerOnlyCard } from './WalkerCard'
 import {
   GRID_C,
@@ -549,12 +550,14 @@ export function TerminalView({ game }: { game: Game }) {
             Follow
           </button>
         </aside>
-      ) : (
+      ) : game.selectedGuest ? (
         <WalkerOnlyCard
           game={game}
           id={game.selectedGuest}
           onFollow={(id) => worldRef.current?.setFollow(id)}
         />
+      ) : (
+        <FittingCard game={game} />
       )}
     </div>
   )
