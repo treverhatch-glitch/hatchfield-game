@@ -155,6 +155,7 @@ export function astar(
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
   pass?: (c: number, r: number) => boolean,
   gate: GateUse = 'airside',
+  stepCost?: (c: number, r: number) => number,
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]
@@ -206,7 +207,11 @@ export function astar(
       if (!cellOpen(tiles, nc, nr, kind, pass)) continue
       if (gateBlocks(tiles, nc, nr, kind, gate, start, goal)) continue
       const n = nr * SIZE + nc
-      const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
+      const step = stepCost
+        ? stepCost(nc, nr)
+        : kind === 'person'
+          ? personStepCost(tiles[nr][nc])
+          : 1
       const ng = searchG[cur] + step
       const seen = searchStamp[n] === gen
       if (seen && ng >= searchG[n]) continue
@@ -245,6 +250,24 @@ export function nearestPath(
     if (p && (!best || p.length < best.length)) best = p
   }
   return best
+}
+
+/**
+ * Bag-tug drive from the bag room to a stand, or back.
+ * Road and tug pavement are the normal road. A taxi cell costs more than a
+ * short pavement detour, so the train does not ride the jet spine or cut
+ * through the throat between the starter stands. Another stand is not a shortcut.
+ */
+export function tugTrainPath(tiles: Tile[][], home: Vec, stand: Vec): Vec[] | null {
+  const cost = (c: number, r: number) => {
+    if ((c === home.c && r === home.r) || (c === stand.c && r === stand.r)) return 1
+    const tile = tiles[r][c]
+    if (tile === 'road' || tile === 'belt') return 1
+    if (tile === 'taxi') return 8
+    if (tile === 'stand') return 24
+    return 4
+  }
+  return astar(tiles, home, stand, 'truck', undefined, 'airside', cost)
 }
 
 /**

@@ -3,7 +3,7 @@ import { deliveryPath } from '../fuel/path.ts'
 import { buildNetwork } from '../landside/network.ts'
 import { starterField } from '../landside/fixtures.test-util.ts'
 import { bagSortYaw } from '../render/world/bagFacing.ts'
-import { bowserPath, nearestPath, retireApronBelts, runwayStrips, standBeltLinked, standBeltViaSort, tilesOf, walkableFor } from './path'
+import { bowserPath, nearestPath, retireApronBelts, runwayStrips, standBeltLinked, standBeltViaSort, tilesOf, tugTrainPath, walkableFor } from './path'
 import { clearanceIntrusions, runwayBoxes } from './runwayClearance'
 import { Game } from './sim'
 import { STARTER_KITS, stampStarterKit } from './starterLayout'
@@ -111,8 +111,10 @@ describe('starter kits', () => {
       expect(truck?.some(onGuard), `${focus} city → stand`).toBe(true)
       const airside = nearestPath(first.tiles, { c: 7, r: 5 }, [stand], 'truck')
       expect(airside?.some(onGuard), `${focus} farm → stand`).toBe(false)
-      const bags = nearestPath(first.tiles, { c: 14, r: 9 }, [stand], 'truck')
+      const bags = tugTrainPath(first.tiles, { c: 14, r: 9 }, stand)
+      expect(bags, `${focus} tug train to ${stand.c},${stand.r}`).toBeTruthy()
       expect(bags?.some(onGuard), `${focus} sort → stand`).toBe(false)
+      expect(bags!.some((cell) => first.tiles[cell.r][cell.c] === 'taxi'), `${focus} tug train taxi ${stand.c},${stand.r}`).toBe(false)
     }
     const bowser = bowserPath(first.tiles, { c: 7, r: 5 }, stands)
     expect(bowser).toBeTruthy()
