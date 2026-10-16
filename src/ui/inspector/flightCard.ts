@@ -295,9 +295,19 @@ interface FlightClickGame {
  * After an apron click has updated `selectedFlight`.
  * A second click on that same flight closes the card.
  */
-export function syncFlightCardClick(game: FlightClickGame, v: Vec, beforeSelected: string | null) {
+export function syncFlightCardClick(
+  game: FlightClickGame,
+  v: Vec,
+  beforeSelected: string | null,
+  meshFlightId: string | null = null,
+) {
   if (game.view !== 'apron' || game.tool !== 'pan') return
   if (game.tile(v) === 'terminal') return
+  if (meshFlightId && game.selectedFlight === meshFlightId) {
+    if (open && beforeSelected === meshFlightId) closeFlightCard()
+    else openFlightCard(meshFlightId)
+    return
+  }
   const hit = game.nearestFlight(v)
   if (!hit || game.selectedFlight !== hit.id) return
   if (open && beforeSelected === hit.id) closeFlightCard()

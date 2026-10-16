@@ -21233,7 +21233,7 @@ export class Game {
     this.emit()
   }
 
-  clickTile(v: Vec) {
+  clickTile(v: Vec, meshFlightId: string | null = null) {
     if (!inBounds(v.c, v.r)) return
     if (this.hydrantArm) {
       this.stampHydrantPit(v)
@@ -21241,12 +21241,16 @@ export class Game {
     }
     this.selectedTile = v
     const tile = this.tile(v)
-    if (this.tool === 'pan' && this.assignBulk && tile === 'stand') {
+    const meshFlight =
+      meshFlightId && this.flights.some((f) => f.id === meshFlightId && f.phase !== 'gone') ? meshFlightId : null
+    const occupied = tile === 'stand' && this.aircraftOnStand(v)
+    if (this.tool === 'pan' && this.assignBulk && tile === 'stand' && !meshFlight) {
       this.toggleAssignSelection('gate', gateLeaseId(v.c, v.r))
       return
     }
+    // The aircraft mesh selects the flight. The dedicate panel is the empty stand.
     if (this.tool === 'pan' && !this.assignBulk && tile === 'stand') {
-      this.openAssign('gate', gateLeaseId(v.c, v.r))
+      if (!meshFlight && !occupied) this.openAssign('gate', gateLeaseId(v.c, v.r))
     } else if (this.tool === 'pan' && !this.assignBulk && (tile === 'hangar' || tile === 'mro')) {
       this.openAssign('hangar', hangarLeaseId(v.c, v.r))
     } else if (this.tool === 'pan' && !this.assignBulk && tile !== 'terminal' && tile !== 'fuel' && tile !== 'bags') {
@@ -21256,7 +21260,8 @@ export class Game {
         return
       }
     }
-    this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
+    if ((meshFlight || occupied) && !this.assignBulk) this.assignPick = null
+    this.selectedFlight = meshFlight ?? this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
       this.selectedBuilding = tile && isBuildingTile(tile) ? `${v.c},${v.r}` : null
@@ -21285,8 +21290,11 @@ export class Game {
         this.enterHallAt(v)
         return
       }
-      const f = this.nearestFlight(v)
-      if (f) this.selectedFlight = f.id
+      if (meshFlight) this.selectedFlight = meshFlight
+      else {
+        const f = this.nearestFlight(v)
+        if (f) this.selectedFlight = f.id
+      }
       this.emit()
       return
     }
@@ -21611,6 +21619,17 @@ export class Game {
     f.mxPending = false
     this.pushNews(`${f.flightNo} taxiing to hangar for line MX.`, 'ok')
     return true
+  }
+
+  /** A flight whose body is on this stand cell, or that is turning on it. */
+  private aircraftOnStand(v: Vec): boolean {
+    const onStand = new Set(['deboard', 'servicing', 'board', 'parked', 'pushback'])
+    for (const f of this.flights) {
+      if (f.phase === 'gone') continue
+      if (Math.round(f.x) === v.c && Math.round(f.y) === v.r) return true
+      if (f.stand && f.stand.c === v.c && f.stand.r === v.r && onStand.has(f.phase)) return true
+    }
+    return false
   }
 
   nearestFlight(v: Vec, maxDist = 1.8): Flight | undefined {

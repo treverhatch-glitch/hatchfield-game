@@ -169,22 +169,31 @@ export class ParkedFleet {
     let midCount = 0
     let lowCount = 0
     let windowCount = 0
+    const midIds: string[] = []
+    const lowIds: string[] = []
+    const windowIds: string[] = []
     const showWindows = getAircraftQuality() === 'high'
     for (const plane of list) {
       _pos.setFromMatrixPosition(plane.matrix)
       const weights = lodWeights(_cam.distanceTo(_pos) / zoom)
       if (weights.low >= 0.98) {
         batch.low.setMatrixAt(lowCount, plane.matrix)
+        lowIds.push(plane.id)
         lowCount += 1
       } else {
         batch.mid.setMatrixAt(midCount, plane.matrix)
+        midIds.push(plane.id)
         midCount += 1
         if (batch.windows && showWindows && weights.high > 0.5) {
           batch.windows.setMatrixAt(windowCount, plane.matrix)
+          windowIds.push(plane.id)
           windowCount += 1
         }
       }
     }
+    batch.mid.userData.flightIds = midIds
+    batch.low.userData.flightIds = lowIds
+    if (batch.windows) batch.windows.userData.flightIds = windowIds
     commit(batch.mid, midCount)
     commit(batch.low, lowCount)
     if (batch.windows) commit(batch.windows, windowCount)

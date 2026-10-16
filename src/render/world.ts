@@ -254,6 +254,21 @@ function vehicleMeters(kind: string): [number, number, number] {
   return [4.5, 1.9, 1.8]
 }
 
+function flightIdFromHit(hit: THREE.Intersection): string | null {
+  const instanced = hit.object
+  if (instanced instanceof THREE.InstancedMesh && hit.instanceId != null) {
+    const ids = instanced.userData.flightIds as string[] | undefined
+    const id = ids?.[hit.instanceId]
+    if (id) return id
+  }
+  let obj: THREE.Object3D | null = hit.object
+  while (obj) {
+    if (typeof obj.userData.flightId === 'string') return obj.userData.flightId
+    obj = obj.parent
+  }
+  return null
+}
+
 /** Smooth the scissor lift across the phase. The sim still flips the latch at the boundary. */
 function visualLift(phase: string, u: number, raw: number): number {
   if (phase === 'lift_raise') return Math.min(1, Math.max(0, u))
@@ -364,7 +379,7 @@ export class World {
   private zoomScratch = new THREE.Vector3()
   sun: THREE.DirectionalLight
   onHover: (v: Vec | null) => void = () => {}
-  onClick: (v: Vec, shift: boolean) => void = () => {}
+  onClick: (v: Vec, shift: boolean, flightId?: string | null) => void = () => {}
   /** Fired when a pan or orbit drag actually moves, so follow cam can let go. */
   onUserDrag: () => void = () => {}
   /** Wheel while follow cam is held. The orbit rig ignores it until follow ends. */
@@ -581,7 +596,7 @@ export class World {
           setFidsOpen(true)
           return
         }
-        if (v) this.onClick(v, e.shiftKey)
+        if (v) this.onClick(v, e.shiftKey, this.pickClickedFlight())
       }
       this.lastPaint = null
       this.paintedThisGesture = false
@@ -754,6 +769,23 @@ export class World {
       c: clamp(c, 0, SIZE - 1),
       r: clamp(r, 0, SIZE - 1),
     }
+  }
+
+  /**
+   * Flight whose aircraft mesh is in front of the ground under the cursor.
+   * `pick` has already aimed `this.ray`.
+   */
+  pickClickedFlight(): string | null {
+    const groundPoint = this.ray.ray.intersectPlane(this.ground, this.hit)
+    const groundDist = groundPoint ? this.ray.ray.origin.distanceTo(groundPoint) : Infinity
+    const roots: THREE.Object3D[] = [...this.jets.values(), this.parkedFleet.root]
+    const hits = this.ray.intersectObjects(roots, true)
+    for (const hit of hits) {
+      if (hit.distance >= groundDist - 1e-4) break
+      const id = flightIdFromHit(hit)
+      if (id) return id
+    }
+    return null
   }
 
   private goalSeq = 0
@@ -1650,6 +1682,7 @@ export class World {
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
+      mesh.userData.flightId = f.id
       const pose = this.poseAircraft(game, f, paint, step)
       mesh.visible = pose.visible
       if (pose.visible) {
@@ -1803,6 +1836,7 @@ export class World {
         this.jets.set(id, mesh)
         this.entGroup.add(mesh)
       }
+      mesh.userData.flightId = id
       mesh.visible = true
       mesh.position.copy(toWorld(posed.x, posed.y, 0.04 + posed.alt))
       orientAircraft(mesh, posed.heading, posed.pitch)

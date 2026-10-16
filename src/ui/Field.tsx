@@ -90,7 +90,7 @@ export function Field({ game }: { game: Game }) {
       game.setHover(v)
       setInspect(game.inspectEnabled() ? game.hoverInspect : null)
     }
-    world.onClick = (v) => {
+    world.onClick = (v, _shift, flightId = null) => {
       if (game.view !== 'apron') return
       if (game.tool === 'pan') {
         const hit = pickTrackable({ c: v.c, r: v.r }, tracksFrom(snapshotFrom(game)))
@@ -100,8 +100,8 @@ export function Field({ game }: { game: Game }) {
         }
       }
       const beforeFlight = game.selectedFlight
-      game.clickTile(v)
-      syncFlightCardClick(game, v, beforeFlight)
+      game.clickTile(v, flightId)
+      syncFlightCardClick(game, v, beforeFlight, flightId)
       if (game.tool === 'pan') {
         const active = mapViewSnapshot().active
         const tile = game.tile(v)
