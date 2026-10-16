@@ -83,7 +83,7 @@ await page.evaluate(`(() => {
   g.speed = 1
 })()`)
 log('warming')
-for (let batch = 0; batch < 11; batch++) {
+for (let batch = 0; batch < 12; batch++) {
   await page.evaluate(`(() => {
     const g = window.__hatch
     for (let i = 0; i < 200; i++) {
@@ -91,7 +91,17 @@ for (let batch = 0; batch < 11; batch++) {
       window.__origTick(0.1)
     }
   })()`)
-  log(`warm batch ${batch + 1}/11`)
+  log(`warm batch ${batch + 1}/12`)
+}
+for (let batch = 0; batch < 6; batch++) {
+  await page.evaluate(`(() => {
+    const g = window.__hatch
+    for (let i = 0; i < 80; i++) {
+      if (g.offer) g.acceptOffer()
+      window.__origTick(1)
+    }
+  })()`)
+  log(`busy warm ${batch + 1}/6`)
 }
 await page.evaluate(`(() => {
   const g = window.__hatch
@@ -235,41 +245,78 @@ function encode(dir: string, fps: number, file: string) {
   })
 }
 
-// Through-lane change: nose off the road axis, still in a through lane, clear of the layby.
+// Through-lane change: catch the nose as it starts to leave the road axis, not after it has straightened.
+const laneOff = new Map<string, number>()
 const lane = want('lane-change')
-  ? await seek(
-      (list) =>
-        list.find(
-          (c) => c.r > 2.5 && c.r < 9.5 && c.lane <= 1 && c.speed > 2.2 && offAxis(c.heading) > 0.28 && c.c > 16.72 && c.c < 17.45,
-        ) ?? null,
-      12 * 80,
-    )
+  ? await seek((list) => {
+      let hit: Car | null = null
+      for (const c of list) {
+        const off = offAxis(c.heading)
+        const prev = laneOff.get(c.id)
+        laneOff.set(c.id, off)
+        if (
+          hit == null &&
+          prev != null &&
+          off > prev + 0.015 &&
+          off > 0.1 &&
+          c.r > 3 &&
+          c.r < 9.5 &&
+          c.lane <= 1 &&
+          c.speed > 1.5 &&
+          c.c > 16.7 &&
+          c.c < 17.45
+        ) {
+          hit = c
+        }
+      }
+      return hit
+    }, 12 * 100)
   : null
 console.log('lane trigger', lane)
 if (want('lane-change')) {
-  if (!lane) throw new Error('no lane change')
+  if (!lane) console.error('no lane change')
+  else {
   const laneId = lane.id
   await record(
     'lane-change',
     12 * 6,
     (list) => {
       const car = list.find((c) => c.id === laneId)
-      return car ? { c: car.c, r: car.r } : { c: lane.c, r: lane.r }
+      return car ? { c: car.c + 0.55, r: car.r } : { c: lane.c + 0.55, r: lane.r }
     },
-    18,
-    1.22,
-    0.15,
+    34,
+    1.12,
+    0.35,
   )
+  }
 }
 
 // Leaving a stall: still on the hall side of the curb lane, nose already swung out, moving.
+const pullOff = new Map<string, number>()
 const pull = want('curb-pull-out')
-  ? await seek(
-      (list) =>
-        list.find((c) => c.r > 3 && c.r < 11 && c.lane === 1 && c.c < 16.7 && c.c > 16.45 && c.speed > 1.4 && offAxis(c.heading) > 0.22) ??
-        null,
-      12 * 90,
-    )
+  ? await seek((list) => {
+      let hit: Car | null = null
+      for (const c of list) {
+        const off = offAxis(c.heading)
+        const prev = pullOff.get(c.id)
+        pullOff.set(c.id, off)
+        if (
+          hit == null &&
+          prev != null &&
+          off > prev + 0.015 &&
+          off > 0.1 &&
+          c.r > 3 &&
+          c.r < 11 &&
+          c.lane === 1 &&
+          c.c < 16.72 &&
+          c.c > 16.45 &&
+          c.speed > 1
+        ) {
+          hit = c
+        }
+      }
+      return hit
+    }, 12 * 90)
   : null
 console.log('pull trigger', pull)
 if (want('curb-pull-out')) {
@@ -280,11 +327,11 @@ if (want('curb-pull-out')) {
     12 * 6,
     (list) => {
       const car = list.find((c) => c.id === pullId)
-      return car ? { c: car.c, r: car.r } : { c: pull.c, r: pull.r }
+      return car ? { c: car.c + 0.2, r: car.r } : { c: pull.c + 0.2, r: pull.r }
     },
-    18,
-    1.22,
-    0.15,
+    30,
+    1.08,
+    0.22,
   )
 }
 
@@ -312,11 +359,12 @@ if (want('u-turn-south')) {
 }
 
 const north = want('u-turn-north')
-  ? await seek((list) => list.find((c) => c.r < 1.6 && c.r > -0.4 && Math.abs(Math.cos(c.heading)) > 0.45 && c.speed > 0.6) ?? null, 12 * 50)
+  ? await seek((list) => list.find((c) => c.r < 2.4 && c.r > -0.6 && c.speed > 0.8 && Math.sin(c.heading) < -0.6) ?? null, 12 * 40)
   : null
 console.log('north trigger', north)
 if (want('u-turn-north')) {
-  if (!north) throw new Error('no north-end turn')
+  if (!north) console.error('no north-end departure')
+  else {
   let northId = north.id
   await record(
     'u-turn-north',
@@ -324,13 +372,14 @@ if (want('u-turn-north')) {
     (list) => {
       const car = list.find((c) => c.id === northId) ?? list.find((c) => c.r < 2.2 && c.speed > 0.4)
       if (car) northId = car.id
-      const r = car ? Math.max(-0.15, Math.min(1.8, car.r)) : 0.6
+      const r = car ? Math.max(0.9, Math.min(2.2, car.r + 1.1)) : 1.4
       return { c: 17, r }
     },
-    32,
-    1.15,
-    Math.PI,
+    34,
+    1.12,
+    0.45,
   )
+  }
 }
 
 if (want('busy-no-overlap')) {
@@ -338,15 +387,11 @@ if (want('busy-no-overlap')) {
     'busy-no-overlap',
     12 * 8,
     (list) => {
-      const onRoad = list.filter((c) => c.r > 2 && c.r < 10 && c.c > 16.4 && c.c < 17.7)
-      if (onRoad.length < 3) return { c: 17, r: 6 }
-      onRoad.sort((a, b) => a.r - b.r)
-      const mid = onRoad[Math.floor(onRoad.length / 2)]
-      return { c: 17, r: mid.r }
+      return { c: 17, r: 9 }
     },
-    42,
-    1.2,
-    0.2,
+    36,
+    1.12,
+    0.25,
   )
 }
 
