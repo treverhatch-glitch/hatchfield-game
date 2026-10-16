@@ -1,0 +1,10 @@
+{
+  "sha": "7c054d48ba05",
+  "meshOk": 41,
+  "meshBad": 0,
+  "dropGuest": "g-i2mra1",
+  "dropFlight": "proof-out",
+  "pickGuest": "g-eewy5h",
+  "pickFlight": "proof-in",
+  "note": "Rendered landside meshes matched the sim vehicles (41 samples, 0 mismatches) while a taxi stopped at the layby and its passenger walked toward the hall. The pickup walker was on the kerb path with flight proof-in. U-turn arc is covered by vehicles.test.ts (max heading step < 0.45 rad at 0.25s)."
+}

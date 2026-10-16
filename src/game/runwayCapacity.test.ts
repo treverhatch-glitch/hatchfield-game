@@ -140,12 +140,12 @@ describe('runway capacity', () => {
     // Booked movements are 3× the retired 150s bank (4 a day → 12). Completions
     // stay under that ceiling: the opening headway, the night closure, and a
     // turnaround longer than the runway hole keep four stands from finishing
-    // 45 flights in eight days. The 2×4 hall keeps the stands a bay apart, and
-    // the city road forks so airside trucks never queue at the guard. This
-    // seed still clears the old 15-flight floor. Nothing diverts.
-    const LEGACY_EIGHT_DAY_FLIGHTS = 15
+    // 45 flights in eight days. The 2×4 hall keeps the stands a bay apart, the
+    // city road forks so airside trucks never queue at the guard, and passengers
+    // ride to the layby. This seed finishes 16, above the 15-flight floor.
+    // Nothing diverts.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
-    expect(result.done, `diverts ${diverts(game)}`).toBeGreaterThan(LEGACY_EIGHT_DAY_FLIGHTS)
+    expect(result.done, `diverts ${diverts(game)}`).toBe(16)
     expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)
@@ -181,16 +181,18 @@ describe('runway capacity', () => {
     expect(two.runwayLoad().lanes).toBe(2)
     const twoRun = runDays(two, 8)
     Math.random = random
-    expect(oneDiverts).toBe(0)
-    expect(diverts(two)).toBeLessThanOrEqual(1)
-    // The city road forks, so apron trucks are not queued at the guard. On this
-    // seed the one-strip field finishes 19 (7 of them inside the opening) and
-    // the two-strip field finishes 20 (also 7 inside the opening). The second
-    // strip still finishes more movements. Booked movements stay two strips to one.
+    // The city road forks, so apron trucks are not queued at the guard, and
+    // passengers ride to the layby. On this seed the one-strip field finishes
+    // 16 (12 of them after the opening) and the two-strip field finishes 20
+    // (13 after the opening). Nothing diverts. Both stay on the 15-flight floor.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
-    expect(twoRun.done, `one ${oneRun.done} two ${twoRun.done}`).toBeGreaterThan(oneRun.done)
-    expect(twoGain, `after opening one ${oneGain} two ${twoGain}`).toBeGreaterThanOrEqual(oneGain)
+    expect(oneRun.done).toBe(16)
+    expect(twoRun.done).toBe(20)
+    expect(oneDiverts).toBe(0)
+    expect(diverts(two)).toBe(0)
+    expect(oneGain).toBe(12)
+    expect(twoGain).toBe(13)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {

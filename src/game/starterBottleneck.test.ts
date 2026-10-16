@@ -1,8 +1,8 @@
 /**
- * Default new game, no persona. Finds the in-game day the starter hall
- * first flags a check-in or security bottleneck (wait past the tuned
- * limit, or a line that has spilled its floor marks).
- * Seeded so the day in docs/playtest/STARTER_BOTTLENECK.md can be re-run.
+ * Default new game, no persona. Seeded so the note in
+ * docs/playtest/STARTER_BOTTLENECK.md can be re-run.
+ * Passengers ride to the four-stall curb, so the check-in wait stays under
+ * the 360s red line for the whole horizon. The peak is still recorded.
  */
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
@@ -36,7 +36,7 @@ function facilityChoke(game: Game): { kind: string; count: number; waitSec: numb
 }
 
 describe('starter hall bottleneck', () => {
-  it('first queues past the threshold a little way into a default new game', () => {
+  it('keeps the curb-metered starter under the check-in red line', () => {
     const found = withSeed(SEED, () => {
       const game = new Game()
       game.sandbox = false
@@ -47,11 +47,16 @@ describe('starter hall bottleneck', () => {
       game.buildStarterKit()
       game.speed = 1
       const target = HORIZON_DAYS * DAY_SEC
-      let hit: { day: number; clock: number; kind: string; count: number; waitSec: number; signed: string[] } | null =
-        null
+      let hit: { day: number; clock: number; kind: string; count: number; waitSec: number } | null = null
+      let peak = { day: 0, kind: '', count: 0, waitSec: 0 }
       while (game.clock < target && !hit) {
         if (game.offer && game.checkinSignReport(game.offer.airline).ok) game.acceptOffer()
         game.tick(0.25)
+        for (const row of game.hallNav.loads()) {
+          if (row.kind !== 'checkin_desk' && row.kind !== 'security_lane') continue
+          const waitSec = Math.round(row.estWaitSec)
+          if (waitSec > peak.waitSec) peak = { day: game.gameDay() + 1, kind: row.kind, count: row.queueLength, waitSec }
+        }
         const queue = facilityChoke(game)
         if (!queue) continue
         hit = {
@@ -60,18 +65,12 @@ describe('starter hall bottleneck', () => {
           kind: queue.kind,
           count: queue.count,
           waitSec: queue.waitSec,
-          signed: game.signed.slice(),
         }
       }
-      return { hit, signed: game.signed.slice() }
+      return { hit, peak, signed: game.signed.slice() }
     })
-    expect(found.hit).toMatchObject({
-      day: 6,
-      clock: 1067,
-      kind: 'checkin_desk',
-      count: 3,
-      waitSec: 409,
-    })
+    expect(found.hit).toBeNull()
     expect(found.signed).toEqual(['air_regional_1', 'zoomjet'])
+    expect(found.peak).toEqual({ day: 8, kind: 'checkin_desk', count: 2, waitSec: 350 })
   }, 180_000)
 })

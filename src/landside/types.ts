@@ -67,6 +67,10 @@ export interface VehicleRead {
   lane: number
   /** Metres per second. */
   speed: number
+  /** Trip this vehicle is driving, when the fleet is carrying named passengers. */
+  orderId?: string
+  /** Drop-off at the kerb, or a pickup leaving with an arrival. */
+  role?: 'drop' | 'pick'
 }
 
 export interface PassengerRead {
@@ -74,6 +78,11 @@ export interface PassengerRead {
   c: number
   r: number
   heading: number
+  /** Hall guest this walker is, when the curb is carrying a real passenger. */
+  guestId?: string
+  orderId?: string
+  /** `in` walks to the hall door. `out` walks from the door to a waiting car. */
+  dir?: 'in' | 'out'
 }
 
 export interface ModeSplit {

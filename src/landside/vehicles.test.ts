@@ -152,8 +152,9 @@ describe('landside vehicles', () => {
     expect(stopAt!.r).toBeLessThan(10.5)
     expect(walked).toBe(true)
     expect(turned).toBe(true)
-    // It leaves at the north edge, on the far side of the median.
-    expect(lastSeen!.r).toBeLessThan(0)
+    // It leaves at the north end, still on the map, on the far side of the median.
+    expect(lastSeen!.r).toBeGreaterThanOrEqual(-1e-4)
+    expect(lastSeen!.r).toBeLessThan(1)
     expect(lastSeen!.c).toBeGreaterThan(17)
   })
 

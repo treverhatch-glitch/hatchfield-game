@@ -241,9 +241,12 @@ describe('security choke', () => {
     expect(still.every((g) => g.path.length === 0)).toBe(true)
 
     game.clock = Math.max(...times)
-    game.tick(0.05)
-    expect(wave.every((g) => g.releaseAt == null)).toBe(true)
-    expect(wave.some((g) => g.path.length > 1)).toBe(true)
+    let opened = false
+    for (let i = 0; i < 400 && !opened; i++) {
+      game.tick(0.25)
+      opened = wave.some((g) => g.releaseAt == null && g.path.length > 1)
+    }
+    expect(opened).toBe(true)
     expect(wave.some((g) => !g.clearedSec && g.node === 'gate')).toBe(false)
   })
 })

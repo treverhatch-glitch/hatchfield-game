@@ -225,8 +225,9 @@ describe('capacity', () => {
       for (const car of view.vehicles) {
         const prev = seen.get(car.id)
         if (!prev) {
-          // New cars appear at or beyond the north edge of the map, on the road.
-          expect(car.r * LANDSIDE.cellM).toBeLessThanOrEqual(-0.5 * LANDSIDE.cellM + cap + 1e-6)
+          // New cars appear on the map, at the north end of the road. The centre stays at row >= 0.
+          expect(car.r).toBeGreaterThanOrEqual(-1e-4)
+          expect(car.r).toBeLessThan(1.25)
           expect(Math.abs(car.c - 7) * LANDSIDE.cellM).toBeLessThan(LANDSIDE.cellM / 2)
         } else {
           const hop = Math.hypot((car.c - prev.c) * LANDSIDE.cellM, (car.r - prev.r) * LANDSIDE.cellM)
