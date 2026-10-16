@@ -26,18 +26,25 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 })
 page.on('pageerror', (err) => console.error('pageerror', err.message))
 
-await page.goto(`${base}/?playtest=1`, { waitUntil: 'networkidle' })
+const log = (line: string) => {
+  console.log(line)
+}
+log('open')
+await page.goto(`${base}/?playtest=1`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
 await page.evaluate(`(() => {
   localStorage.clear()
   localStorage.setItem('hatchfield-gfx', 'ultra')
   localStorage.setItem('hatchfield-texture-quality', 'high')
   localStorage.setItem('hatchfield-aircraft-quality', 'high')
 })()`)
-await page.reload({ waitUntil: 'networkidle' })
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 120_000 })
 await page.getByTestId('sandbox-toggle').uncheck().catch(() => {})
-await page.getByTestId('new-game').click()
-await page.getByTestId('start-pax').click()
-await page.waitForFunction('Boolean(window.__hatch && window.__hatch.site && window.__world)')
+await page.getByTestId('new-game').click({ timeout: 60_000 })
+await page.getByTestId('start-pax').scrollIntoViewIfNeeded()
+log('buying plot')
+await page.getByTestId('start-pax').click({ timeout: 180_000 })
+await page.waitForFunction('Boolean(window.__hatch && window.__hatch.site && window.__world)', null, { timeout: 180_000 })
+log('in play')
 const coach = page.getByTestId('starter-kit-coach')
 if (await coach.count()) {
   await coach.click()
@@ -58,10 +65,20 @@ await page.evaluate(`(() => {
   window.__origTick = orig
   window.__hold = false
   g.speed = 1
-  for (let i = 0; i < 2200; i++) {
-    if (g.offer) g.acceptOffer()
-    orig(0.1)
-  }
+})()`)
+log('warming')
+for (let batch = 0; batch < 11; batch++) {
+  await page.evaluate(`(() => {
+    const g = window.__hatch
+    for (let i = 0; i < 200; i++) {
+      if (g.offer) g.acceptOffer()
+      window.__origTick(0.1)
+    }
+  })()`)
+  log(`warm batch ${batch + 1}/11`)
+}
+await page.evaluate(`(() => {
+  const g = window.__hatch
   g.speed = 0
   window.__hold = true
   const chip = document.createElement('div')
@@ -180,9 +197,9 @@ await record(
     if (car) laneId = car.id
     return car ? { c: car.c, r: car.r } : null
   },
-  26,
-  1.02,
-  0.15,
+  22,
+  0.62,
+  0.55,
 )
 
 const pull = await seek(
@@ -200,9 +217,9 @@ await record(
     if (car) pullId = car.id
     return car ? { c: car.c, r: car.r } : null
   },
-  24,
-  1.02,
-  0.2,
+  20,
+  0.62,
+  0.7,
 )
 
 const south = await seek((list) => list.find((c) => c.r > 10.6 && Math.sin(c.heading) > 0.8 && c.speed > 0.8) ?? null, 12 * 60)
@@ -219,9 +236,9 @@ await record(
     if (next) southId = next.id
     return { c: 17, r: 11.6 }
   },
-  34,
-  0.98,
-  0.35,
+  28,
+  0.58,
+  0.85,
 )
 
 const north = await seek((list) => list.find((c) => c.r < 2.2 && c.r > -0.2 && Math.sin(c.heading) < -0.8 && c.speed > 0.8) ?? null, 12 * 40)
@@ -231,18 +248,18 @@ await record(
   'u-turn-north',
   12 * 10,
   () => ({ c: 17, r: 1.2 }),
-  36,
-  0.98,
-  Math.PI + 0.35,
+  30,
+  0.58,
+  Math.PI - 0.85,
 )
 
 await record(
   'busy-no-overlap',
   12 * 8,
   () => ({ c: 17, r: 6 }),
-  52,
-  0.92,
-  0.25,
+  42,
+  0.7,
+  0.4,
 )
 
 await browser.close()

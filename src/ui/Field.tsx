@@ -76,7 +76,10 @@ export function Field({ game }: { game: Game }) {
     if (!canvas) return
     const world = new World(canvas)
     worldRef.current = world
-    if (import.meta.env.DEV) {
+    // Production keeps the sim on ?playtest=1. The apron camera has to be on
+    // the same flag, or a proof clip of that build cannot aim the lens.
+    const playtestSearch = `${globalThis.location?.search ?? ''}`
+    if (import.meta.env.DEV || playtestSearch.includes('playtest=1')) {
       ;(window as unknown as { __world?: World }).__world = world
     }
     world.onHover = (v) => {
