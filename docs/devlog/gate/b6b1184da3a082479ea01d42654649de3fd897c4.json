@@ -1,0 +1,122 @@
+{
+  "sha": "b6b1184da3a082479ea01d42654649de3fd897c4",
+  "shortSha": "b6b1184da3a0",
+  "mode": "quick",
+  "ok": true,
+  "node": "v22.14.0",
+  "dirty": [],
+  "startedAt": "2026-10-16T12:35:51.571Z",
+  "finishedAt": "2026-10-16T12:50:51.662Z",
+  "durationMs": 900091,
+  "soakDays": 30,
+  "testCounts": {
+    "filesPassed": 502,
+    "filesFailed": 0,
+    "filesSkipped": 6,
+    "files": 508,
+    "passed": 3180,
+    "failed": 0,
+    "skipped": 9,
+    "total": 3189
+  },
+  "soak": {
+    "days": 30,
+    "reachedDay": 30,
+    "cashEnd": 4625060,
+    "stuck": 0,
+    "recoveries": 12,
+    "heapGrowth": 0.1096
+  },
+  "steps": [
+    {
+      "id": "node",
+      "status": "pass",
+      "durationMs": 0,
+      "exitCode": 0,
+      "command": "process.version",
+      "detail": "v22.14.0 (>= 22.12)",
+      "tail": ""
+    },
+    {
+      "id": "npm-ci",
+      "status": "pass",
+      "durationMs": 0,
+      "exitCode": 0,
+      "command": "npm ci",
+      "detail": "skipped (--no-install)",
+      "tail": ""
+    },
+    {
+      "id": "unpack-art",
+      "status": "pass",
+      "durationMs": 32,
+      "exitCode": 0,
+      "command": "/exec-daemon/node scripts/unpack-art.mjs",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "tsc",
+      "status": "pass",
+      "durationMs": 14153,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/typescript/bin/tsc -b",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "oxlint",
+      "status": "pass",
+      "durationMs": 634,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/oxlint/bin/oxlint",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "vitest",
+      "status": "pass",
+      "durationMs": 827589,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vitest/vitest.mjs run --maxWorkers=2",
+      "detail": "3180 passed, 0 failed, 9 skipped (508 files)",
+      "tail": ""
+    },
+    {
+      "id": "vite-build",
+      "status": "pass",
+      "durationMs": 4900,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vite/bin/vite.js build",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "soak",
+      "status": "pass",
+      "durationMs": 35806,
+      "exitCode": 0,
+      "command": "/exec-daemon/node scripts/soak-150.mjs --days 30",
+      "detail": "30 days, end cash $4,625,060, stuck 0, recoveries 12",
+      "tail": ""
+    },
+    {
+      "id": "draw-budgets",
+      "status": "pass",
+      "durationMs": 695,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/vitest/vitest.mjs run src/people/budget.test.ts src/render/people/crowd.test.ts src/render/hallFigures.test.ts src/perf/lodTune.test.ts src/perf/overlay.test.ts src/perf/rendererStats.test.ts",
+      "detail": "26 passed, 0 failed, 0 skipped (6 files)",
+      "tail": ""
+    },
+    {
+      "id": "playtest-bots",
+      "status": "pass",
+      "durationMs": 16218,
+      "exitCode": 0,
+      "command": "npm run playtest:bots -- --quick",
+      "detail": "1 passed, 0 failed, 0 skipped (1 files)",
+      "tail": ""
+    }
+  ]
+}
