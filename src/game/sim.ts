@@ -9688,7 +9688,7 @@ export class Game {
 
     const edge = pick(edges)
     const guard = guards[0]
-    const toGuard = nearestPath(this.tiles, edge, [guard], 'truck')
+    const toGuard = nearestPath(this.tiles, edge, [guard], 'truck', undefined, 'outside')
     if (!toGuard || toGuard.length < 2) {
       this.cityCargoCool = 8
       return
@@ -9777,7 +9777,7 @@ export class Game {
       const edges = this.cityEdgeRoads()
       const from = { c: Math.round(t.x), r: Math.round(t.y) }
       const leave = edges.length
-        ? nearestPath(this.tiles, from, edges, 'truck')
+        ? nearestPath(this.tiles, from, edges, 'truck', undefined, 'outside')
         : null
       if (leave && leave.length > 1) {
         t.mission = 'city_depart'
@@ -21653,8 +21653,8 @@ export class Game {
     }
     let path: Vec[] | null = null
     if (guard) {
-      const toGuard = nearestPath(this.tiles, edge, [guard], 'truck')
-      const toSite = nearestPath(this.tiles, guard, [approach], 'truck')
+      const toGuard = nearestPath(this.tiles, edge, [guard], 'truck', undefined, 'outside')
+      const toSite = nearestPath(this.tiles, guard, [approach], 'truck', undefined, 'outside')
       if (toGuard && toSite && toGuard.length > 1 && toSite.length > 1) {
         path = [off, ...toGuard, ...toSite.slice(1)]
       }

@@ -67,7 +67,7 @@ describe('starter hall bottleneck', () => {
     })
     expect(found.hit).toMatchObject({
       day: 6,
-      clock: 1066,
+      clock: 1067,
       kind: 'checkin_desk',
       count: 3,
       waitSec: 409,

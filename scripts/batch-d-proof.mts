@@ -1,6 +1,6 @@
 /**
  * Rendered proof for the guard post and the bag sort.
- *   01-guard-truck-vs-cars.mp4  — fuel truck crosses the guard; passenger cars stay on the public road
+ *   01-guard-fork-outside-vs-airside.mp4 — city road forks; an outside truck crosses the guard; an airside truck stays on the apron road
  *   02-bags-face-airside.mp4    — roller doors face the apron
  *   03-belts-terminal-sort-stands.mp4 — belts leave the sort for both stands
  *
@@ -103,7 +103,7 @@ type Hatch = {
   demoBagParade: () => number
   paxPerDay: number
   tiles: string[][]
-  trucks: { id: string; x: number; y: number; path: { c: number; r: number }[] }[]
+  trucks: { id: string; x: number; y: number; path: { c: number; r: number }[]; preDwell: number }[]
   spawnTruck: (kind: string, flight: null, path: { c: number; r: number }[], mission?: string) => void
   landsideView: () => { vehicles: { id: string; kind: string; c: number; r: number }[] }
   tick: (dt: number) => void
@@ -169,10 +169,13 @@ async function step(seconds: number) {
 async function sample() {
   return page.evaluate(() => {
     const g = (window as unknown as { __hatch: Hatch }).__hatch
-    const truck = g.trucks.find((t) => t.path[0]?.c === 17 && t.path[0]?.r === 0) ?? g.trucks[0] ?? null
+    const mark = (window as unknown as { __proof?: { outsideId: string; internalId: string } }).__proof
+    const outside = g.trucks.find((t) => t.id === mark?.outsideId) ?? null
+    const internal = g.trucks.find((t) => t.id === mark?.internalId) ?? null
     const cars = g.landsideView().vehicles
     return {
-      truck: truck ? { x: truck.x, y: truck.y } : null,
+      outside: outside ? { x: outside.x, y: outside.y } : null,
+      internal: internal ? { x: internal.x, y: internal.y } : null,
       cars: cars.map((car) => ({ kind: car.kind, c: car.c, r: car.r })),
     }
   })
@@ -267,9 +270,9 @@ const layout = await page.evaluate(() => {
   return { bagYaw: bags?.rotation.y ?? null, bagsAt, guardAt, belt, path }
 })
 console.log('layout', layout)
-if (layout.bagsAt !== '13,9' || layout.guardAt !== '16,4') throw new Error('starter placement moved')
+if (layout.bagsAt !== '13,9' || layout.guardAt !== '16,2') throw new Error(`starter placement moved (${layout.guardAt})`)
 if (layout.bagYaw === null || Math.abs(layout.bagYaw + Math.PI / 2) > 0.05) throw new Error(`bag yaw ${layout.bagYaw}`)
-if (!layout.path.some((cell) => cell.c === 16 && cell.r === 4)) throw new Error('fuel path misses the guard')
+if (!layout.path.some((cell) => cell.c === 16 && cell.r === 2)) throw new Error('fuel path misses the guard')
 
 const beltOnly = process.env.BELT_ONLY === '1'
 console.log('warming the curb')
@@ -313,32 +316,68 @@ if (!beltOnly) await page.evaluate(() => {
     path.reverse()
   }
   g.spawnTruck('fuel', null, path, 'patrol')
-  const truck = g.trucks[g.trucks.length - 1]
-  truck.preDwell = 0
+  const outside = g.trucks[g.trucks.length - 1]
+  outside.preDwell = 0
+  const leg: { c: number; r: number }[] = []
+  for (let c = 12; c <= 15; c++) leg.push({ c, r: 4 })
+  for (let c = 14; c >= 12; c--) leg.push({ c, r: 4 })
+  const apron: { c: number; r: number }[] = []
+  for (let lap = 0; lap < 4; lap++) apron.push(...leg.slice(lap === 0 ? 0 : 1))
+  if (apron.some((cell) => tiles[cell.r][cell.c] !== 'road')) throw new Error('apron shuttle left the internal road')
+  g.spawnTruck('bags', null, apron, 'patrol')
+  const internal = g.trucks[g.trucks.length - 1]
+  internal.preDwell = 0
+  ;(window as unknown as { __proof: { outsideId: string; internalId: string } }).__proof = {
+    outsideId: outside.id,
+    internalId: internal.id,
+  }
 })
 
 const guardDir = `${work}/guard`
 const bagDir = `${work}/bags`
 if (!beltOnly) {
-const truckTrail: { x: number; y: number }[] = []
-const carNearJunction: { kind: string; c: number; r: number }[] = []
+const outsideTrail: { x: number; y: number }[] = []
+const internalTrail: { x: number; y: number }[] = []
+const carOnPassenger: { kind: string; c: number; r: number }[] = []
 let carOnGuard = false
 await clip(guardDir, FPS * 10, async () => {
-  await aim(16.4, 4.2, 14, 16, 12)
+  await aim(16.2, 2.8, 26, 34, 30)
   await step(DT)
   const now = await sample()
-  if (now.truck) truckTrail.push(now.truck)
+  if (now.outside) outsideTrail.push(now.outside)
+  if (now.internal) internalTrail.push(now.internal)
   for (const car of now.cars) {
-    if (Math.abs(car.c - 17) < 0.85 && Math.abs(car.r - 4) < 1.6) carNearJunction.push(car)
-    if (Math.hypot(car.c - 16, car.r - 4) < 0.45) carOnGuard = true
+    if (Math.abs(car.c - 17) < 0.85 && car.r >= 0 && car.r <= 8) carOnPassenger.push(car)
+    if (Math.hypot(car.c - 16, car.r - 2) < 0.45) carOnGuard = true
   }
 })
 
-const crossed = truckTrail.some((p) => p.x < 15.2 && Math.abs(p.y - 4) < 0.6)
-console.log('truck samples', truckTrail.length, 'crossed service road', crossed, 'cars at junction', carNearJunction.length, 'car on guard', carOnGuard)
-if (!crossed) throw new Error('fuel truck never reached the airside service road')
+const throughPost = outsideTrail.some((p) => Math.hypot(p.x - 16, p.y - 2) < 0.35)
+const ontoService = outsideTrail.some((p) => p.x < 15.2 && Math.abs(p.y - 2) < 0.6)
+const internalMoved = internalTrail.some((p) => p.x > 13.4) && internalTrail.some((p) => p.x < 12.6)
+const internalClear = internalTrail.every((p) => Math.hypot(p.x - 16, p.y - 2) > 0.8)
+console.log(
+  'outside',
+  outsideTrail.length,
+  'through post',
+  throughPost,
+  'on service road',
+  ontoService,
+  'internal',
+  internalTrail.length,
+  'moved',
+  internalMoved,
+  'clear of post',
+  internalClear,
+  'cars on passenger branch',
+  carOnPassenger.length,
+  'car on guard',
+  carOnGuard,
+)
+if (!throughPost || !ontoService) throw new Error('outside truck did not pass the guard onto the service road')
+if (!internalMoved || !internalClear) throw new Error('internal truck did not stay on the apron road')
 if (carOnGuard) throw new Error('a passenger vehicle entered the guard')
-if (!carNearJunction.length) throw new Error('no passenger vehicle passed the junction on the public road')
+if (!carOnPassenger.length) throw new Error('no passenger vehicle stayed on the curb branch')
 
 await clip(bagDir, FPS * 4, async (i) => {
   const t = i / (FPS * 4)
@@ -355,7 +394,7 @@ await clip(beltDir, FPS * 5, async (i) => {
 })
 
 if (!beltOnly) {
-  await encode(guardDir, `${out}/01-guard-truck-vs-cars.mp4`)
+  await encode(guardDir, `${out}/01-guard-fork-outside-vs-airside.mp4`)
   await encode(bagDir, `${out}/02-bags-face-airside.mp4`)
 }
 await encode(beltDir, `${out}/03-belts-terminal-sort-stands.mp4`)
