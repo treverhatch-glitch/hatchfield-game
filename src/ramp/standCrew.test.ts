@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AIRCRAFT_VISUAL_SCALE, getAircraftSpec } from '../render/aircraft/specs.ts'
 import { STAND_TIMELINE as T } from './crewConfig.ts'
 import { standConePoints, standCrewPeople, standProps, type StandArrival } from './standCrew.ts'
 
@@ -45,6 +46,38 @@ describe('stand arrival crew', () => {
         if (was) expect(Math.hypot(p.c - was.c, p.r - was.r)).toBeLessThan(1.2)
       }
       prev = now
+    }
+  })
+
+  it('keeps arrival crew outside the drawn fuselage on a CRJ and a 737', () => {
+    const inside = (x: number, z: number, length: number, skin: number) => {
+      const half = length / 2
+      const rad = skin + 0.15
+      const ax = Math.abs(x)
+      if (ax > half + 0.15) return false
+      const body = Math.max(0, half - rad)
+      if (ax <= body) return Math.abs(z) <= rad
+      const dx = ax - body
+      return dx * dx + z * z <= rad * rad
+    }
+    for (const id of ['crj700', 'b738'] as const) {
+      const spec = getAircraftSpec(id)
+      const s = AIRCRAFT_VISUAL_SCALE
+      const arrival = (t: number): StandArrival => ({
+        id: 'f1',
+        x: 0,
+        y: 0,
+        heading: 0,
+        lengthM: spec.lengthM * s,
+        spanM: spec.spanM * s,
+        skinM: spec.rx * s,
+        t,
+      })
+      for (let t = 0; t < T.settled; t += 0.1) {
+        for (const person of standCrewPeople(arrival(t), 1)) {
+          expect(inside(person.c, person.r, spec.lengthM * s, spec.rx * s), `${id} ${person.id} t=${t}`).toBe(false)
+        }
+      }
     }
   })
 })

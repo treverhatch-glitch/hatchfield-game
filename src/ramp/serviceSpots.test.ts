@@ -19,9 +19,10 @@ describe('service spots', () => {
       expect(audit.fuel.size).toBe('small')
       expect(audit.fuel.yaw).toBeGreaterThan(0.5)
       expect(audit.fuel.localX).toBeGreaterThan(audit.leadingX)
-      for (const gap of [...audit.fuel.gaps, ...audit.bags.gaps, ...audit.belt.gaps]) {
-        expect(gap).toBeGreaterThanOrEqual(SERVICE_SPOT.minSeparationM - 0.05)
-      }
+      expect(audit.fuel.gaps[0], dump(id)).toBeGreaterThanOrEqual(SERVICE_SPOT.minSeparationM - 0.05)
+      expect(audit.vehiclesClear, dump(id)).toBe(true)
+      expect(audit.belt.tipApart, dump(id)).toBeLessThan(1.2)
+      expect(audit.belt.deck, dump(id)).toBeGreaterThan(0.05)
     }
   })
 
@@ -35,7 +36,10 @@ describe('service spots', () => {
       expect(audit.fuel.size).toBe('large')
       expect(audit.fuel.yaw).toBeLessThan(0.25)
       expect(Math.abs(audit.fuel.localX - audit.portX)).toBeLessThan(Math.abs(regional.fuel.localX - regional.portX))
-      for (const gap of audit.fuel.gaps) expect(gap).toBeGreaterThanOrEqual(SERVICE_SPOT.minSeparationM - 0.05)
+      expect(audit.fuel.gaps[0], dump(id)).toBeGreaterThanOrEqual(SERVICE_SPOT.minSeparationM - 0.05)
+      expect(audit.vehiclesClear, dump(id)).toBe(true)
+      expect(audit.belt.tipApart, dump(id)).toBeLessThan(1.2)
+      expect(audit.belt.deck, dump(id)).toBeGreaterThan(0.08)
     }
   })
 

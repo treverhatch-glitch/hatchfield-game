@@ -149,7 +149,8 @@ export const STAND_TIMELINE = {
   chocksWalk: 6.6,
   chocksOn: 9.5,
   conesStart: 8,
-  conePer: 2.6,
+  /** Long enough for a walk around a drawn 737 (nose or tail) at under 1.2 m per 0.05 s. */
+  conePer: 4.8,
   /** Seconds after which everything is placed and the crew stand clear. */
   settled: 30,
 } as const

@@ -68,6 +68,10 @@ export interface PoseInput {
   steer?: number
   /** Headlight beams on. */
   beams?: boolean
+  /** Extra belt pitch at full deploy, radians. */
+  deck?: number
+  /** Metres the belt slides forward at full deploy. */
+  slide?: number
 }
 
 export function poseInput(ext = 0, clock = 0, active = false, odo = 0, reversing = false): PoseInput {
@@ -231,8 +235,10 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       if (part !== 'belt' && part !== 'belt_bags') return false
       const g = beltGeom(L, H)
       const pitch = g.pitch
-      const rz = -pitch * 0.85 * (1 - e) + 0.1 * e
+      const rz = -pitch * 0.85 * (1 - e) + (input.deck ?? 0.1) * e
+      const slide = (input.slide ?? 0) * e
       reset(out, g.lowX, g.lowY, 0).rz = rz
+      out.tx = slide
       if (part === 'belt_bags') {
         // Bags ride up the belt while it runs; hidden when stowed.
         if (!working) {
@@ -242,7 +248,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
         const spacing = 0.3 * L
         const s = ((clock * 1.1) % spacing) - spacing / 2
         const a = pitch + rz
-        out.tx = Math.cos(a) * s
+        out.tx = Math.cos(a) * s + slide
         out.ty = Math.sin(a) * s
       }
       return true
@@ -422,12 +428,14 @@ const _pose = newPartPose()
 /** Pose every animated child of a vehicleRig() group in place. */
 const _in = poseInput()
 
-export function poseVehicleRig(rig: THREE.Object3D, model: VehicleModel, ext: number, clock: number, active = false, odo = 0, reversing = false) {
+export function poseVehicleRig(rig: THREE.Object3D, model: VehicleModel, ext: number, clock: number, active = false, odo = 0, reversing = false, deck?: number, slide?: number) {
   _in.ext = ext
   _in.clock = clock
   _in.active = active
   _in.odo = odo
   _in.reversing = reversing
+  _in.deck = deck
+  _in.slide = slide
   const poseTree = (node: THREE.Object3D) => {
     for (const child of node.children) {
       const name = child.name

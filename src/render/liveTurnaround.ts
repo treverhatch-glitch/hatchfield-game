@@ -33,6 +33,8 @@ export interface TurnaroundStand {
   noseGear: number
   semiSpan: number
   tail: number
+  /** Drawn fuselage radius, metres. */
+  skin: number
 }
 
 export interface TurnaroundTruck {
@@ -139,6 +141,7 @@ export class LiveTurnaround {
         noseGear: stand.noseGear,
         semiSpan: stand.semiSpan,
         tail: stand.tail,
+        skin: stand.skin,
       }
       if (stand.t < ARRIVAL_CREW_SEC) {
         const local: PeopleAgent[] = []

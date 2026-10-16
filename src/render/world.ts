@@ -209,6 +209,7 @@ function turnaroundStands(game: Game): TurnaroundStand[] {
       noseGear: arrival.lengthM * 0.38,
       semiSpan: arrival.spanM / 2,
       tail: -arrival.lengthM / 2,
+      skin: arrival.skinM ?? 0,
     })
   }
   return stands
@@ -1908,6 +1909,27 @@ export class World {
         odo: this.odometer(t.id, pos.x, pos.z),
         clock: game.clock,
       })
+      const belt = t.kind === 'bags' ? game.beltApronDraw(t) : null
+      if (belt) {
+        const beltAt = toWorld(belt.x, belt.y, 0)
+        this.vehicleFrame.push({
+          id: `${t.id}:belt`,
+          kind: 'belt_loader',
+          color: '#f2bf1f',
+          size: vehicleMeters('belt_loader'),
+          x: beltAt.x,
+          y: beltAt.y,
+          z: beltAt.z,
+          yaw: -belt.heading,
+          scale: WORLD_PER_METER,
+          ext,
+          deck: belt.deck,
+          slide: belt.slide,
+          active: ext > 0,
+          odo: this.odometer(`${t.id}:belt`, beltAt.x, beltAt.z),
+          clock: game.clock,
+        })
+      }
     }
 
     const poses = game.servicePoses()
@@ -1956,6 +1978,8 @@ export class World {
         // cones only after dusk (they follow the same headlight level as the lamp pools)
         beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && (serviceStateOf(pose.phase, pose.u) === 'drive' || pose.waiting === true),
         clock: game.clock,
+        deck: pose.drawDeck,
+        slide: pose.drawSlide,
       })
     }
 
