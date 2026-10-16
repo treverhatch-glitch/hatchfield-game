@@ -26,6 +26,8 @@ const url = new URL(base)
 url.searchParams.set('playtest', '1')
 
 const browser = await chromium.launch({
+  executablePath: process.env.PLAYWRIGHT_CHROME || '/usr/bin/google-chrome',
+  headless: true,
   args: ['--ignore-gpu-blocklist', '--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
 })
 
@@ -141,16 +143,17 @@ async function shot(page: Page, name: string) {
 
 function cutClip(webm: string, name: string, start: number, seconds: number) {
   const out = `${clipDir}/${name}.mp4`
+  // Seek after -i so the cut lands on the held shot, not an earlier keyframe.
   const ff = spawnSync(
     'ffmpeg',
     [
       '-y',
+      '-i',
+      webm,
       '-ss',
       start.toFixed(2),
       '-t',
       String(seconds),
-      '-i',
-      webm,
       '-vf',
       'fps=10',
       '-c:v',
