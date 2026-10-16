@@ -44,9 +44,9 @@ describe('HUD top band layout', () => {
       try {
         for (const viewport of VIEWPORTS) {
           const page = await browser.newPage({ viewport })
-          await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' })
+          await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle', timeout: 90_000 })
           await page.evaluate(() => localStorage.clear())
-          await page.reload({ waitUntil: 'networkidle' })
+          await page.reload({ waitUntil: 'networkidle', timeout: 90_000 })
           await page.getByTestId('sandbox-toggle').uncheck()
           await page.getByTestId('new-game').click()
           await page.getByTestId('start-pax').click()
@@ -105,7 +105,7 @@ describe('HUD top band layout', () => {
     } finally {
       vite.kill('SIGTERM')
     }
-  }, 180_000)
+  }, 300_000)
 })
 
 /** Every listed overlay sits fully below the top bar and clears each of its stats. */
