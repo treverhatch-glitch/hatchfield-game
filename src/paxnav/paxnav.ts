@@ -1322,7 +1322,11 @@ export class PaxNav {
         this.snapFollower(a, a.lead)
         continue
       }
-      if (a.phase !== 'board' && !a.rebook && now >= a.departAt - close) {
+      // Past security and already on the gate desk (walking up, in line, or
+      // being scanned) the close does not pull them back. Anyone still short
+      // of that desk misses.
+      const atGateDesk = a.fac?.kind === 'gate_desk'
+      if (a.phase !== 'board' && !atGateDesk && !a.rebook && now >= a.departAt - close) {
         if (guests) this.miss(a)
         else this.remove(a, 'missed')
         continue

@@ -228,7 +228,7 @@ describe('500 departing passengers through the starter terminal', () => {
     expect(peakQueue).toBeGreaterThan(5)
 
     // Every boarded passenger queued at security and the boarding desk, in route order.
-    const order = ['checkin_desk', 'security_lane', 'toilet', 'shop_counter', 'gate_desk']
+    const order = ['checkin_desk', 'bag_drop', 'security_lane', 'toilet', 'shop_counter', 'gate_desk']
     let checkedIn = 0
     for (const [id, list] of waits) {
       const kinds = list.map((w) => w.kind)
@@ -237,7 +237,8 @@ describe('500 departing passengers through the starter terminal', () => {
         // Toilet / food / shop come in any order between security and the gate.
         const a = order.indexOf(kinds[i - 1])
         const c = order.indexOf(kinds[i])
-        if (a >= 2 && a <= 3 && c >= 2 && c <= 3) continue
+        // Toilet and shop sit between security and the gate, in either order.
+        if (a >= 3 && a <= 4 && c >= 3 && c <= 4) continue
         expect(c, `${id}: ${kinds.join(' > ')}`).toBeGreaterThan(a)
       }
       if (kinds[0] === 'checkin_desk') checkedIn++

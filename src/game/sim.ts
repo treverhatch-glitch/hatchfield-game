@@ -9440,6 +9440,84 @@ export class Game {
     }
   }
 
+  /**
+   * Claim-belt bags for one arrival. Returns true while they are still waiting,
+   * false once the bag is in hand (or there was nothing to wait for).
+   */
+  private settleArrivalBags(g: HallGuest, dt: number): boolean {
+    const fl = this.flights.find((x) => x.id === g.flightId)
+    if (!fl) {
+      const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
+      const rate = this.claimClearRate(fit)
+      g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
+      if (g.needs.bags > 0) {
+        g.thought = 'Waiting at the carousel'
+        return true
+      }
+      if (!g.hasChecked) {
+        g.hasChecked = true
+        g.thought = 'Got my bag'
+      }
+      return false
+    }
+    if (g.atBagDesk) {
+      g.deskTime = (g.deskTime ?? 0) + dt
+      g.thought =
+        g.bagFault === 'missed_connection'
+          ? 'Lost-bag desk — my bag missed the connection'
+          : 'Lost-bag desk — my bag is late'
+      if ((g.deskTime ?? 0) < 4) return true
+      this.pickUpOwnBags(g, fl)
+      g.atBagDesk = false
+      g.hasChecked = true
+      g.needs.bags = 0
+      g.thought = 'Got my bag'
+      fl.bagStage = 'complete'
+      return false
+    }
+    if (fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+      this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+      g.claimWait = (g.claimWait ?? 0) + dt
+      g.thought =
+        fl.bagStage === 'unload_aircraft' || fl.bagStage === 'inbound_sort'
+          ? `Waiting — bags processing for claim ${fl.claimLane ?? '?'}`
+          : fl.bagStage === 'deliver_claim'
+            ? `Waiting — bags rolling to claim ${fl.claimLane ?? '?'}`
+            : 'Waiting for my bag off the aircraft…'
+      const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+        prefab: this.prefabFlight(fl),
+        normal: !this.hallOverloaded,
+      })
+      if (late.length) {
+        this.bagsMishandled += late.length
+        this.mishandleGuest(g.id, 'late')
+      }
+      return true
+    }
+    this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+    if (!ownerClaimReady(this.bagTags, g.id)) {
+      g.claimWait = (g.claimWait ?? 0) + dt
+      g.thought = 'Waiting for my bag'
+      const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+        prefab: this.prefabFlight(fl),
+        normal: !this.hallOverloaded,
+      })
+      if (late.length) {
+        this.bagsMishandled += late.length
+        this.mishandleGuest(g.id, 'late')
+      }
+      return true
+    }
+    if (!g.hasChecked) {
+      this.pickUpOwnBags(g, fl)
+      g.hasChecked = true
+      g.needs.bags = 0
+      g.thought = 'Got my bag'
+    }
+    fl.bagStage = 'complete'
+    return false
+  }
+
   private pickUpOwnBags(g: HallGuest, fl: Flight) {
     let pieces = 0
     for (const tag of this.bagTags) {
@@ -10918,7 +10996,22 @@ export class Game {
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
       if (this.hallNav.owns(g.id)) {
         const node = this.hallNav.hallNode(g.id)
-        if (node) g.node = node
+        const atClaim =
+          g.job === 'arrive' &&
+          !g.transfer &&
+          (g.node === 'claim' || this.hallNav.arrivals.phaseOf(g.id) === 'claim')
+        if (atClaim) {
+          // The walk owns the feet. Bags still clear on the claim clock, including
+          // a guest the test (or a seed) already stood at the carousel.
+          g.node = 'claim'
+          const waiting = this.settleArrivalBags(g, dt)
+          if (!waiting && g.hasChecked && g.needs.bags < 15) {
+            const open = this.openForGuest(g)
+            if (open.has('exit') && g.path[g.path.length - 1] !== 'exit') this.routeGuest(g, 'exit', open)
+          }
+        } else if (node) {
+          g.node = node
+        }
         if (this.hallNav.pastSecurity(g.id)) g.clearedSec = true
         continue
       }
@@ -11012,73 +11105,7 @@ export class Game {
         }
       }
       if (g.job === 'arrive' && g.node === 'claim' && !g.transfer) {
-        const fl = this.flights.find((x) => x.id === g.flightId)
-        if (!fl) {
-          const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
-          const rate = this.claimClearRate(fit)
-          g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
-          if (g.needs.bags > 0) {
-            g.thought = 'Waiting at the carousel'
-            continue
-          }
-          if (!g.hasChecked) {
-            g.hasChecked = true
-            g.thought = 'Got my bag'
-          }
-        } else if (g.atBagDesk) {
-          g.deskTime = (g.deskTime ?? 0) + dt
-          g.thought =
-            g.bagFault === 'missed_connection'
-              ? 'Lost-bag desk — my bag missed the connection'
-              : 'Lost-bag desk — my bag is late'
-          if ((g.deskTime ?? 0) < 4) continue
-          this.pickUpOwnBags(g, fl)
-          g.atBagDesk = false
-          g.hasChecked = true
-          g.needs.bags = 0
-          g.thought = 'Got my bag'
-          fl.bagStage = 'complete'
-        } else if (fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
-          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
-          g.claimWait = (g.claimWait ?? 0) + dt
-          g.thought =
-            fl.bagStage === 'unload_aircraft' || fl.bagStage === 'inbound_sort'
-              ? `Waiting — bags processing for claim ${fl.claimLane ?? '?'}`
-              : fl.bagStage === 'deliver_claim'
-                ? `Waiting — bags rolling to claim ${fl.claimLane ?? '?'}`
-                : 'Waiting for my bag off the aircraft…'
-          const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
-            prefab: this.prefabFlight(fl),
-            normal: !this.hallOverloaded,
-          })
-          if (late.length) {
-            this.bagsMishandled += late.length
-            this.mishandleGuest(g.id, 'late')
-          }
-          continue
-        } else {
-          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
-          if (!ownerClaimReady(this.bagTags, g.id)) {
-            g.claimWait = (g.claimWait ?? 0) + dt
-            g.thought = 'Waiting for my bag'
-            const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
-              prefab: this.prefabFlight(fl),
-              normal: !this.hallOverloaded,
-            })
-            if (late.length) {
-              this.bagsMishandled += late.length
-              this.mishandleGuest(g.id, 'late')
-            }
-            continue
-          }
-          if (!g.hasChecked) {
-            this.pickUpOwnBags(g, fl)
-            g.hasChecked = true
-            g.needs.bags = 0
-            g.thought = 'Got my bag'
-          }
-          fl.bagStage = 'complete'
-        }
+        if (this.settleArrivalBags(g, dt)) continue
       }
 
       if (g.job === 'depart' && g.node === 'security' && !g.clearedSec) {
@@ -11326,11 +11353,11 @@ export class Game {
         g.lost = false
         g.thought = 'Boarded'
         this.paxServed += 1
-        this.queueReputation(0.4)
+        // Reputation for a boarded or missed walker comes from the walk's own
+        // feedback. A second graph-sized hit here double-counts the same outcome.
       } else if (e.kind === 'missed') {
         g.happiness = Math.max(0, g.happiness - 30)
         this.missedFlights += 1
-        this.queueReputation(-0.8)
         const aid = this.guestAirlineId(g)
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
         if (!this.hallNav.hasWalker(e.id)) {

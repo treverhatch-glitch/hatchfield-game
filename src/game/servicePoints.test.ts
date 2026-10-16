@@ -356,7 +356,10 @@ function walk(game: Game, seconds: number): { peakWait: number; peakLane: number
 }
 
 function meanMood(game: Game, flightId: string): number {
-  const rows = game.hallGuests.filter((g) => !g.dead && !g.preview && g.flightId === flightId)
+  // Boarded passengers are marked finished by the walk. They still belong in the bank's mood.
+  const rows = game.hallGuests.filter(
+    (g) => !g.preview && g.flightId === flightId && (!g.dead || g.thought === 'Boarded'),
+  )
   if (!rows.length) return 0
   return rows.reduce((s, g) => s + g.happiness, 0) / rows.length
 }
