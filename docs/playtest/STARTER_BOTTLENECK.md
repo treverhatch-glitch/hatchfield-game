@@ -9,14 +9,14 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 | | |
 | --- | --- |
 | Seed | 1 |
-| First red line | none in 16 days |
-| Peak | in-game day 8, check-in desk, queue 2, 350 nav seconds |
-| Red line | 360 nav seconds at check-in. The four-stall curb meters the rides, so the wait stays under it |
+| First red line | in-game day 8, clock 1287 |
+| Peak | in-game day 8, check-in desk, queue 2, 373 nav seconds |
+| Red line | 360 nav seconds at check-in. Tug trains serve the stands, and day 8 tips over the line |
 | Signed | `air_regional_1`, `zoomjet` |
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
-Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them, so check-in peaks on day 8 at a queue of 2 and 350 nav seconds. That is under the 360-second red line, and neither check-in nor security flags inside 16 days. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. The belts reach the stands only through the sort, against the west face. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
+Desks at 12 a minute let Zoomjet sign beside the regional. Departing passengers ride to the layby, and the 2×4 hall's four stalls meter them. Bag tugs drive the truck pavement and cross the taxi on one cell, so check-in flags on day 8 at clock 1287: a queue of 2 and 373 nav seconds, just over the 360-second red line. The city road forks ahead of the curb, so the guard is not on the passenger road and not on the apron road the bowsers use. The tug pavement reaches the stands from the bag room, against the west face. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
 
 ## What changed
 

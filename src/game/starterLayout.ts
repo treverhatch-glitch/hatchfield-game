@@ -156,6 +156,12 @@ function paintPassenger(chart: Chart, police: boolean) {
   putAt(12, 10, 'belt')
   putAt(12, 11, 'belt')
   putAt(12, 12, 'belt')
+  // Join the bag pavement to the south road, then run a truck-only lane west of
+  // the remote stands. The lane crosses the taxi spine on one cell, so a train
+  // does not ride the jet taxi down to those stands.
+  putAt(12, 13, 'belt')
+  putAt(6, 14, 'belt')
+  for (let r = 6; r <= 28; r++) putAt(5, r, 'belt')
   // Against the west face of the 2-wide hall. The mesh yaws so the bays face the apron.
   putAt(14, 9, 'bags')
   putAt(7, 5, 'fuel')
