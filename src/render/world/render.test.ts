@@ -495,6 +495,25 @@ describe('map climate tint', () => {
 })
 
 describe('geometry builders', () => {
+  it('patches paved surface materials with custom shader', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+
+    // Check that runway and apron materials have custom ProgramCacheKey indicating they are patched
+    // Note: We need to access surfaceMats directly or wait until they are applied.
+    // Actually, surfaceMats is private, but we can access it using any.
+    const mats = (wr as any).surfaceMats;
+    const runwayMat = mats.get('runway');
+    const apronMat = mats.get('apron');
+    expect(runwayMat).toBeDefined()
+    expect(runwayMat.onBeforeCompile).toBeDefined()
+    expect(runwayMat.customProgramCacheKey?.()).toBe('paved-surface-true')
+    expect(apronMat.onBeforeCompile).toBeDefined()
+    expect(apronMat.customProgramCacheKey?.()).toBe('paved-surface-false')
+
+    wr.dispose()
+  })
+
   it('ground quads use world-space UVs and point up', () => {
     const g = quadsGeometry([{ c: 0, r: 0 }, { c: 1, r: 0 }], { sub: 2, uvSize: 2 })
     expect(g.getAttribute('position').count).toBe(18)

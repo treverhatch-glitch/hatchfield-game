@@ -105,6 +105,60 @@ const WHITE = new THREE.Color(1, 1, 1)
 
 const SURFACE_Y: Record<SurfaceKind, number> = { grass: 0.004, pad: 0.008, runway: 0.012, taxi: 0.012, apron: 0.012, road: 0.012 }
 
+
+function applyPavedSurface(mat: THREE.MeshLambertMaterial, isRunway: boolean) {
+  mat.customProgramCacheKey = () => `paved-surface-${isRunway}`
+  const previous = mat.onBeforeCompile
+  mat.onBeforeCompile = (shader, renderer) => {
+    previous?.call(mat, shader, renderer)
+    shader.vertexShader = `
+      varying vec2 vWorldXZ;
+      ${shader.vertexShader.replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+        vWorldXZ = (modelMatrix * vec4(position, 1.0)).xz;`
+      )}
+    `
+    shader.fragmentShader = `
+      varying vec2 vWorldXZ;
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0;
+        float a = 0.5;
+        for (int i = 0; i < 3; i++) {
+          v += a * noise(p);
+          p *= 2.0;
+          a *= 0.5;
+        }
+        return v;
+      }
+      ${shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        #ifdef USE_MAP
+          vec4 macroColor = texture2D(map, vMapUv * 0.15);
+          diffuseColor.rgb = mix(diffuseColor.rgb, macroColor.rgb * diffuse, 0.25);
+          ${isRunway ? `
+            float streakX = fbm(vec2(vWorldXZ.x * 0.02, vWorldXZ.z * 1.5));
+            float streakZ = fbm(vec2(vWorldXZ.x * 1.5, vWorldXZ.z * 0.02));
+            float dark = max(streakX, streakZ);
+            diffuseColor.rgb *= mix(1.0, 0.85, dark * 0.8);
+          ` : ``}
+        #endif
+        `
+      )}
+    `
+  }
+}
 export class WorldRenderer {
   readonly root = new THREE.Group()
   quality: QualityLevel
@@ -239,14 +293,13 @@ export class WorldRenderer {
       pad: this.tex.concrete,
     }
     for (const k of Object.keys(surf) as SurfaceKind[]) {
-      this.surfaceMats.set(
-        k,
-        new THREE.MeshLambertMaterial({
-          map: surf[k],
-          vertexColors: true,
-          color: GROUND_LOOK.surfaceTint[k],
-        }),
-      )
+      const mat = new THREE.MeshLambertMaterial({
+        map: surf[k],
+        vertexColors: true,
+        color: GROUND_LOOK.surfaceTint[k],
+      })
+      if (k !== 'grass') applyPavedSurface(mat, k === 'runway')
+      this.surfaceMats.set(k, mat)
     }
     this.lights = new AirfieldLights(this.tex)
     this.root.add(this.lights.root)
