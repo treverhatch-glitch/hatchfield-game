@@ -163,6 +163,9 @@ export class LandsideLayer {
         fleet.body.mesh.setColorAt(i, this.color)
       })
       for (const part of parts) part.commit(list.length)
+      fleet.body.mesh.name = `landside-${kind}-body`
+      fleet.cabin.mesh.name = `landside-${kind}-cabin`
+      if (fleet.sign) fleet.sign.mesh.name = `landside-${kind}-sign`
     }
 
     if (view.passengers.length && !this.people) {
@@ -184,6 +187,7 @@ export class LandsideLayer {
         people.mesh.setColorAt(i, this.color.set(PEOPLE_COLORS[hash(person.id) % PEOPLE_COLORS.length]))
       })
       people.commit(view.passengers.length)
+      people.mesh.name = 'landside-person'
     }
 
     this.syncOverlay(view, open, focus)

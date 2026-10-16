@@ -138,10 +138,10 @@ describe('runway capacity', () => {
     // Booked movements are 3× the retired 150s bank (4 a day → 12). Completions
     // stay under that ceiling: the opening headway, the night closure, and a
     // turnaround longer than the runway hole keep four stands from finishing
-    // 45 flights in eight days. The screened service gate and sort-only belts
-    // finish 13 on this seed. Nothing diverts.
+    // 45 flights in eight days. Passengers now ride to the layby, so this seed
+    // finishes 15. Nothing diverts.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
-    expect(result.done, `diverts ${diverts(game)}`).toBe(13)
+    expect(result.done, `diverts ${diverts(game)}`).toBe(15)
     expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)
@@ -177,19 +177,21 @@ describe('runway capacity', () => {
     expect(two.runwayLoad().lanes).toBe(2)
     const twoRun = runDays(two, 8)
     Math.random = random
-    expect(oneDiverts).toBe(0)
-    expect(diverts(two)).toBeLessThanOrEqual(1)
     // The opening headway is one shared gap, so both fields turn alike until
     // minute ten. After that each strip keeps the 32s gap, and the next flight
     // can use the other strip at the airline's own spacing (about 18–28s).
     // Starter stands and these painted bays board on foot, so a turn holds the
-    // stand longer than a bridge would. The second strip still adds the flights
-    // that tighter spacing can place. On this seed that is 11 against 10 after
-    // the opening. Booked movements are still two strips to one.
+    // stand longer than a bridge would. With passengers riding to the layby,
+    // this seed finishes 15 on one strip (1 divert) and 24 on two (none).
+    // After the opening the second strip adds 16 against 9.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
-    expect(twoRun.done, `one ${oneRun.done} two ${twoRun.done}`).toBeGreaterThan(oneRun.done)
-    expect(twoGain, `after opening one ${oneGain} two ${twoGain}`).toBeGreaterThanOrEqual(oneGain * 1.1)
+    expect(oneRun.done).toBe(15)
+    expect(twoRun.done).toBe(24)
+    expect(oneDiverts).toBe(1)
+    expect(diverts(two)).toBe(0)
+    expect(oneGain).toBe(9)
+    expect(twoGain).toBe(16)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {

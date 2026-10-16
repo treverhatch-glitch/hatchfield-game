@@ -864,7 +864,15 @@ import {
   spawnDeparturePax,
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
-import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
+import {
+  LANDSIDE,
+  LandsideTraffic,
+  curbHurry,
+  curbKind,
+  groupCurbOrders,
+  type CurbOrder,
+  type LandsideView,
+} from '../landside/index.ts'
 import { BodyList } from '../bodies/index.ts'
 import {
   BAG_CART_WAIT,
@@ -1403,6 +1411,8 @@ export class Game {
   landsideUses = 0
   /** Capacity model for the public curb. Rendering reads the snapshot. */
   private landsideTraffic = new LandsideTraffic()
+  /** Passenger trips the curb fleet has not finished. Offered every landside tick. */
+  private curbOrders: CurbOrder[] = []
   /** Shared body list. Landside road vehicles are on it; apron trucks, aircraft and buildings join in turnaround run 5. */
   readonly bodies = new BodyList([this.landsideTraffic])
   landsideOpen = false
@@ -1991,6 +2001,7 @@ export class Game {
     this.reputationShown = 40
     this.reputationDrift = 0
     this.landsideTraffic.reset()
+    this.curbOrders = []
     this.landsideOpen = false
     this.landsideFocus = null
     this.landsideNewsCool = 0
@@ -7113,6 +7124,7 @@ export class Game {
    */
   private tickLandside(dt: number) {
     this.noteFuelChain(dt)
+    this.landsideTraffic.offer(this.curbOrders)
     const view = this.landsideTraffic.tick(dt, {
       roads: tilesOf(this.tiles, 'road'),
       connectors: tilesOf(this.tiles, 'guard'),
@@ -7132,6 +7144,7 @@ export class Game {
         0,
       ),
     })
+    this.applyCurbNotices()
     if (view.satisfactionDelta !== 0) this.queueReputation(view.satisfactionDelta)
     this.landsideNewsCool = Math.max(0, this.landsideNewsCool - dt)
     let missedNews = false
@@ -8163,6 +8176,7 @@ export class Game {
       this.analystCool = 40
       this.flights = []
       this.landsideTraffic.reset()
+      this.curbOrders = []
       this.landsideOpen = false
       this.landsideFocus = null
       this.landsideNewsCool = 0
@@ -9949,7 +9963,17 @@ export class Game {
       if (tag) g.tag = tag
       if (seat) this.paintShowUp(g, seat)
       const at = drawn.releases[i] ?? this.clock
-      if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
+      if (curbKind(g.arriveMode)) {
+        g.releaseAt = at
+        g.curbHold = 'ride'
+        g.lost = false
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.wx = undefined
+        g.wz = undefined
+        g.thought = 'On the way to the doors'
+      } else if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
       else {
         g.releaseAt = at
         g.path = []
@@ -10251,8 +10275,25 @@ export class Game {
       if (flight) this.tuneDepartureGuest(g, flight)
     }
     this.applyGuestLandside(g, 'depart')
-    if (open.size) this.openDepartingGuest(g, open)
-    else g.thought = 'On the way to the doors'
+    const release = plan.releases[plan.spawned]
+    if (curbKind(g.arriveMode)) {
+      g.releaseAt = release
+      g.curbHold = 'ride'
+      g.lost = false
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.wx = undefined
+      g.wz = undefined
+      g.thought = 'On the way to the doors'
+    } else if (release <= this.clock + 0.001 && open.size) this.openDepartingGuest(g, open)
+    else {
+      g.releaseAt = release
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.thought = 'On the way to the doors'
+    }
     this.hallGuests.push(g)
   }
 
@@ -10363,7 +10404,10 @@ export class Game {
       const fit = this.fitByKey(plan.hallId) ?? this.activeHall() ?? this.fits[0]
       if (!fit) continue
       const open = this.hallOpenFor(fit)
-      while (plan.spawned < plan.releases.length && plan.releases[plan.spawned] <= this.clock) {
+      while (
+        plan.spawned < plan.releases.length &&
+        plan.releases[plan.spawned] - LANDSIDE.curbLeadSec <= this.clock
+      ) {
         this.spawnShowUpGuest(plan, open)
         plan.spawned += 1
       }
@@ -10793,22 +10837,34 @@ export class Game {
   tickHall(dt: number) {
     if (!this.fits.length) {
       this.hallGuests = []
+      this.curbOrders = []
       this.seatBooks.clear()
       return
     }
     const anyOpen = this.fits.some((f) => this.hallOpenFor(f).size > 0)
     if (!anyOpen) {
       this.hallGuests = []
+      this.curbOrders = []
       this.seatBooks.clear()
       return
     }
     const kit = new Map<string, HallKitState>()
     this.retireDayOneCrowd()
+    this.queueCurbRides()
     for (const g of this.hallGuests) {
       if (g.dead) continue
       if (g.preview) {
         this.tickPreviewGuest(g, dt)
         continue
+      }
+      if (g.curbHold === 'ride' || g.curbHold === 'walk-out') continue
+      if (g.curbHold === 'walk-in') {
+        if (g.releaseAt != null && this.clock < g.releaseAt) continue
+        const open = this.openForGuest(g)
+        g.curbHold = undefined
+        g.curbOrder = undefined
+        g.releaseAt = undefined
+        if (open.size) this.openDepartingGuest(g, open)
       }
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
       const open = this.openForGuest(g)
@@ -11104,6 +11160,7 @@ export class Game {
     }
     // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
     for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
+    this.queueCurbRides()
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
     if (this.seatBooks.size) {
       const live = new Set(this.hallGuests.map((g) => g.id))
@@ -11120,10 +11177,73 @@ export class Game {
     else if (this.hallOverloaded && cap > this.overloadCap) this.releaseHallIfFits()
   }
 
-  /** Headcount against the live ceiling. Preview and not-yet-released guests do not count. */
+  /** Hand the curb fleet one vehicle per car, taxi, or bus group that is waiting outside. */
+  private queueCurbRides() {
+    const waiting: {
+      id: string
+      flightId: string
+      kind: NonNullable<ReturnType<typeof curbKind>>
+      role: 'drop' | 'pick'
+      hurry: boolean
+    }[] = []
+    for (const g of this.hallGuests) {
+      if (g.dead || g.curbOrder) continue
+      if (g.curbHold !== 'ride' && g.curbHold !== 'walk-out') continue
+      const kind = curbKind(g.arriveMode)
+      if (!kind) continue
+      waiting.push({
+        id: g.id,
+        flightId: g.flightId,
+        kind,
+        role: g.curbHold === 'walk-out' ? 'pick' : 'drop',
+        hurry: g.curbHold === 'ride' && curbHurry(g.releaseAt, this.clock),
+      })
+    }
+    if (!waiting.length) return
+    const orders = groupCurbOrders(waiting, LANDSIDE.alight.bus)
+    const byId = new Map(this.hallGuests.map((g) => [g.id, g]))
+    for (const order of orders) {
+      this.curbOrders.push(order)
+      for (const id of order.guests) {
+        const g = byId.get(id)
+        if (g) g.curbOrder = order.id
+      }
+    }
+  }
+
+  /** Step passengers off a finished curb trip: into the hall, or into the car that is leaving. */
+  private applyCurbNotices() {
+    const notes = this.landsideTraffic.takeNotices()
+    if (!notes.length) return
+    const byId = new Map(this.hallGuests.map((g) => [g.id, g]))
+    for (const note of notes) {
+      if (note.kind === 'boarded' || note.kind === 'picked') {
+        this.curbOrders = this.curbOrders.filter((order) => order.id !== note.orderId)
+      }
+      for (const id of note.guests) {
+        const g = byId.get(id)
+        if (!g || g.dead) continue
+        if (note.kind === 'alighted') {
+          g.thought = 'Getting out at the curb'
+        } else if (note.kind === 'boarded') {
+          g.curbHold = 'walk-in'
+          g.thought = 'Walking into the terminal'
+        } else if (note.kind === 'picked') {
+          g.curbHold = undefined
+          g.curbOrder = undefined
+          g.dead = true
+          g.thought = 'Picked up'
+          this.paxServed += 1
+          this.queueReputation(g.happiness >= 55 ? 0.35 : 0.1)
+        }
+      }
+    }
+  }
+
+  /** Headcount against the live ceiling. Preview, curb trips, and not-yet-released guests do not count. */
   private hallHeadcount(): number {
     return this.hallGuests.filter(
-      (g) => !g.preview && (g.releaseAt == null || g.releaseAt <= this.clock),
+      (g) => !g.preview && !g.curbHold && (g.releaseAt == null || g.releaseAt <= this.clock),
     ).length
   }
 
@@ -15997,6 +16117,18 @@ export class Game {
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
       this.applyGuestLandside(g, 'arrive')
+      if (curbKind(g.arriveMode)) {
+        g.curbHold = 'walk-out'
+        g.curbOrder = undefined
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.route = undefined
+        g.wx = undefined
+        g.wz = undefined
+        g.thought = 'Walking to the curb'
+        return
+      }
       if (!g.thought.startsWith('No ') && !g.thought.includes('Hotel') && !g.thought.includes('park')) {
         g.thought = 'Left the airport'
       }

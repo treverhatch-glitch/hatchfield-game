@@ -68,6 +68,8 @@ export interface NavGuest {
   bags?: boolean
   /** Airline this departure is checking in with. */
   airlineId?: string
+  /** Still on a curb trip. The hall walk starts once they are through the doors. */
+  curbHold?: 'ride' | 'walk-in' | 'walk-out'
 }
 
 /** Sim fare persona -> walker purpose. Family fares are leisure or family trips, so they roll. */
@@ -740,6 +742,7 @@ export class HallNav {
     const still = new Set<string>()
     for (const g of guests) {
       if (g.dead || (g.hallId && g.hallId !== this.hall)) continue
+      if (g.curbHold) continue
       if (g.releaseAt != null && g.releaseAt > clock) continue
       const gate = this.gates[hashId(g.flightId) % this.gates.length]
       if (g.job === 'arrive') {

@@ -1,6 +1,7 @@
 import type { Body, BodySource } from '../bodies/index.ts'
 import { LANDSIDE } from './config.ts'
 import { buildNetwork, cellId } from './network.ts'
+import type { CurbNotice, CurbOrder } from './trips.ts'
 import type { LandsideField, LandsideView, ModeSplit, Network, SegmentRead } from './types.ts'
 import { LandsideFleet } from './vehicles.ts'
 
@@ -242,7 +243,8 @@ function segmentsFor(net: Network, sample: Sample, queue: number, curbBusy: numb
 /**
  * Landside traffic: the capacity model plus the vehicles that are drawn.
  * Pressure, delay and missed check-ins come from {@link measure}. The drawn
- * vehicles arrive at the same per-kind rates and use the real stalls, but
+ * vehicles follow those per-kind rates until {@link LandsideTraffic.offer}
+ * hands them real passenger trips. Either way they use the real stalls and
  * never feed back into the numbers.
  * Rendering reads {@link LandsideTraffic.snapshot} and does not feed back.
  * The drawn vehicles are also bodies on the shared {@link BodySource} list.
@@ -263,6 +265,20 @@ export class LandsideTraffic implements BodySource {
     this.wasLate = false
     this.fleet.reset()
     this.view = emptyView()
+  }
+
+  /**
+   * Carry these passengers. An empty list still turns decorative traffic off,
+   * so the game curb shows only people who have a flight.
+   * The same id offered again is ignored.
+   */
+  offer(orders: readonly CurbOrder[]): void {
+    this.fleet.offer(orders)
+  }
+
+  /** Alighted, boarded, and picked up since the last take. */
+  takeNotices(): CurbNotice[] {
+    return this.fleet.takeNotices()
   }
 
   snapshot(): LandsideView {

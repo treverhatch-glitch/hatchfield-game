@@ -19,6 +19,7 @@ import {
   type LaneGeometry,
 } from './lanes.ts'
 import { cellId } from './network.ts'
+import type { CurbNotice, CurbOrder } from './trips.ts'
 import type {
   Cell,
   LandsideField,
@@ -83,6 +84,10 @@ interface Vehicle {
   phase: Phase
   slot: Slot | null
   dwell: number
+  /** Seconds already stopped on a pickup. */
+  stopFor: number
+  /** Named passengers, when this vehicle is a real trip. Null for background traffic. */
+  order: CurbOrder | null
   gone: boolean
 }
 
@@ -93,6 +98,9 @@ interface Walker {
   toC: number
   toR: number
   age: number
+  guestId?: string
+  orderId?: string
+  dir: 'in' | 'out'
 }
 
 interface Road {
@@ -372,6 +380,11 @@ export class LandsideFleet {
   private nextId = 1
   private clock = 0
   private door: Cell | null = null
+  /** Once offered a trip list, background rate spawns stop. */
+  private scheduled = false
+  private orders: CurbOrder[] = []
+  private known = new Set<string>()
+  private notices: CurbNotice[] = []
 
   reset(): void {
     this.road = null
@@ -382,6 +395,26 @@ export class LandsideFleet {
     this.nextId = 1
     this.clock = 0
     this.door = null
+    this.scheduled = false
+    this.orders = []
+    this.known = new Set()
+    this.notices = []
+  }
+
+  /** Queue passenger trips. Repeat ids are ignored. An empty call still disables rate spawns. */
+  offer(orders: readonly CurbOrder[]): void {
+    this.scheduled = true
+    for (const order of orders) {
+      if (this.known.has(order.id)) continue
+      this.known.add(order.id)
+      this.orders.push(order)
+    }
+  }
+
+  takeNotices(): CurbNotice[] {
+    const out = this.notices
+    this.notices = []
+    return out
   }
 
   step(dt: number, field: LandsideField, net: Network, rates: ArrivalRates): void {
@@ -405,9 +438,10 @@ export class LandsideFleet {
     const road = this.road
     if (!road) return []
     const cellM = LANDSIDE.cellM
-    return this.cars.map((car) => {
+    return this.cars.flatMap((car) => {
       const pos = place(road, car.x, latOf(road, car))
-      return {
+      if (pos.y < -1e-6) return []
+      return [{
         id: car.id,
         kind: car.kind,
         c: pos.x / cellM,
@@ -416,7 +450,9 @@ export class LandsideFleet {
         state: stateOf(car),
         lane: car.lane,
         speed: car.v,
-      }
+        orderId: car.order?.id,
+        role: car.order?.role,
+      }]
     })
   }
 
@@ -428,6 +464,9 @@ export class LandsideFleet {
         c: walker.fromC + (walker.toC - walker.fromC) * t,
         r: walker.fromR + (walker.toR - walker.fromR) * t,
         heading: Math.atan2(walker.toR - walker.fromR, walker.toC - walker.fromC),
+        guestId: walker.guestId,
+        orderId: walker.orderId,
+        dir: walker.dir,
       }
     })
   }
@@ -435,7 +474,13 @@ export class LandsideFleet {
   private ensureRoad(field: LandsideField, net: Network): void {
     const key = `${net.path.map(cellId).join(';')}|${net.exit.map(cellId).join(';')}|${net.edgeExit}|${LANDSIDE.drivingSide}`
     if (!this.road || this.road.key !== key) {
+      const riding = this.cars.flatMap((car) => (car.order ? [car.order] : []))
       this.cars = []
+      this.walkers = []
+      if (riding.length) {
+        const queued = new Set(this.orders.map((order) => order.id))
+        this.orders.unshift(...riding.filter((order) => !queued.has(order.id)))
+      }
       const geo = buildLanes(net)
       this.road = geo
         ? {
@@ -494,13 +539,22 @@ export class LandsideFleet {
     const layby = geo.layby
 
     if (car.phase === 'dwell') {
-      car.dwell -= h
-      if (car.dwell <= 0) {
-        if (car.slot?.park) {
-          this.enterLot(road, car)
-          return
+      if (car.order?.role === 'pick') {
+        car.stopFor += h
+        const orderId = car.order.id
+        const walked = this.walkers.some(
+          (walker) => walker.orderId === orderId && walker.dir === 'out' && walker.age >= L.walkSec,
+        )
+        if (walked && car.stopFor >= L.curbStopSec) this.finishPickup(car)
+      } else {
+        car.dwell -= h
+        if (car.dwell <= 0) {
+          if (car.slot?.park) {
+            this.enterLot(road, car)
+            return
+          }
+          car.phase = 'leave'
         }
-        car.phase = 'leave'
       }
     }
     if (car.phase === 'arrive' && !car.slot) this.assign(road, car)
@@ -574,6 +628,15 @@ export class LandsideFleet {
     v = Math.max(0, v)
     let nx = xAt(road, m, s + v * h)
     nx = Math.max(car.x, Math.min(nx, limX, stopX))
+    const side = latOf(road, car)
+    const curY = place(road, car.x, side).y
+    const nextY = place(road, nx, side).y
+    if (curY >= 0 && nextY < 0) {
+      // Crossing off the north edge on the way back to the city. Stay on the map.
+      car.gone = true
+      car.v = 0
+      return
+    }
     const moved = sAt(road, m, nx) - s
     car.v = Math.max(0, Math.min(v, moved / h))
     car.x = nx
@@ -591,6 +654,7 @@ export class LandsideFleet {
           car.v = 0
           car.phase = 'dwell'
           car.dwell = dwellFor(car.kind, slot)
+          car.stopFor = 0
           if (!slot.park) this.drop(road, car)
         }
       } else if (car.p >= 1 - MOVE_DONE) {
@@ -750,7 +814,15 @@ export class LandsideFleet {
     return cap
   }
 
-  private prefs(road: Road, kind: VehicleKind): Group[] {
+  private prefs(road: Road, kind: VehicleKind, order: CurbOrder | null = null): Group[] {
+    if (order) {
+      if (kind === 'taxi') return ['rank', 'curb']
+      if (kind === 'bus') {
+        const len = lengthOf('bus')
+        return road.slots.some((slot) => slot.group === 'bay' && slot.maxLen >= len) ? ['bay', 'curb'] : ['curb']
+      }
+      return ['curb']
+    }
     if (kind === 'taxi') return ['rank', 'curb']
     if (kind === 'bus') {
       const len = lengthOf('bus')
@@ -765,7 +837,7 @@ export class LandsideFleet {
     const len = car.half * 2
     const s = sAt(road, geo.curbLane, car.x)
     const reach = s + (car.v * car.v) / (2 * L.decelMps2) + (car.lane === geo.curbLane ? 0 : L.laneChangeMinM)
-    for (const group of this.prefs(road, car.kind)) {
+    for (const group of this.prefs(road, car.kind, car.order)) {
       let best: Slot | null = null
       let bestHalf = 2
       for (const slot of road.slots) {
@@ -794,7 +866,7 @@ export class LandsideFleet {
     const L = LANDSIDE
     const curb = road.geo.curbLane
     const len = car.half * 2
-    const prefs = this.prefs(road, car.kind)
+    const prefs = this.prefs(road, car.kind, car.order)
     let group: Group | null = null
     for (let k = prefs.length - 1; k >= 0 && !group; k--) {
       if (road.slots.some((slot) => slot.group === prefs[k] && slot.maxLen >= len)) group = prefs[k]
@@ -847,7 +919,11 @@ export class LandsideFleet {
   }
 
   private spawn(road: Road, h: number, rates: ArrivalRates): void {
-    const L = LANDSIDE
+    if (this.scheduled) {
+      const order = this.orders[0]
+      if (order && this.trySpawn(road, order.kind, order)) this.orders.shift()
+      return
+    }
     for (const kind of KINDS) this.due[kind] += Math.max(0, rates[kind] || 0) * (h / 60)
     if (!this.primed) {
       let first: VehicleKind | null = null
@@ -860,30 +936,80 @@ export class LandsideFleet {
     let kind: VehicleKind | null = null
     for (const k of KINDS) if (this.due[k] >= 1 && (!kind || this.due[k] > this.due[kind])) kind = k
     if (!kind) return
+    if (!this.trySpawn(road, kind, null)) {
+      for (const k of KINDS) this.due[k] = Math.min(this.due[k], 1)
+      return
+    }
+    this.due[kind] -= 1
+  }
+
+  /** First sample on the way in whose centre is on the map (row >= 0). */
+  private entryX(road: Road, lane: number): number {
+    const lat = road.geo.lat[lane]
+    const end = Math.max(1, road.geo.forwardEnd)
+    if (place(road, 0, lat).y >= -1e-6) return 0
+    let lo = 0
+    let hi = end
+    if (place(road, hi, lat).y < 0) return hi
+    for (let k = 0; k < 20; k++) {
+      const mid = (lo + hi) / 2
+      if (place(road, mid, lat).y >= 0) hi = mid
+      else lo = mid
+    }
+    return hi
+  }
+
+  /** A hurried trip starts on the lane, a short drive before its stall, still on the map. */
+  private hurryX(road: Road, lane: number, kind: VehicleKind): number {
+    const entry = this.entryX(road, lane)
+    const len = lengthOf(kind)
+    let stall: Slot | null = null
+    for (const slot of road.slots) {
+      if (slot.holder || slot.maxLen < len) continue
+      if (slot.group !== 'curb' && slot.group !== 'rank' && slot.group !== 'bay') continue
+      if (!stall || slot.x < stall.x) stall = slot
+    }
+    if (!stall) return entry
+    const back = sAt(road, lane, stall.startX) - LANDSIDE.curbHurrySpawnM
+    const x = xAt(road, lane, Math.max(sAt(road, lane, entry), back))
+    if (place(road, x, road.geo.lat[lane]).y < 0) return entry
+    return x
+  }
+
+  /**
+   * Put one vehicle on the first lane that has a gap.
+   * The passing lanes only take a vehicle that already has a stall.
+   */
+  private trySpawn(road: Road, kind: VehicleKind, order: CurbOrder | null): boolean {
+    const L = LANDSIDE
     const half = lengthOf(kind) / 2
     const curb = road.geo.curbLane
+    const follow = Math.max(L.minGapM, L.followBodyLengths * half * 2)
     for (let lane = curb; lane >= 0; lane--) {
+      // Background traffic still forms off the north edge and drives on. A hurried
+      // trip appears on the lane near its stall. Either way the centre is not drawn past row 0.
+      const entry = order?.hurry ? this.hurryX(road, lane, kind) : xAt(road, lane, -half)
       let first: Vehicle | null = null
       for (const other of this.cars) {
         if (occupies(road, other).includes(lane) && (!first || other.x < first.x)) first = other
       }
-      const room = first ? sAt(road, lane, first.x) - first.half : Infinity
-      const gap = room - Math.max(L.minGapM, L.followBodyLengths * half * 2)
-      if (gap < 0) continue
+      const entryS = sAt(road, lane, entry)
+      const leadRear = first ? sAt(road, lane, first.x) - first.half : Infinity
+      const bumper = leadRear - (entryS + half)
+      if (bumper < follow) continue
       const leadV = first ? first.v : L.speedMps
-      const v = Math.min(L.speedMps, Math.sqrt(leadV * leadV + 2 * L.decelMps2 * gap))
-      const car = this.make(road, kind, xAt(road, lane, -half), lane, v)
-      // The passing lane is kept for vehicles that already have a stall to go to.
-      // Ones still waiting for a stall queue in the curb lane.
+      const surplus = Number.isFinite(bumper) ? bumper - follow : Infinity
+      const v = Math.min(L.speedMps, Math.sqrt(leadV * leadV + 2 * L.decelMps2 * Math.max(0, surplus)))
+      const car = this.make(road, kind, entry, lane, v)
+      car.order = order
       if (lane < curb) {
         this.assign(road, car)
         if (!car.slot) continue
       }
       this.cars.push(car)
-      this.due[kind] -= 1
-      return
+      return true
     }
-    for (const k of KINDS) this.due[k] = Math.min(this.due[k], 1)
+    return false
   }
 
   private make(road: Road, kind: VehicleKind, x: number, lane: number, v: number): Vehicle {
@@ -904,15 +1030,32 @@ export class LandsideFleet {
       phase: 'arrive',
       slot: null,
       dwell: 0,
+      stopFor: 0,
+      order: null,
       gone: false,
     }
   }
 
   /** People step out on the kerb side and walk to the hall door. */
   private drop(road: Road, car: Vehicle): void {
+    const at = this.kerbCell(road, car)
+    if (car.order?.role === 'pick') {
+      this.walkOut(car, at.c, at.r)
+      return
+    }
+    if (car.order?.role === 'drop') {
+      this.notices.push({ kind: 'alighted', orderId: car.order.id, guests: [...car.order.guests] })
+      this.walkIn(car, at.c, at.r, car.heading)
+      car.dwell = LANDSIDE.curbStopSec
+      return
+    }
+    this.dropFrom(car, at.c, at.r, car.heading)
+  }
+
+  private kerbCell(road: Road, car: Vehicle): { c: number; r: number } {
     const kerb = road.geo.lat[road.geo.layby] + LANDSIDE.laybyWidthM / 2 + 0.6
     const at = place(road, car.x, kerb)
-    this.dropFrom(car, at.x / LANDSIDE.cellM, at.y / LANDSIDE.cellM, car.heading)
+    return { c: at.x / LANDSIDE.cellM, r: at.y / LANDSIDE.cellM }
   }
 
   private dropFrom(car: Vehicle, c: number, r: number, heading: number): void {
@@ -929,15 +1072,90 @@ export class LandsideFleet {
         toC: door.c,
         toR: door.r,
         age: 0,
+        dir: 'in',
       })
     }
   }
 
+  /** Named passengers step out and walk to the hall door. */
+  private walkIn(car: Vehicle, c: number, r: number, heading: number): void {
+    const door = this.door
+    const guests = car.order?.guests ?? []
+    if (!door || !guests.length) return
+    const along = 1.6 / LANDSIDE.cellM
+    guests.forEach((guestId, n) => {
+      const f = (n + 1) / (guests.length + 1) - 0.5
+      this.walkers.push({
+        id: `${car.id}-${guestId}`,
+        fromC: c + Math.cos(heading) * along * f,
+        fromR: r + Math.sin(heading) * along * f,
+        toC: door.c,
+        toR: door.r,
+        age: 0,
+        guestId,
+        orderId: car.order?.id,
+        dir: 'in',
+      })
+    })
+  }
+
+  /** A pickup is at the kerb. The arrival walks out from the hall door. */
+  private walkOut(car: Vehicle, c: number, r: number): void {
+    const door = this.door
+    const guests = car.order?.guests ?? []
+    if (!door || !guests.length) return
+    const along = 1.6 / LANDSIDE.cellM
+    guests.forEach((guestId, n) => {
+      const f = (n + 1) / (guests.length + 1) - 0.5
+      this.walkers.push({
+        id: `${car.id}-${guestId}`,
+        fromC: door.c,
+        fromR: door.r,
+        toC: c + along * f,
+        toR: r,
+        age: 0,
+        guestId,
+        orderId: car.order?.id,
+        dir: 'out',
+      })
+    })
+  }
+
+  /** The arrival is in the car. It pulls away. */
+  private finishPickup(car: Vehicle): void {
+    const order = car.order
+    if (order) {
+      this.notices.push({ kind: 'picked', orderId: order.id, guests: [...order.guests] })
+      this.walkers = this.walkers.filter((walker) => walker.orderId !== order.id)
+    }
+    car.phase = 'leave'
+    car.dwell = 0
+  }
+
   private stepWalkers(dt: number): void {
     const stay = LANDSIDE.walkSec + LANDSIDE.dwellSec * 0.45
+    const step = Math.max(0, dt)
+    for (const walker of this.walkers) walker.age += step
+    const boarded = new Map<string, string[]>()
+    for (const walker of this.walkers) {
+      if (walker.dir !== 'in' || !walker.orderId || !walker.guestId) continue
+      if (walker.age < LANDSIDE.walkSec) continue
+      const mates = this.walkers.filter((other) => other.orderId === walker.orderId && other.dir === 'in')
+      if (!mates.every((other) => other.age >= LANDSIDE.walkSec)) continue
+      if (!boarded.has(walker.orderId)) {
+        boarded.set(
+          walker.orderId,
+          mates.map((other) => other.guestId).filter((id): id is string => Boolean(id)),
+        )
+      }
+    }
+    for (const [orderId, guests] of boarded) {
+      this.notices.push({ kind: 'boarded', orderId, guests })
+    }
+    const done = new Set(boarded.keys())
     const next: Walker[] = []
     for (const walker of this.walkers) {
-      walker.age += Math.max(0, dt)
+      if (walker.orderId && walker.dir === 'in' && done.has(walker.orderId)) continue
       if (walker.age < stay) next.push(walker)
     }
     this.walkers = next

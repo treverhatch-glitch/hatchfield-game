@@ -1,6 +1,7 @@
 export { LANDSIDE, type ParkKind } from './config.ts'
 export { openCurbFlow } from './open.ts'
 export { LandsideTraffic, arrivalRate, measure, pressureColor } from './engine.ts'
+export { curbHurry, curbKind, groupCurbOrders } from './trips.ts'
 export { approachLanes, buildNetwork, cellId, curbFrontage, exitPath, exitsAtEdge } from './network.ts'
 export {
   buildLanes,
@@ -13,6 +14,7 @@ export {
   pointAt,
   type LaneGeometry,
 } from './lanes.ts'
+export type { CurbGuestRef, CurbNotice, CurbOrder } from './trips.ts'
 export type {
   Cell,
   LandsideField,

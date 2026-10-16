@@ -147,6 +147,14 @@ export interface HallGuest {
   wyaw?: number
   /** Sim clock when a departing passenger reaches the doors. Until then they are not in the hall. */
   releaseAt?: number
+  /** Curb trip that is carrying this passenger. Empty once they are in the hall or picked up. */
+  curbOrder?: string
+  /**
+   * Outside the hall for a real curb trip.
+   * `ride` is in the vehicle, `walk-in` has reached the door and is waiting for release,
+   * `walk-out` is an arrival heading to a pickup.
+   */
+  curbHold?: 'ride' | 'walk-in' | 'walk-out'
   /** On a bench or seat row this tick. */
   seated?: boolean
   /** Stamped show-up. Lane and spend follow this, not the fare tag alone. */

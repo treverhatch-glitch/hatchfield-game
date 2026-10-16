@@ -139,8 +139,20 @@ export const LANDSIDE = {
   smoothSec: 6,
   /** Passengers who step out of one car, taxi, or bus. */
   alight: { car: 1, taxi: 1, bus: 3 },
-  /** Seconds a passenger walks from the door to the hall. */
+  /** Seconds a passenger walks from the kerb to the hall door, or back out to a pickup. */
   walkSec: 4.5,
+  /**
+   * How early a curb vehicle is sent, seconds before that passenger's door time.
+   * The drive, the stop, and the walk fit inside this, so check-in still opens
+   * on the show-up curve.
+   */
+  curbLeadSec: 50,
+  /** Closer than this to the door, the vehicle starts near the stall instead of the city. */
+  curbHurrySec: 38,
+  /** Metres before the stall a hurried vehicle appears. It still drives the last stretch. */
+  curbHurrySpawnM: 40,
+  /** Seconds a trip vehicle sits at the kerb while someone gets in or out. */
+  curbStopSec: 1.2,
   /** Opening trickle, passengers per minute, before the bank grows. */
   baseArrivalsPerMin: 2,
   /** Extra passengers per minute for each passenger the airport handled today. */
