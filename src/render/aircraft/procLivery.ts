@@ -20,7 +20,7 @@ import { MODEL_SPECS, type Livery } from './specs'
 export const LIVERY_KEY_SEP = '@'
 
 /** Plate size relative to the base layout in LIVERY_ART. High is 2x. */
-export const PLATE_SCALE: Record<TextureQuality, number> = { low: 0.5, med: 1, high: 2 }
+export const PLATE_SCALE: Record<TextureQuality, number> = { low: 1, med: 2, high: 4 }
 
 const WHITE = '#f2f4f6'
 const BELLY_SHADE = 0.58
@@ -313,6 +313,8 @@ function plate(w: number, h: number, paint: (ctx: Ctx, w: number, h: number) => 
   const canvas = canvasFactory(w, h)
   const ctx = canvas?.getContext('2d')
   if (!canvas || !ctx) return null
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   paint(ctx, w, h)
   const tex = new THREE.CanvasTexture(canvas as unknown as HTMLCanvasElement)
   tex.colorSpace = THREE.SRGBColorSpace

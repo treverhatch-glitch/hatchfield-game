@@ -142,9 +142,12 @@ describe('livery texture cache', () => {
     procLiveryTextures(procLiveryKey('brisa', 'a320neo'))
     expect(made[0]).toEqual({ w: LIVERY_ART.fuselage.w * PLATE_SCALE.high, h: LIVERY_ART.fuselage.h * PLATE_SCALE.high })
     expect(PLATE_SCALE.high).toBeGreaterThan(1)
+    const tex = procLiveryTextures(procLiveryKey('brisa', 'a320neo'))!
+    expect(tex.fuselage.anisotropy).toBe(16)
+    expect(tex.fuselage.generateMipmaps).toBe(true)
     made.length = 0
     procLiveryTextures(procLiveryKey('brisa', 'a320neo'), 'low')
-    expect(made[0].w).toBeLessThan(LIVERY_ART.fuselage.w)
+    expect(made[0].w).toBeGreaterThanOrEqual(LIVERY_ART.fuselage.w)
   })
 
   it('returns nothing without a canvas or for unknown airlines', () => {

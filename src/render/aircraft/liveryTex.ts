@@ -156,7 +156,7 @@ function loadPlate(id: string, slot: LiverySlotName, into: AirlineLiveryTex) {
     liveryFile(id, slot, quality),
     (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace
-      tex.anisotropy = quality === 'high' ? 16 : quality === 'med' ? 8 : 4
+      tex.anisotropy = 16
       tex.magFilter = THREE.LinearFilter
       tex.minFilter = THREE.LinearMipmapLinearFilter
       tex.generateMipmaps = true
@@ -294,9 +294,9 @@ varying float vLiverySlot;`,
 {
   vec4 liveryTex = vec4(0.0);
   // Bias toward the sharper mip so a small aircraft keeps its plate instead of a white average.
-  if (vLiverySlot < 0.5) liveryTex = texture2D(liveryFuselage, vLiveryUv, -2.5);
-  else if (vLiverySlot < 1.5) liveryTex = texture2D(liveryTail, vLiveryUv, -2.5);
-  else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv, -2.5);
+  if (vLiverySlot < 0.5) liveryTex = texture2D(liveryFuselage, vLiveryUv, -0.5);
+  else if (vLiverySlot < 1.5) liveryTex = texture2D(liveryTail, vLiveryUv, -0.5);
+  else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv, -0.5);
   vec3 liveryLinear = sRGBTransferEOTF(vec4(liveryTex.rgb, 1.0)).rgb;
   diffuseColor.rgb = mix(diffuseColor.rgb, liveryLinear, liveryTex.a);
 }`,
