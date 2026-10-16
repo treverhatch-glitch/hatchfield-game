@@ -247,6 +247,7 @@ import {
   type InteriorEdit,
   type RoomKind,
 } from '../terminalbuild/index.ts'
+import { BUILD_TUNING } from '../terminalbuild/config.ts'
 import {
   hintKind,
   mergeHints,
@@ -10950,16 +10951,40 @@ export class Game {
           f.phase === 'servicing' ||
           f.phase === 'deboard' ||
           f.phase === 'board')
+      // The gate close is 300 nav seconds, under one clock second before STD.
+      // A curb drop inside that sliver, or after STD while the turn is still
+      // on the stand, still has the door. A drop long after the aircraft has
+      // gone does not.
+      const closeClock = BUILD_TUNING.gateCloseSec / HALL_NAV_TUNING.departLeadScale
       if (
         std != null &&
-        std <= this.clock &&
         openDoor &&
-        this.clock - std <= HALL_NAV_TUNING.lateDoorMaxClockSec
+        this.clock - std <= HALL_NAV_TUNING.lateDoorMaxClockSec &&
+        std - this.clock < closeClock
       ) {
         std = this.clock + HALL_NAV_TUNING.lateDoorLeadClockSec
       }
       return std
     })
+    const doorLead = HALL_NAV_TUNING.lateDoorLeadClockSec * HALL_NAV_TUNING.departLeadScale
+    for (const g of this.hallGuests) {
+      if (g.dead || g.job !== 'depart' || !this.hallNav.hasWalker(g.id)) continue
+      const flight = this.flights.find((x) => x.id === g.flightId)
+      if (!flight?.std) continue
+      const open =
+        flight.phase === 'landing' ||
+        flight.phase === 'taxi_in' ||
+        flight.phase === 'parked' ||
+        flight.phase === 'servicing' ||
+        flight.phase === 'deboard' ||
+        flight.phase === 'board'
+      // Admit still uses the full late-door window. A walker already inside only
+      // keeps that door while the turn is young: holding every open stand out
+      // to the full window fills the bag hall and the one-strip bank loses flights.
+      if (!open || this.clock - flight.std > HALL_NAV_TUNING.lateDoorHoldMaxClockSec) continue
+      if (!this.hallNav.pastBagDrop(g.id)) continue
+      this.hallNav.holdDoor(g.id, this.hallNav.navNow + doorLead)
+    }
     const walked = this.hallNav.tick(step)
     this.applyWalkerAuthority(walked)
     const spent = this.hallNav.takeSpend()

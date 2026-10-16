@@ -187,16 +187,16 @@ describe('runway capacity', () => {
     // passengers ride to the layby. Walking passengers own boarding, and a
     // curb drop during the turn still has a door. On this seed the one-strip
     // field finishes 17 (13 of them after the opening) and the two-strip field
-    // finishes 22 (15 after the opening). Nothing diverts. Both stay above
+    // finishes 26 (19 after the opening). Nothing diverts. Both stay above
     // the 15-flight floor.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
     expect(oneRun.done).toBe(17)
-    expect(twoRun.done).toBe(22)
+    expect(twoRun.done).toBe(26)
     expect(oneDiverts).toBe(0)
     expect(diverts(two)).toBe(0)
     expect(oneGain).toBe(13)
-    expect(twoGain).toBe(15)
+    expect(twoGain).toBe(19)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {

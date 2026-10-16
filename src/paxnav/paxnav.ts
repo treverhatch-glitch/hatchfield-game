@@ -1793,6 +1793,13 @@ export class PaxNav {
     return this.byId.has(id)
   }
 
+  /** Hold the door while the aircraft is still on the stand. Never pulls a door forward. */
+  holdDoor(id: string, departAt: number): void {
+    const a = this.byId.get(id)
+    if (!a || a.dead || a.rebook || !(departAt > a.departAt)) return
+    a.departAt = departAt
+  }
+
   /** Stages this departure hit or skipped. Readable after they leave. */
   stageTrace(id: string): StageTrace | null {
     return this.byId.get(id)?.trace ?? this.traces.get(id) ?? null

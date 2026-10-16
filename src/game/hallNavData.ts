@@ -35,6 +35,14 @@ export const HALL_NAV_TUNING = {
    * do not reshuffle a seeded bank.
    */
   lateDoorMaxClockSec: 44,
+  /**
+   * A walker already inside keeps the door only this late. The admit window
+   * above is wider: a fresh curb drop can still catch a turn that is 44s in.
+   * Holding every open stand out to that full window fills the bag hall and
+   * the one-strip bank finishes fewer flights. Twenty-five seconds still
+   * covers a departure that is at security while the aircraft is in deboard.
+   */
+  lateDoorHoldMaxClockSec: 25,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
   /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */

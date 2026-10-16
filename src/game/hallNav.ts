@@ -729,6 +729,11 @@ export class HallNav {
     return this.live && this.owned.has(id)
   }
 
+  /** Keep a walker's door at least `departAt` while their aircraft is still there. */
+  holdDoor(id: string, departAt: number): void {
+    this.navObj?.holdDoor(id, departAt)
+  }
+
   /** This guest is on the walk, so the hall graph is not their authority. */
   owns(id: string): boolean {
     return this.live && this.owned.has(id) && (this.navObj?.has(id) === true || this.arr.has(id))
@@ -961,6 +966,15 @@ export class HallNav {
 
   pastSecurity(id: string): boolean {
     return this.navObj?.airside(id) === true
+  }
+
+  /**
+   * Already through check-in and bag drop. Holding the door for someone
+   * still at those desks drops late bags onto the turn.
+   */
+  pastBagDrop(id: string): boolean {
+    const stop = this.navObj?.stopOf(id)
+    return stop === 'security' || stop === 'toilet' || stop === 'food' || stop === 'shop' || stop === 'gate'
   }
 
   /** Bags on the carousel for one flight. Arrivals with a sequence wait on it. */
