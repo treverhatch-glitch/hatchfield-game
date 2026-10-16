@@ -10,8 +10,12 @@ export const BAG_ROOM_TUGS = 2
 export const CARTS_PER_TUG = 4
 /** Carts behind a heavy tug (widebody / large stand). */
 export const CARTS_PER_HEAVY_TUG = 6
-/** Bag units that fill one cart. The same type still varies with the load. */
-export const BAG_UNITS_PER_CART = 22
+/**
+ * Bag units that fill one cart.
+ * Four carts cover an A321 hold (165), so a narrowbody is one trip.
+ * A heavier load still splits or comes back for the rest.
+ */
+export const BAG_UNITS_PER_CART = 42
 
 export interface TugTrain {
   carts: number

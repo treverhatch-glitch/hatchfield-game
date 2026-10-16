@@ -117,7 +117,7 @@ function paintPassenger(chart: Chart, police: boolean) {
   paintRunways(putAt)
   // Apron on the west face. The stands stay a full bay apart so both can
   // taxi while the 2×4 hall occupies the curb. Column 14 is the bag room,
-  // against the west face. Tugs drive the taxiway. There is no apron belt.
+  // against the west face. Tugs use the pavement below. It is not a jet taxiway.
   putAt(11, 9, 'taxi')
   putAt(13, 8, 'taxi')
   putAt(13, 10, 'taxi')
@@ -125,9 +125,8 @@ function paintPassenger(chart: Chart, police: boolean) {
     putAt(c, 6, 'taxi')
     putAt(c, 12, 'taxi')
   }
-  // Service road beside the belts, and the link from the farm road onto the taxiway.
-  // Tugs and the bowser use these. They are not taxi, so a jet cannot cut through.
-  // Belt cells stay for bags.
+  // Service road for the bowser and the shed, and the link from the farm onto the taxiway.
+  // These cells are not taxi, so a jet cannot cut through. Bag tugs use the pavement below.
   putAt(8, 5, 'road')
   for (let r = 7; r <= 11; r++) putAt(10, r, 'road')
   putAt(12, 6, 'road')
@@ -138,7 +137,7 @@ function paintPassenger(chart: Chart, police: boolean) {
   putAt(13, 11, 'road')
   putAt(13, 12, 'road')
   putAt(13, 13, 'road')
-  // Doors of the sort, north and south of the building. The west neighbour is a belt.
+  // Doors of the bag room, north and south of the building.
   putAt(14, 8, 'road')
   putAt(14, 10, 'road')
   putAt(11, 6, 'stand')
@@ -162,15 +161,16 @@ function paintPassenger(chart: Chart, police: boolean) {
   for (let c = 7; c <= 15; c++) putAt(c, 4, 'road')
   // South apron road. It meets the taxi spine, not column 17, so it is not a second gate.
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
-  // Tug road from the bag room to both stands. Pavement, not a conveyor.
-  putAt(11, 7, 'taxi')
-  putAt(11, 8, 'taxi')
-  putAt(12, 8, 'taxi')
-  putAt(12, 9, 'taxi')
-  putAt(13, 9, 'taxi')
-  putAt(12, 10, 'taxi')
-  putAt(12, 11, 'taxi')
-  putAt(12, 12, 'taxi')
+  // Tug pavement from the bag room to both stands. Truck-only, so the two
+  // stands keep their own taxi rows. The renderer paints apron, not a conveyor.
+  putAt(11, 7, 'belt')
+  putAt(11, 8, 'belt')
+  putAt(12, 8, 'belt')
+  putAt(12, 9, 'belt')
+  putAt(13, 9, 'belt')
+  putAt(12, 10, 'belt')
+  putAt(12, 11, 'belt')
+  putAt(12, 12, 'belt')
   // Against the west face of the 2-wide hall. The mesh yaws so the bays face the apron.
   putAt(14, 9, 'bags')
   putAt(7, 5, 'fuel')

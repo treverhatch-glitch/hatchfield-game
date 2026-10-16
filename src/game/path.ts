@@ -41,10 +41,11 @@ export function walkableFor(
   if (kind === 'truck') {
     // Trucks stay on the apron and the public road. The terminal is a building,
     // so a shortcut through the hall is not a vehicle path.
-    // Belts are the bag conveyor. A tug that treats them as road rides the belt.
+    // Tug pavement is stored as belt. Trucks may drive it. Jets may not.
     return (
       tile === 'taxi' ||
       tile === 'stand' ||
+      tile === 'belt' ||
       tile === 'fuel' ||
       tile === 'bags' ||
       tile === 'snack' ||
@@ -446,18 +447,13 @@ export function hasBeltNetwork(tiles: Tile[][]): boolean {
   return tilesOf(tiles, 'bags').some((room) => bagRoomOnTerminal(tiles, room))
 }
 
-/** Old apron belt cells become taxi so tugs still have a road and the belt mesh is gone. */
+/**
+ * Apron belt cells stay truck pavement. Promoting them to taxi would open a
+ * jet shortcut between the stands. The mesh is a gray apron, not a conveyor.
+ */
 export function retireApronBelts(tiles: Tile[][]): number {
-  let n = 0
-  for (const row of tiles) {
-    for (let c = 0; c < row.length; c++) {
-      if (row[c] === 'belt') {
-        row[c] = 'taxi'
-        n += 1
-      }
-    }
-  }
-  return n
+  void tiles
+  return 0
 }
 
 export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {

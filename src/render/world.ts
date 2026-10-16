@@ -1026,7 +1026,7 @@ export class World {
       addBagSort(g)
       g.rotation.y = opts.bagYaw ?? 0
     } else if (tile === 'belt') {
-      // Saved belt cells are taxi. If one is still here, paint apron, never a conveyor.
+      // Tug pavement. Paint apron, never a conveyor.
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98),
         new THREE.MeshLambertMaterial({ color: '#6a7078' }),
