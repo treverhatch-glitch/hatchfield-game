@@ -187,9 +187,7 @@ export function mergeStaticShell(frame: ShellSource) {
     return true
   })
   if (!staticMeshes.length) return
-  const metal = frame.tier === 'mid'
-    ? staticMeshes.filter((mesh) => mesh.userData.slot === 'metal')
-    : []
+  const metal = staticMeshes.filter((mesh) => mesh.userData.slot === 'metal')
   const paint = staticMeshes.filter((mesh) => !metal.includes(mesh))
   const base = `shell:${frame.tier}:${frame.specId}:${liveryKey(frame.livery)}`
   takeShell(frame, paint, base, 'airframe', 'paint')
