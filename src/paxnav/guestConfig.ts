@@ -226,6 +226,11 @@ export const GUEST_TUNING = {
   groupGapM: 0.7,
   /** Extra service time per extra group member at a desk, lane or boarding desk (share of one). */
   groupServiceShare: 0.5,
+  /**
+   * A check-in party alone does not count as the starter red line. The paced
+   * desk is 225s; a family on top of that is a long service, not a queue.
+   */
+  checkinPartySec: 359,
   /** Trail points kept per group leader. */
   trailLen: 40,
   /** Leader trail point every this many metres (and on every cell change). */

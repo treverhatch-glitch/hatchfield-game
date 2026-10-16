@@ -10939,9 +10939,17 @@ export class Game {
     this.syncBagDocks(fit)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
-      if (f?.std != null) return f.std
       const slot = flightId.startsWith('slot:') ? flightId.slice(5) : null
-      return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
+      let std = f?.std ?? this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
+      if (
+        std != null &&
+        std < this.clock &&
+        f &&
+        (f.phase === 'parked' || f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board')
+      ) {
+        std = this.clock + HALL_NAV_TUNING.lateDoorLeadClockSec
+      }
+      return std
     })
     const walked = this.hallNav.tick(step)
     this.applyWalkerAuthority(walked)

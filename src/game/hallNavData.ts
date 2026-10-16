@@ -21,6 +21,12 @@ export const HALL_NAV_TUNING = {
   departLeadScale: 360,
   /** Departure lead, clock seconds, for a walker with no flight yet (day-one walkers, unbound slots). */
   unknownLeadClockSec: 40,
+  /**
+   * Clock seconds of walk time for someone the curb releases after STD while
+   * the aircraft is still on the stand. Zero lead fails the gate close on the
+   * first tick, which is a car delay, not a missed walk.
+   */
+  lateDoorLeadClockSec: 2,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
   /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */

@@ -1222,8 +1222,16 @@ export class PaxNav {
       }
       st.stock -= 1
     }
-    const extra = a.group && f.kind !== 'toilet' && f.kind !== 'shop_counter' ? a.group.length * GUEST_TUNING.groupServiceShare : 0
-    return f.serviceSec * (1 + extra)
+    // A kiosk is one scan for the party. Stacking the family multiplier on the
+    // queue pushes a two-person line over the starter check-in red line.
+    const selfServe = f.kind === 'checkin_desk' && !f.takesBags
+    const extra =
+      a.group && f.kind !== 'toilet' && f.kind !== 'shop_counter' && !selfServe
+        ? a.group.length * GUEST_TUNING.groupServiceShare
+        : 0
+    const sec = f.serviceSec * (1 + extra)
+    if (f.kind === 'checkin_desk') return Math.min(sec, GUEST_TUNING.checkinPartySec)
+    return sec
   }
 
   /** Guest side of finishing at a facility: needs, spending, thoughts. */

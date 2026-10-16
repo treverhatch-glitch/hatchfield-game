@@ -183,18 +183,18 @@ describe('runway capacity', () => {
     const twoRun = runDays(two, 8)
     Math.random = random
     // The city road forks, so apron trucks are not queued at the guard, and
-    // passengers ride to the layby. Bag tugs take the pavement and join the
-    // taxi only beside the stand. On this seed the one-strip field finishes 19
-    // (14 of them after the opening) and the two-strip field finishes 26
-    // (18 after the opening). Nothing diverts. Both stay above the 15-flight floor.
+    // passengers ride to the layby. Walking passengers own boarding. On this
+    // seed the one-strip field finishes 16 (12 of them after the opening) and
+    // the two-strip field finishes 21 (14 after the opening). Nothing diverts.
+    // Both stay on the 15-flight floor.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
-    expect(oneRun.done).toBe(19)
-    expect(twoRun.done).toBe(26)
+    expect(oneRun.done).toBe(16)
+    expect(twoRun.done).toBe(21)
     expect(oneDiverts).toBe(0)
     expect(diverts(two)).toBe(0)
-    expect(oneGain).toBe(14)
-    expect(twoGain).toBe(18)
+    expect(oneGain).toBe(12)
+    expect(twoGain).toBe(14)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {
