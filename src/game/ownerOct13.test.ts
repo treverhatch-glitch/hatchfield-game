@@ -91,11 +91,11 @@ describe('owner decisions 13 Oct', () => {
     const game = field()
     game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 11, r: 6 })
+    const f = parked(game, { c: 12, r: 7 })
     f.phase = 'servicing'
     f.phaseTime = 0
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('11,6')
+    expect(f.groundTurn).toBe('12,7')
     f.posted.fuel = true
     f.phase = 'board'
     f.phaseTime = 400

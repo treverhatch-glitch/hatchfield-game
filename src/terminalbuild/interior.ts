@@ -7,11 +7,12 @@ import {
   BUILD_TUNING,
   DOOR_COST,
   EQUIP_SPEC,
-  FLOOR_COST,
   PAINT_COST,
   ROOM_SPEC,
-  WALL_COST,
-  ZONE_COST,
+  floorTileCost,
+  layoutTileM,
+  wallEdgeCost,
+  zoneTileCost,
 } from './config.ts'
 import { floorOf } from './floors.ts'
 import { edgeKey, inBounds, isFloor, tileKey } from './grid.ts'
@@ -335,10 +336,10 @@ export function interiorCost(before: BuildLayout, after: BuildLayout): number {
   const afterWalls = new Map(after.walls.map((w) => [edgeKey(w), w]))
   for (const [k, w] of afterWalls) {
     const prev = beforeWalls.get(k)
-    if (!prev) cost += WALL_COST.build
+    if (!prev) cost += wallEdgeCost(layoutTileM(after))
     else if ((prev.finish ?? '') !== (w.finish ?? '') && w.finish) cost += PAINT_COST.wall
   }
-  for (const k of beforeWalls.keys()) if (!afterWalls.has(k)) cost += refund(WALL_COST.build)
+  for (const k of beforeWalls.keys()) if (!afterWalls.has(k)) cost += refund(wallEdgeCost(layoutTileM(before)))
 
   const beforeDoors = new Map(before.doors.map((d) => [edgeKey(d), d]))
   const afterDoors = new Map(after.doors.map((d) => [edgeKey(d), d]))
@@ -361,7 +362,7 @@ export function interiorCost(before: BuildLayout, after: BuildLayout): number {
     for (let x = 0; x < w; x++) {
       const wasFloor = Boolean(before.floor[y]?.[x])
       const nowFloor = Boolean(after.floor[y]?.[x])
-      if (wasFloor !== nowFloor) cost += nowFloor ? FLOOR_COST.build : refund(FLOOR_COST.build)
+      if (wasFloor !== nowFloor) cost += nowFloor ? floorTileCost(layoutTileM(after)) : refund(floorTileCost(layoutTileM(before)))
       const was = paintCell(before, x, y)
       const now = paintCell(after, x, y)
       if (was !== now) {
@@ -371,8 +372,8 @@ export function interiorCost(before: BuildLayout, after: BuildLayout): number {
       const bz = before.zones[y]?.[x] ?? null
       const az = after.zones[y]?.[x] ?? null
       if (bz === az) continue
-      if (az) cost += ZONE_COST.build
-      else if (bz) cost += refund(ZONE_COST.build)
+      if (az) cost += zoneTileCost(layoutTileM(after))
+      else if (bz) cost += refund(zoneTileCost(layoutTileM(before)))
     }
   }
   return cost

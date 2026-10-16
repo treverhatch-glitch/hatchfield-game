@@ -70,7 +70,7 @@ describe('check-in desks on the field', () => {
   it('themes the open airline, leaves the kiosk general, and says short of desks', () => {
     const game = field()
     const std = game.clock + gameMinToSim(80)
-    game.showUps.push(show('harbor-1', 'harbor', std, 40), show('north-1', 'northline', std + 1, 40))
+    game.showUps.push(show('harbor-1', 'harbor', std, 80), show('north-1', 'northline', std + 1, 80))
     game.flights.push(flight('harbor-1', 'harbor'), flight('north-1', 'northline'))
     game.tickHallNav(0.05)
     expect(game.hallNav.live).toBe(true)
@@ -78,8 +78,8 @@ describe('check-in desks on the field', () => {
     const alloc = game.checkinAllocation()
     const branded = alloc.desks.filter((row) => row.mode === 'common')
     const kiosks = alloc.desks.filter((row) => row.mode === 'kiosk')
-    expect(branded).toHaveLength(1)
-    expect(branded[0]?.airlineId).toBe('harbor')
+    expect(branded).toHaveLength(2)
+    expect(branded.every((row) => row.airlineId === 'harbor')).toBe(true)
     expect(kiosks.length).toBeGreaterThan(0)
     expect(kiosks.every((row) => row.airlineId == null)).toBe(true)
     expect(alloc.reason).toBe('short of desks')
@@ -92,8 +92,10 @@ describe('check-in desks on the field', () => {
     expect(card?.why).toBe('short of desks')
     expect(card?.bays.some((bay) => /Desk \d+ · Harbor/.test(bay.line))).toBe(true)
     expect(card?.bays.some((bay) => bay.line.includes('Kiosk · any airline'))).toBe(true)
-    const deskNo = alloc.desks.findIndex((row) => row.mode === 'common') + 1
-    expect(game.checkinLine(game.flights[0]!)).toBe(`Check-in open · desks ${deskNo}`)
+    const deskNos = alloc.desks
+      .map((row, i) => (row.mode === 'common' && row.airlineId === 'harbor' ? i + 1 : 0))
+      .filter((n) => n > 0)
+    expect(game.checkinLine(game.flights[0]!)).toBe(`Check-in open · desks ${deskNos.join(', ')}`)
     expect(game.checkinLine(game.flights[1]!)).toBe('Check-in open · short of desks')
 
     const harbor = spawnHallGuest('harbor-1', 'depart', 'budget', { airlineId: 'harbor' })
@@ -105,8 +107,8 @@ describe('check-in desks on the field', () => {
     game.hallGuests.push(harbor, north)
     game.tickHallNav(0.05)
     const pose = (id: string) => game.hallNav.nav?.poses().find((row) => row.id === id)
-    const belt = alloc.desks.find((row) => row.mode === 'common')?.deskId
-    expect(pose(north.id)?.facility).not.toBe(belt)
+    const belts = new Set(alloc.desks.filter((row) => row.mode === 'common').map((row) => row.deskId))
+    expect(belts.has(pose(north.id)?.facility ?? '')).toBe(false)
   })
 
   it('charges below Preferred, waives the fee after that, and speeds a Trusted desk', () => {
@@ -118,9 +120,13 @@ describe('check-in desks on the field', () => {
     expect(game.dedicateDesk('northline')).toBe(true)
     expect(game.cash).toBe(before - CHECKIN_ALLOC.dedicatedFee)
     expect(game.dedicatedDesks).toHaveLength(1)
+    expect(game.dedicateDesk('harbor')).toBe(true)
+    expect(game.cash).toBe(before - 2 * CHECKIN_ALLOC.dedicatedFee)
+    expect(game.dedicatedDesks).toHaveLength(2)
     expect(game.dedicateDesk('harbor')).toBe(false)
 
-    game.releaseDesk(game.dedicatedDesks[0]!.deskId)
+    const harborLock = game.dedicatedDesks.find((row) => row.airlineId === 'harbor')!
+    game.releaseDesk(harborLock.deskId)
     while (game.wave3.relation('harbor').tier < 2) game.wave3.noteTurnaround('harbor', 'success')
     const held = game.cash
     expect(game.dedicateDesk('harbor')).toBe(true)
@@ -131,7 +137,8 @@ describe('check-in desks on the field', () => {
     const nav = game.hallNav.nav!
     const fit = game.activeHall()!
     const points = staffPoints(nav.facilities.list, fit.items ?? [])
-    const belt = points.find((point) => point.kind === 'checkin_desk' && !point.automatic)
+    const harborDesk = game.dedicatedDesks.find((row) => row.airlineId === 'harbor')!
+    const belt = points.find((point) => point.id === harborDesk.deskId)
     const kiosk = points.find((point) => point.kind === 'checkin_desk' && point.automatic)
     expect(belt).toBeTruthy()
     expect(kiosk).toBeTruthy()

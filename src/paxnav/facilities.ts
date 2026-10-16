@@ -251,9 +251,9 @@ export function seatCells(g: NavGrid, set: FacilitySet, roomId: string): number[
   return bySeat.length ? bySeat : inRoom
 }
 
-/** Inside face of the apron doors of a gate room (the jet bridge), else of any apron door. */
+/** Inside face of a gate's apron, bridge, or arrivals door, else of any such door. */
 export function apronCells(g: NavGrid, roomId: string): number[] {
-  const doors = outsideDoors(g.layout, ['apron'])
+  const doors = outsideDoors(g.layout, ['apron', 'gate_apron', 'gate_bridge', 'arrivals_in'])
   const pick = (only: boolean) => {
     const out: number[] = []
     for (const { door, tile } of doors) {

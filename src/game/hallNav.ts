@@ -13,7 +13,8 @@
  * The walk is the hall's picture and queue read-out. Fares, ratings and
  * boarding still come from the sim's own hall model.
  */
-import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
+import { BUILD_TUNING, ZONE_SIDE, layoutTileM } from '../terminalbuild/config.ts'
+import { beltTileSet, fittingSpec, fittingTiles } from '../terminalbuild/fittings.ts'
 import { STARTER_STORIES } from '../terminalbuild/floors.ts'
 import { applyInterior } from '../terminalbuild/interior.ts'
 import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, InteriorEdit, Room, Tile } from '../terminalbuild/types.ts'
@@ -348,19 +349,22 @@ export function prefabClaimHall(zones: Zones, items: readonly PlacedItem[], tile
   return { tiles: [...tiles, ...solid], solid, belts }
 }
 
-/** The layout before the player's interior edit. Its own build, else a read of its prefab zones and kit. */
+/** The layout before the player's interior edit. A committed build wins, else a version-2 document, else a read of its prefab zones and kit. */
 export function hallBaseLayout(fit: {
+  layout?: BuildLayout
   build?: BuildLayout
   zones?: (string | null)[][]
   items?: readonly unknown[]
 }): BuildLayout | null {
   if (fit.build) return fit.build
+  if (fit.layout?.version === 2) return fit.layout
   if (!fit.zones?.length) return null
   return prefabNavLayout(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
 }
 
 /** The layout a hall's walkers use, with interior walls, doors, paint, and rooms merged on. */
 export function hallNavLayout(fit: {
+  layout?: BuildLayout
   build?: BuildLayout
   zones?: (string | null)[][]
   items?: readonly unknown[]
@@ -371,8 +375,35 @@ export function hallNavLayout(fit: {
   return applyInterior(base, fit.interior)
 }
 
-/** A hall's claim hall for arrivals. Built halls have none (their bag hall is staff only): arrivals use the exit doors. */
-export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null)[][]; items?: readonly unknown[] }): ClaimHall | null {
+/** Claim tiles, solid fittings, and belt tiles for a version-2 hall. */
+export function layoutClaimHall(layout: BuildLayout): ClaimHall | null {
+  const solidKeys = new Set<string>()
+  for (const f of layout.fittings ?? []) {
+    if (!fittingSpec(f.kind).blocksWalk) continue
+    for (const t of fittingTiles(f)) solidKeys.add(`${t.x},${t.y}`)
+  }
+  const beltKeys = beltTileSet(layout)
+  const tiles: Tile[] = []
+  const solid: Tile[] = []
+  const belts: Tile[] = []
+  for (let y = 0; y < layout.h; y++) {
+    for (let x = 0; x < layout.w; x++) {
+      const zone = layout.zones[y]?.[x]
+      if (zone !== 'claim' && zone !== 'arrivals') continue
+      const t = { x, y }
+      tiles.push(t)
+      const key = `${x},${y}`
+      if (solidKeys.has(key)) solid.push(t)
+      if (beltKeys.has(key)) belts.push(t)
+    }
+  }
+  if (!tiles.length) return null
+  return { tiles, solid, belts }
+}
+
+/** A hall's claim hall for arrivals. A version-2 layout reads claim and arrivals tiles. Built halls have none. */
+export function hallClaimHall(fit: { layout?: BuildLayout; build?: BuildLayout; zones?: (string | null)[][]; items?: readonly unknown[] }): ClaimHall | null {
+  if (fit.layout?.version === 2) return layoutClaimHall(fit.layout)
   if (fit.build || !fit.zones?.length) return null
   return prefabClaimHall(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
 }
@@ -523,19 +554,34 @@ export function staffPoints(
   items: readonly StaffItemRef[],
 ): StaffPoint[] {
   const includedLanes = includedSecurityLanes(items)
+  // Starter fittings keep the building's bundle only while a matching bundle piece is still on the floor.
+  const bundleCheckin = items.some((it) => {
+    if (!it.bundle) return false
+    const def = itemDef(it.def)
+    return Boolean(def && def.room === 'checkin' && def.staff > 0)
+  })
+  const bundleSecurity = items.some((it) => {
+    if (!it.bundle) return false
+    const def = itemDef(it.def)
+    return Boolean(def && def.room === 'security' && def.servers > 0)
+  })
+  const hasKiosk = items.some((it) => isKioskDef(it.def))
   let lane = 0
   const out: StaffPoint[] = []
   for (const f of facilities) {
     if (f.kind === 'security_lane') {
-      out.push({ id: f.id, kind: 'security_lane', included: lane < includedLanes, automatic: false })
+      const starter = bundleSecurity && f.id.startsWith('s1-lane')
+      out.push({ id: f.id, kind: 'security_lane', included: starter || lane < includedLanes, automatic: false })
       lane += 1
     } else if (f.kind === 'checkin_desk') {
       const it = itemForDesk(f.id, items)
+      const starterDesk = bundleCheckin && (f.id === 's1-desk-0' || f.id === 's1-desk-1')
+      const starterKiosk = hasKiosk && f.id === 's1-kiosk'
       out.push({
         id: f.id,
         kind: 'checkin_desk',
-        included: Boolean(it?.bundle),
-        automatic: it ? pointRunsItself(it.def) : false,
+        included: starterDesk || Boolean(it?.bundle),
+        automatic: starterKiosk || (it ? pointRunsItself(it.def) : false),
       })
     }
   }
@@ -874,20 +920,20 @@ export class HallNav {
   origin(): { x: number; z: number } {
     const l = this.navObj?.layout
     if (!l) return { x: 0, z: 0 }
-    const m = BUILD_TUNING.tileMetres
+    const m = layoutTileM(l)
     return { x: (-l.w * m) / 2, z: (-l.h * m) / 2 }
   }
 
   /** `origin().x` without allocating (per-frame callers). */
   get originX(): number {
     const l = this.navObj?.layout
-    return l ? (-l.w * BUILD_TUNING.tileMetres) / 2 : 0
+    return l ? (-l.w * layoutTileM(l)) / 2 : 0
   }
 
   /** `origin().z` without allocating (per-frame callers). */
   get originZ(): number {
     const l = this.navObj?.layout
-    return l ? (-l.h * BUILD_TUNING.tileMetres) / 2 : 0
+    return l ? (-l.h * layoutTileM(l)) / 2 : 0
   }
 
   /**
@@ -942,7 +988,8 @@ export class HallNav {
       if (!facility) continue
       let sec = serviceSecOf(eq)
       const it = itemForDesk(eq.id, this.staffItems)
-      if (it && isKioskDef(it.def) && kioskShare > 0 && kioskShare <= 1) sec *= kioskShare
+      const kiosk = eq.id === 's1-kiosk' || Boolean(it && isKioskDef(it.def))
+      if (kiosk && kioskShare > 0 && kioskShare <= 1) sec *= kioskShare
       const trusted = this.deskPace.get(eq.id)
       if (trusted != null && trusted > 0 && trusted < 1) sec *= trusted
       if (this.checkinPace > 0 && this.checkinPace !== 1) sec *= this.checkinPace

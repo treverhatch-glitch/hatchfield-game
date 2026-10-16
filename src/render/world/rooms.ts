@@ -159,13 +159,15 @@ const SOLID: Partial<Record<PropKind, [number, number]>> = {
 /** Body radius kept clear of walls and furniture. */
 export const NAV_CLEAR = m(0.22)
 
-export function roomKindAt(zone: CellZone['zone'], v: number, oneDeep: boolean): RoomKind {
+export function roomKindAt(zone: CellZone['zone'], v: number, oneDeep: boolean, twoDeep = false): RoomKind {
+  // Shops on a two-deep airside row keep the same landside concourse the gates use.
+  if (twoDeep && zone === 'shops' && v < -CELL / 6) return 'airside'
   if (zone === 'gate') return !oneDeep && v < -CELL / 2 + CELL / 3 ? 'airside' : 'gate'
   if (zone === 'backoffice') return v < 0 ? 'office' : 'lab'
   return zone
 }
 
-export function planRooms(t: TerminalInfo, zones: readonly CellZone[], props: readonly Prop[], oneDeep: boolean): RoomPlan {
+export function planRooms(t: TerminalInfo, zones: readonly CellZone[], props: readonly Prop[], oneDeep: boolean, twoDeep = false): RoomPlan {
   const { minC, minR, maxC, maxR } = t.cluster
   const w = (maxC - minC + 1) * NAV_RES
   const h = (maxR - minR + 1) * NAV_RES
@@ -184,7 +186,7 @@ export function planRooms(t: TerminalInfo, zones: readonly CellZone[], props: re
       if (!zone) continue
       const ox = ((i % NAV_RES) + 0.5) * NAV_SQ - CELL / 2
       const oz = ((j % NAV_RES) + 0.5) * NAV_SQ - CELL / 2
-      kind[j * w + i] = roomKindAt(zone, ox * A.dc + oz * A.dr, oneDeep)
+      kind[j * w + i] = roomKindAt(zone, ox * A.dc + oz * A.dr, oneDeep, twoDeep)
       cellOf[j * w + i] = c * 1024 + r
     }
   }

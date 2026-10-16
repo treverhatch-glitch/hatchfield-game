@@ -77,12 +77,12 @@ function skinClearance(bridge: JetBridge, craft: BridgeCraft): number {
 }
 
 describe('jet bridge seal on the parked aircraft', () => {
-  const [bridge] = starterBridges({ '11,6': 1 })
+  const [bridge] = starterBridges({ '12,7': 1 })
   const heading = standHeading(bridge!)
 
   it.each(['crj700', 'e175', 'b738', 'a320', 'b789'])('docks the %s door from outside the skin', (airframeId) => {
     for (const h of [heading, heading + Math.PI]) {
-      const craft = { airframeId, x: 11, y: 6, heading: h }
+      const craft = { airframeId, x: 12, y: 7, heading: h }
       const target = dockToAircraft(bridge!, craft)
       expect(target).toBeTruthy()
       const spec = getAircraftSpec(airframeId)
@@ -97,13 +97,13 @@ describe('jet bridge seal on the parked aircraft', () => {
       expect(docked.cab.z).toBeCloseTo(target!.cab.z)
       // The cab looks straight at the fuselage once docked.
       const f = docked.cabFace!
-      const lat = local(craft, { x: cellX(11) + f.x, z: cellZ(6) + f.z })
+      const lat = local(craft, { x: cellX(12) + f.x, z: cellZ(7) + f.z })
       expect(Math.abs(lat.x)).toBeLessThan(1e-6)
     }
   })
 
   it('parks beside the rotunda at extend 0, off the facade', () => {
-    const craft = { airframeId: 'b738', x: 11, y: 6, heading }
+    const craft = { airframeId: 'b738', x: 12, y: 7, heading }
     const parked = posedApronBridge(bridge!, 0, craft)
     expect(Math.hypot(parked.cab.x - bridge!.root.x, parked.cab.z - bridge!.root.z)).toBeLessThan(3.5)
     const n = DIR_VEC[bridge!.side]
@@ -117,13 +117,13 @@ describe('jet bridge seal on the parked aircraft', () => {
   })
 
   it('hands each widebody bridge its own door, and parks a bridge with no door', () => {
-    const pair = starterBridges({ '11,6': 2 })
+    const pair = starterBridges({ '12,7': 2 })
     expect(pair).toHaveLength(2)
-    const wide = { airframeId: 'b789', x: 11, y: 6, heading }
+    const wide = { airframeId: 'b789', x: 12, y: 7, heading }
     const a = dockToAircraft(pair[0]!, wide)!
     const b = dockToAircraft(pair[1]!, wide)!
     expect(Math.hypot(a.cab.x - b.cab.x, a.cab.z - b.cab.z)).toBeGreaterThan(2)
-    const narrow = { airframeId: 'b738', x: 11, y: 6, heading }
+    const narrow = { airframeId: 'b738', x: 12, y: 7, heading }
     expect(dockToAircraft(pair[0]!, narrow)).toBeTruthy()
     expect(dockToAircraft(pair[1]!, narrow)).toBeNull()
     const idle = posedApronBridge(pair[1]!, 1, narrow)

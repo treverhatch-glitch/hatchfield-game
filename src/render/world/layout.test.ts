@@ -96,11 +96,11 @@ describe('world layout', () => {
     expect(bare.length).toBe(2)
     expect(bare.every((s) => s.jetway)).toBe(false)
     expect(jetBridges(game, bare)).toHaveLength(0)
-    game.standAccess['11,6'] = 'jetway'
-    game.standAccess['11,12'] = 'jetway'
+    game.standAccess['12,7'] = 'jetway'
+    game.standAccess['12,10'] = 'jetway'
     expect(jetBridges(game, stands(game))).toHaveLength(0)
-    game.fittings['stand:11,6'] = [{ id: 'jet_bridge' }]
-    game.fittings['stand:11,12'] = [{ id: 'jet_bridge' }]
+    game.fittings['stand:12,7'] = [{ id: 'jet_bridge' }]
+    game.fittings['stand:12,10'] = [{ id: 'jet_bridge' }]
     const st = stands(game)
     expect(st.every((s) => s.jetway)).toBe(true)
     const bridges = jetBridges(game, st)
@@ -126,8 +126,8 @@ describe('world layout', () => {
     }
     expect(apronMasts(st)).toHaveLength(0)
     expect(standFlags(st)).toHaveLength(0)
-    game.fittings['stand:11,6'] = [{ id: 'apron_light' }]
-    game.fittings['stand:11,12'] = [{ id: 'flag' }]
+    game.fittings['stand:12,7'] = [{ id: 'apron_light' }]
+    game.fittings['stand:12,10'] = [{ id: 'flag' }]
     const dressed = stands(game)
     expect(apronMasts(dressed)).toHaveLength(1)
     expect(standFlags(dressed)).toHaveLength(1)

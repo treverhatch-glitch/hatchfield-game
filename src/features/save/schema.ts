@@ -7,15 +7,17 @@
  *   3  flat `airportName` / `code`, map, parcels, budgets, fuel pillar, plots
  *   4  fee index, deposit tier, clock speed, and runway condition
  *   5  one research pool: desk and Wave 3 progress fold into the Growth tree
+ *   6  terminal interiors become the 1 m layout. Player fittings are refunded.
  *
  * A game save is written at SAVE_SCHEMA_VERSION. Older envelopes walk this chain.
  * Rendering never sees this module.
  */
 import { fieldLevelOf } from '../../game/catalog.ts'
 import { foldResearchSave } from '../../research/legacy.ts'
+import { migrateV5ToV6 } from '../../terminalbuild/migrate.ts'
 import type { Migration, SaveIssue } from './save.ts'
 
-export const SAVE_SCHEMA_VERSION = 5
+export const SAVE_SCHEMA_VERSION = 6
 
 const MAPS = new Set<string | number>(['temperate', 'tropical', 'desert'])
 const SPEEDS = new Set<string | number>([0, 1, 3, 5])
@@ -129,6 +131,7 @@ export const SAVE_MIGRATIONS: Record<number, Migration> = {
   2: migrateV2ToV3,
   3: migrateV3ToV4,
   4: migrateV4ToV5,
+  5: migrateV5ToV6,
 }
 
 export function migrationSources(): number[] {

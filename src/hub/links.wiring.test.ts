@@ -147,11 +147,12 @@ describe('live hub links', () => {
     expect(game.walkwayCoverMetres()).toBe(CONNECTIVITY_CATALOG.moving_walkway.lengthMetres)
 
     const origin = game.fits[0].origin
-    game.fits.push({ ...game.fits[0], origin: { c: origin.c, r: origin.r - 9 }, items: [] })
-    for (let r = origin.r - 6; r <= origin.r - 1; r++) game.tiles[r][origin.c] = 'skywalk'
-    game.tiles[origin.r - 8][origin.c - 3] = 'stand'
-    const near = `${origin.c - 3},${origin.r - 8}`
-    const far = '12,21'
+    const south = { c: origin.c, r: origin.r + 9 }
+    game.fits.push({ ...game.fits[0], origin: south, items: [] })
+    for (let r = origin.r + 4; r <= south.r - 1; r++) game.tiles[r][origin.c] = 'skywalk'
+    game.tiles[south.r][origin.c - 3] = 'stand'
+    const near = `${origin.c - 3},${south.r}`
+    const far = `12,${origin.r}`
     expect(game.connectionLink(near, far)).toBe('skywalk')
     expect(game.linkLines().some((line) => /^\d+ skywalk/.test(line))).toBe(true)
 

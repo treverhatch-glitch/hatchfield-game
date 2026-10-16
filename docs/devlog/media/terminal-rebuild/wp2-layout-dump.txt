@@ -1,0 +1,195 @@
+S1 ground floor (the only floor), 88 m x 44 m, 2 m per character
+stacked2f waits for WP6
+      0    1    2    3    4    5    6    7    8
+  0m  +---aa------+-+AA-------------------AA--+---|
+  2m  |           R | G                    G  |R  |
+  4m  |           | |                         d   |
+  6m  |           | |  hh hh          hh hh   |   |
+  8m  |P P P P    dd   hh hh          hh hh   |   |
+ 10m  |           |    hh hh          hh hh   ----|
+ 12m  |OOOOOOOO   |                               |
+ 14m  =OOOOOOOO   +-SSSSssssssssssss+-----+---+d--|
+ 16m  |OOOOOOOO   | SSSSssssssssssss|     |   |   |
+ 18m  |:          W SSSSssssssssssss|     |   |W  |
+ 20m  |           | SSSSssssssssssss|     |   |   |
+ 22m  |           | SSSSssssssssssss|     |   |   |
+ 24m  |           | p p             |     |   |   |
+ 26m  CCb=:::::-XXdddddddddddddddddd--d----d------|
+ 28m  |                                           |
+ 30m  qqq                                         |
+ 32m  |                                           |
+ 34m  |                             +-----+---|   |
+ 36m  |     k:                      |R    R   |   |
+ 38m  |                             d     d   |   |
+ 40m  |                   F n  Y    |     |   |   |
+ 42m  |                             |     |   |   |
+ 44m  ----DDD----DDD------------------------------ 
+
+Rooms
+  checkin checkin x 0–24 y 26–38
+  security security x 28–60 y 14–26
+  rd office x 60–72 y 14–26
+  office office x 72–80 y 14–26
+  wc-air toilets x 80–88 y 14–26
+  wc-land toilets x 24–28 y 14–26
+  gate1 gate x 28–50 y 0–14
+  gate2 gate x 60–80 y 0–14
+  news retail x 24–28 y 0–8
+  food retail x 80–88 y 0–10
+  cafe retail x 60–72 y 34–44
+  shop retail x 72–80 y 34–44
+Doors
+  arrivals_in x 8 y -1 S
+  arrivals_in x 9 y -1 S
+  arrivals_in x 10 y -1 S
+  arrivals_in x 11 y -1 S
+  gate_apron x 30 y -1 S
+  gate_apron x 31 y -1 S
+  gate_apron x 32 y -1 S
+  gate_apron x 33 y -1 S
+  gate_apron x 72 y -1 S
+  gate_apron x 73 y -1 S
+  gate_apron x 74 y -1 S
+  gate_apron x 75 y -1 S
+  curb x 8 y 43 S
+  curb x 9 y 43 S
+  curb x 10 y 43 S
+  curb x 11 y 43 S
+  curb x 12 y 43 S
+  curb x 13 y 43 S
+  curb x 22 y 43 S
+  curb x 23 y 43 S
+  curb x 24 y 43 S
+  curb x 25 y 43 S
+  curb x 26 y 43 S
+  curb x 27 y 43 S
+  exit x 20 y 25 S
+  exit x 21 y 25 S
+  exit x 22 y 25 S
+  exit x 23 y 25 S
+  public x 28 y 13 S
+  public x 29 y 13 S
+  public x 30 y 13 S
+  public x 31 y 13 S
+  public x 32 y 13 S
+  public x 33 y 13 S
+  public x 34 y 13 S
+  public x 35 y 13 S
+  public x 28 y 25 S
+  public x 29 y 25 S
+  public x 30 y 25 S
+  public x 31 y 25 S
+  public x 32 y 25 S
+  public x 33 y 25 S
+  public x 34 y 25 S
+  public x 35 y 25 S
+  public x 36 y 25 S
+  public x 37 y 25 S
+  public x 38 y 25 S
+  public x 39 y 25 S
+  public x 40 y 25 S
+  public x 41 y 25 S
+  public x 42 y 25 S
+  public x 43 y 25 S
+  public x 44 y 25 S
+  public x 45 y 25 S
+  public x 46 y 25 S
+  public x 47 y 25 S
+  public x 48 y 25 S
+  public x 49 y 25 S
+  public x 50 y 25 S
+  public x 51 y 25 S
+  public x 52 y 25 S
+  public x 53 y 25 S
+  public x 54 y 25 S
+  public x 55 y 25 S
+  public x 56 y 25 S
+  public x 57 y 25 S
+  public x 58 y 25 S
+  public x 59 y 25 S
+  staff x 64 y 25 S
+  staff x 65 y 25 S
+  staff x 74 y 25 S
+  staff x 75 y 25 S
+  public x 82 y 13 S
+  public x 83 y 13 S
+  public x 25 y 25 S
+  public x 26 y 25 S
+  public x 59 y 38 E
+  public x 59 y 39 E
+  public x 71 y 38 E
+  public x 71 y 39 E
+  public x 25 y 7 S
+  public x 26 y 7 S
+  public x 79 y 4 E
+  public x 79 y 5 E
+Fittings
+  s1-desk-0 checkin_desk x 0 y 27 staffed true
+  s1-desk-1 checkin_desk x 2 y 27 staffed false
+  s1-bag bag_drop x 5 y 27 staffed false
+  s1-kiosk checkin_kiosk x 12 y 36 staffed false
+  s1-lane-0 security_lane x 28 y 14 staffed true
+  s1-lane-1 security_lane x 32 y 14 staffed true
+  s1-bp-0 bp_podium x 29 y 24 staffed false
+  s1-bp-1 bp_podium x 33 y 24 staffed false
+  s1-carousel claim_carousel x 2 y 12 staffed false
+  s1-gate-1 gate_desk x 32 y 2 staffed false
+  s1-gate-2 gate_desk x 74 y 2 staffed false
+  s1-cafe shop_counter x 62 y 36 staffed false
+  s1-shop shop_counter x 73 y 36 staffed false
+  s1-news shop_counter x 24 y 2 staffed false
+  s1-food shop_counter x 82 y 2 staffed false
+  s1-wc-land wc_block x 25 y 18 staffed false
+  s1-wc-air wc_block x 82 y 18 staffed false
+  s1-fids fids x 40 y 40 staffed false
+  s1-way wayfinding x 50 y 40 staffed false
+  s1-bench bench x 44 y 41 staffed false
+  s1-rail-0 queue_rail x 0 y 31 staffed false
+  s1-rail-1 queue_rail x 1 y 31 staffed false
+  s1-rail-2 queue_rail x 2 y 31 staffed false
+  s1-rail-3 queue_rail x 3 y 31 staffed false
+  s1-rail-4 queue_rail x 4 y 31 staffed false
+  s1-rail-5 queue_rail x 5 y 31 staffed false
+  s1-seat-g1-0 seat_row x 34 y 6 staffed false
+  s1-seat-g2-0 seat_row x 64 y 6 staffed false
+  s1-seat-g1-1 seat_row x 37 y 6 staffed false
+  s1-seat-g2-1 seat_row x 67 y 6 staffed false
+  s1-seat-g1-2 seat_row x 40 y 6 staffed false
+  s1-seat-g2-2 seat_row x 70 y 6 staffed false
+  s1-seat-g1-3 seat_row x 43 y 6 staffed false
+  s1-seat-g2-3 seat_row x 73 y 6 staffed false
+  s1-seat-g1-4 seat_row x 34 y 8 staffed false
+  s1-seat-g2-4 seat_row x 64 y 8 staffed false
+  s1-seat-g1-5 seat_row x 37 y 8 staffed false
+  s1-seat-g2-5 seat_row x 67 y 8 staffed false
+  s1-seat-g1-6 seat_row x 40 y 8 staffed false
+  s1-seat-g2-6 seat_row x 70 y 8 staffed false
+  s1-seat-g1-7 seat_row x 43 y 8 staffed false
+  s1-seat-g2-7 seat_row x 73 y 8 staffed false
+  s1-seat-g1-8 seat_row x 34 y 10 staffed false
+  s1-seat-g2-8 seat_row x 64 y 10 staffed false
+  s1-seat-g1-9 seat_row x 37 y 10 staffed false
+  s1-seat-g2-9 seat_row x 67 y 10 staffed false
+  s1-seat-g1-10 seat_row x 40 y 10 staffed false
+  s1-seat-g2-10 seat_row x 70 y 10 staffed false
+  s1-seat-g1-11 seat_row x 43 y 10 staffed false
+  s1-seat-g2-11 seat_row x 73 y 10 staffed false
+Sockets
+  s1-socket-lane-2 security_lane x 36 y 14
+  s1-socket-lane-3 security_lane x 40 y 14
+  s1-socket-lane-4 security_lane x 44 y 14
+  s1-socket-lane-5 security_lane x 48 y 14
+  s1-socket-lane-6 security_lane x 52 y 14
+  s1-socket-lane-7 security_lane x 56 y 14
+  s1-socket-desk-2 checkin_desk x 8 y 27
+  s1-socket-desk-3 checkin_desk x 10 y 27
+  s1-socket-desk-4 checkin_desk x 12 y 27
+  s1-socket-desk-5 checkin_desk x 14 y 27
+  s1-socket-desk-6 checkin_desk x 16 y 27
+  s1-socket-pass-0 passport_booth x 2 y 8
+  s1-socket-pass-1 passport_booth x 6 y 8
+  s1-socket-pass-2 passport_booth x 10 y 8
+  s1-socket-pass-3 passport_booth x 14 y 8
+  s1-socket-carousel-2 claim_carousel x 2 y 18
+  s1-socket-kiosk-2 checkin_kiosk x 14 y 36
+tileM 1 stories 1 version 2

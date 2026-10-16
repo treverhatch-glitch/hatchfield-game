@@ -23,7 +23,7 @@ describe('public road lanes', () => {
 
   it('runs the starter road south on the west half, U-turns in the last cell, and returns on the east half', () => {
     const net = buildNetwork(starterField())
-    expect(net.exit.map(cellId)).toEqual(['17,8', '17,9', '17,10', '17,11', '17,12'])
+    expect(net.exit.map(cellId)).toEqual(['17,7', '17,8', '17,9', '17,10', '17,11', '17,12'])
     expect(net.edgeExit).toBe(false)
     const geo = buildLanes(net)!
     expect(geo).not.toBeNull()

@@ -357,11 +357,14 @@ export class PaxNav {
   revision = 0
   /** Check-in desks an airline may use. Null keeps every desk open to everyone. */
   private deskPlan: Map<string, CheckinDeskPlan> | null = null
+  /** Set when the caller pins tile metres. Otherwise the layout's own tile size wins. */
+  private tilePinned = false
 
   constructor(layout: BuildLayout, opts: PaxNavOptions = {}) {
     this.seed = opts.seed ?? 1
     this.rng = createPaxRng(this.seed)
-    this.tileM = opts.tileMetres ?? BUILD_TUNING.tileMetres
+    this.tilePinned = opts.tileMetres != null
+    this.tileM = opts.tileMetres ?? layout.tileM ?? BUILD_TUNING.tileMetres
     this.guests = opts.guests === true
     this.signage = opts.signage ?? NO_SIGNAGE
     this.rebuild(layout)
@@ -457,6 +460,7 @@ export class PaxNav {
   }
 
   private rebuild(layout: BuildLayout) {
+    if (!this.tilePinned) this.tileM = layout.tileM ?? BUILD_TUNING.tileMetres
     this.grid = buildNavGrid(layout, this.tileM)
     this.fac = buildFacilities(this.grid)
     this.fields.clear()
@@ -1293,6 +1297,8 @@ export class PaxNav {
       this.stepLine(a, f, budget)
       return
     }
+    // One direction per tick. A turn inside a tick cuts the corner on a 0.5 m grid.
+    let dir = 0
     for (let hop = 0; hop < PAXNAV_TUNING.maxHopsPerTick && budget > EPS; hop++) {
       if (a.joined) {
         const idx = f.lineIdx.get(a.cell)
@@ -1303,6 +1309,7 @@ export class PaxNav {
         }
       }
       const nxt = F.next[a.cell]
+      if (nxt >= 0 && dir !== 0 && nxt - a.cell !== dir) break
       if (nxt < 0 && a.cell !== f.service) {
         // The way there is gone (an edit). Pick again.
         this.leaveFacility(a)
@@ -1341,7 +1348,10 @@ export class PaxNav {
       if (step < seg - EPS) break
       a.x = tx
       a.z = tz
-      if (nxt >= 0) a.cell = nxt
+      if (nxt >= 0) {
+        dir = nxt - a.cell
+        a.cell = nxt
+      }
       const idx = f.lineIdx.get(a.cell)
       if (a.joined && idx !== undefined) {
         // In the line now: shuffle along it to our own place.
@@ -1428,6 +1438,7 @@ export class PaxNav {
   private follow(a: Agent, F: Field | null, dt: number): boolean | 'lost' {
     const g = this.grid
     let budget = this.pace(a) * dt
+    let dir = 0
     for (let hop = 0; hop < PAXNAV_TUNING.maxHopsPerTick && budget > EPS; hop++) {
       let nxt: number
       if (a.path) {
@@ -1436,6 +1447,7 @@ export class PaxNav {
         if (!F || !Number.isFinite(F.dist[a.cell])) return 'lost'
         nxt = F.next[a.cell]
       }
+      if (nxt >= 0 && dir !== 0 && nxt - a.cell !== dir) return false
       const goal = nxt < 0 ? a.cell : nxt
       const tx = cellX(g, goal) + a.ox
       const tz = cellZ(g, goal) + a.oz
@@ -1447,6 +1459,7 @@ export class PaxNav {
       a.x = tx
       a.z = tz
       if (nxt < 0) return true
+      dir = nxt - a.cell
       a.cell = nxt
       if (a.path) a.pathI++
     }

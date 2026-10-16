@@ -253,7 +253,7 @@ describe('prefab pace', () => {
     game.buyLand('city')
     game.buildStarterKit()
     game.speed = 1
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     game.clock = 30
     game.seedHallForFlight(
       { id: 'early-bank', cargo: false, pax: 55, airline: 'bushline', stand, std: 70, kind: 'narrow' } as unknown as Flight,

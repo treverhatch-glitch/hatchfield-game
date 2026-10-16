@@ -35,6 +35,42 @@ export const DOOR_COST: Record<DoorKind, { build: number; upkeepPerDay: number }
   apron: { build: 8_000, upkeepPerDay: 15 },
   staff: { build: 1_500, upkeepPerDay: 3 },
   exit: { build: 4_000, upkeepPerDay: 8 },
+  gate_bridge: { build: 8_000, upkeepPerDay: 15 },
+  gate_apron: { build: 8_000, upkeepPerDay: 15 },
+  arrivals_in: { build: 8_000, upkeepPerDay: 15 },
+}
+
+/** Metres on a side. A layout with no `tileM` is the legacy 4 m tile. */
+export function layoutTileM(l: { tileM?: number } | null | undefined): number {
+  const m = l?.tileM
+  return m == null || !Number.isFinite(m) || m <= 0 ? BUILD_TUNING.tileMetres : m
+}
+
+/** Legacy 4 m tile stays 900. A 1 m tile is 56.25. */
+export function floorTileCost(tileM: number): number {
+  return (FLOOR_COST.build * tileM * tileM) / 16
+}
+
+export function floorTileUpkeep(tileM: number): number {
+  return (FLOOR_COST.upkeepPerDay * tileM * tileM) / 16
+}
+
+/** Legacy 4 m edge stays 400. A 1 m edge is 100. */
+export function wallEdgeCost(tileM: number): number {
+  return (WALL_COST.build * tileM) / 4
+}
+
+export function wallEdgeUpkeep(tileM: number): number {
+  return (WALL_COST.upkeepPerDay * tileM) / 4
+}
+
+/** Legacy 4 m zone paint stays 150. A 1 m tile is 9.375. */
+export function zoneTileCost(tileM: number): number {
+  return (ZONE_COST.build * tileM * tileM) / 16
+}
+
+export function zoneTileUpkeep(tileM: number): number {
+  return (ZONE_COST.upkeepPerDay * tileM * tileM) / 16
 }
 
 /** Zone paint is per tile. */
@@ -49,6 +85,10 @@ export const ZONE_SIDE: Record<BuildZone, ZoneSide> = {
   baggage: 'staff',
   retail: 'either',
   office: 'staff',
+  claim: 'sterile_arr',
+  arrivals: 'sterile_arr',
+  vertical: 'staff',
+  bagroom: 'staff',
 }
 
 /** Player-facing names. Never "landside" / "airside". */
@@ -61,6 +101,10 @@ export const ZONE_LABEL: Record<BuildZone, string> = {
   baggage: 'Baggage',
   retail: 'Shops',
   office: 'Office',
+  claim: 'Baggage claim',
+  arrivals: 'Arrivals corridor',
+  vertical: 'Stairs and lifts',
+  bagroom: 'Bag room',
 }
 
 export interface RoomSpec {

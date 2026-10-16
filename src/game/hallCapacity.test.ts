@@ -148,6 +148,8 @@ describe('hall capacity forecast (src/throughput on the live walk)', () => {
     }
     expect(spot).toBeTruthy()
     fit.items!.push({ id: 'drop-1', def: 'bag_drop', c: spot!.c, r: spot!.r, wear: 0, bundle: false })
+    // The open check-in cell. The first free zone tile is the out-belt, which has no walk cell.
+    fit.layout!.equipment = [...(fit.layout?.equipment ?? []), { id: 'drop-1', kind: 'checkin_desk', x: 10, y: 33, wear: 0 }]
     game.hallRev++
     game.tickHallNav(0.01)
     const metrics = game.hallNav.metrics()

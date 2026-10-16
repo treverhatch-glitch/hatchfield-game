@@ -234,6 +234,13 @@ import {
   tilesInRect,
   toggleDoor,
   wallRun,
+  split1f,
+  fittingRoomViolation,
+  isSecurityKit,
+  takeFittingSocket,
+  ITEM_TO_FITTING,
+  equipForFitting,
+  fittingSize,
   type EditResult,
   type InteriorEdit,
   type RoomKind,
@@ -1076,6 +1083,7 @@ function decorateFit(fit: TerminalFit): TerminalFit {
     if (!fit.zones?.length) fit.zones = schemeZones(tier)
     if (!fit.items?.length) fit.items = schemeItems(tier)
     if (fit.redesigned == null) fit.redesigned = false
+    if (!fit.layout && !fit.build) fit.layout = split1f()
   } else {
     if (fit.tier == null) fit.tier = 1
     if (fit.signs == null) fit.signs = 0
@@ -7859,6 +7867,10 @@ export class Game {
         })
       })
       this.cash = s.cash
+      if (s.terminalRebuild && s.terminalRebuild.amount > 0) {
+        this.cash += s.terminalRebuild.amount
+        this.pushNews(s.terminalRebuild.note || s.terminalRebuild.label, 'ok')
+      }
       this.branding = (typeof s.branding === 'string' && deserializeBranding(s.branding)) || defaultBranding()
       this.difficulty = s.difficulty
       this.site = s.site
@@ -13024,10 +13036,11 @@ export class Game {
   }
 
   private hallFootprint(fit: TerminalFit): Vec[] {
-    const span = fit.premade ? 3 : 2
+    const cols = 2
+    const rows = fit.premade ? 4 : 2
     const cells: Vec[] = []
-    for (let r = 0; r < span; r++) {
-      for (let c = 0; c < span; c++) cells.push({ c: fit.origin.c + c, r: fit.origin.r + r })
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) cells.push({ c: fit.origin.c + c, r: fit.origin.r + r })
     }
     return cells
   }
@@ -15539,21 +15552,71 @@ export class Game {
     const def = itemDef(id)
     if (!fit || !def) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const fittingKind = ITEM_TO_FITTING[id]
+    const clicked = fit.zones[r]?.[c] ?? null
+    if (fittingKind && (isSecurityKit(fittingKind) || fittingKind === 'passport_booth')) {
+      const layout = fit.layout?.version === 2 ? fit.layout : null
+      const spot = layout ? takeFittingSocket(layout, fittingKind) : null
+      // A footprint click is already inside the nine-room plan. The scheme grid is the other check.
+      const zoneBad =
+        !pose &&
+        ((isSecurityKit(fittingKind) && clicked !== 'security') ||
+          (fittingKind === 'passport_booth' && clicked !== 'arrivals' && clicked !== 'claim'))
+      const why = zoneBad
+        ? fittingKind === 'passport_booth'
+          ? 'A passport booth only stands in baggage claim or the arrivals corridor.'
+          : 'Security kit only works inside a security room.'
+        : spot
+          ? fittingRoomViolation(layout!, fittingKind, spot.x, spot.y)
+          : layout
+            ? 'No free socket in the right room.'
+            : null
+      if (why) {
+        this.pushNews(`${def.name}: ${why}`, 'bad')
+        this.emit()
+        return false
+      }
+    }
     if (!this.spend(def.cost, def.name)) return false
     fit.items = fit.items ?? []
     this.hallItemSeq += 1
+    const placedId = `it-${id}-${c}-${r}-${this.hallItemSeq}`
+    const placedRot = (((Math.round(rot) % 4) + 4) % 4) as 0 | 1 | 2 | 3
     fit.items.push({
-      id: `it-${id}-${c}-${r}-${this.hallItemSeq}`,
+      id: placedId,
       def: id,
       c,
       r,
       wear: 0,
-      rot: ((Math.round(rot) % 4) + 4) % 4,
+      rot: placedRot,
       hx: pose?.hx,
       hz: pose?.hz,
       fw: pose?.fw,
       fd: pose?.fd,
     })
+    if (fittingKind && fit.layout?.version === 2) {
+      const spot = takeFittingSocket(fit.layout, fittingKind)
+      if (spot && !fittingRoomViolation(fit.layout, fittingKind, spot.x, spot.y)) {
+        const piece = {
+          id: placedId,
+          kind: fittingKind,
+          x: spot.x,
+          y: spot.y,
+          floor: 0,
+          rot: spot.rot,
+          wear: 0,
+          staffed: false as boolean | undefined,
+        }
+        fit.layout.fittings = [...(fit.layout.fittings ?? []), piece]
+        const size = fittingSize(fittingKind, spot.rot)
+        const at =
+          fittingKind === 'security_lane'
+            ? { x: Math.floor(spot.x + size.w / 2), y: Math.floor(spot.y + size.d) - 1 }
+            : { x: Math.floor(spot.x), y: Math.floor(spot.y + size.d) - 1 }
+        const eq = equipForFitting(piece, at)
+        if (eq) fit.layout.equipment = [...fit.layout.equipment, eq]
+      }
+    }
     if (def.room) fit.rooms[def.room] += 1
     if (def.room === 'food') this.grantShelf('food', 8)
     if (def.room === 'souvenir') this.grantShelf('shop', 6)

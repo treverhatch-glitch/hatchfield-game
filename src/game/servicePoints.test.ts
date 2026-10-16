@@ -28,14 +28,18 @@ function sync(game: Game) {
   game.tickHallNav(0.05)
 }
 
-/** One bundle lane stays open; every other security piece needs a screener on the post. */
+/** Starter lanes stay with the building. A bought lane needs a screener on the post. */
 function oneBundleLane(game: Game) {
   const fit = game.activeHall()!
   const lanes = (fit.items ?? []).filter((it) => itemDef(it.def)?.room === 'security')
-  expect(lanes.length).toBeGreaterThan(1)
+  expect(lanes.length).toBeGreaterThan(0)
   lanes.forEach((it, i) => {
     it.bundle = i === 0
   })
+  const before = (fit.layout?.equipment ?? []).filter((eq) => eq.kind === 'security_lane').length
+  game.placeHallItem('security_small')
+  const after = (fit.layout?.equipment ?? []).filter((eq) => eq.kind === 'security_lane').length
+  expect(after).toBe(before + 1)
   game.hallRev++
 }
 
@@ -146,6 +150,7 @@ describe('service point source of truth', () => {
     }
     expect(spot).toBeTruthy()
     fit.items!.push({ id: 'self-serve-9', def: 'kiosk', c: spot!.c, r: spot!.r, wear: 0, bundle: false })
+    fit.layout!.equipment = [...fit.layout!.equipment, { id: 'self-serve-9', kind: 'checkin_desk', x: 16, y: 37, wear: 0 }]
     kiosk.hallRev++
     sync(kiosk)
     const desk = kiosk.hallNav.nav!.facilities.list.find((f) => f.id.startsWith('self-serve-9'))
@@ -212,11 +217,12 @@ describe('service point source of truth', () => {
     const spot = freeCheckinCell(fit)
     expect(spot).toBeTruthy()
     fit.items!.push({ id: 'drop-1', def: 'bag_drop', c: spot!.c, r: spot!.r, wear: 0, bundle: false })
+    fit.layout!.equipment = [...fit.layout!.equipment, { id: 'drop-1', kind: 'checkin_desk', x: 10, y: 33, wear: 0 }]
     game.hallRev++
     sync(game)
     const list = game.hallNav.nav!.facilities.list
     const kiosk = list.find((f) => f.kind === 'checkin_desk' && f.id.includes('kiosk'))
-    const belt = list.find((f) => f.kind === 'checkin_desk' && f.id.includes('checkin_belt'))
+    const belt = list.find((f) => f.kind === 'checkin_desk' && f.id === 's1-desk-0')
     const drop = list.find((f) => f.id.startsWith('drop-1'))
     expect(kiosk).toBeTruthy()
     expect(belt).toBeTruthy()
@@ -374,8 +380,8 @@ describe('waits feed misses, mood and reputation', () => {
     const openThin = walkLanes(thin)
     expect(openThin).toBeLessThan(openStaffed)
 
-    release(staffed, 48, 4.2, 'bank')
-    release(thin, 48, 4.2, 'bank')
+    release(staffed, 80, 2.4, 'bank')
+    release(thin, 80, 2.4, 'bank')
     const staffedRun = walk(staffed, 140)
     const thinRun = walk(thin, 140)
 

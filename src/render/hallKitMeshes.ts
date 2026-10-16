@@ -6,6 +6,9 @@
  */
 import * as THREE from 'three'
 import { cellCenter, HALL_D, HALL_W, itemDef, type PlacedItem } from '../game/terminal'
+import { layoutTileM } from '../terminalbuild/config.ts'
+import { FITTING_ITEM, fittingSize } from '../terminalbuild/fittings.ts'
+import type { BuildLayout } from '../terminalbuild/types.ts'
 import { itemSize } from '../game/terminalKit'
 import { binFull } from '../game/litter'
 import { TRASH_CAN } from '../game/litterData'
@@ -314,6 +317,28 @@ export interface KitPlacement {
   item: PlacedItem
   x: number
   z: number
+}
+
+/** World position for every item, honouring shared cells. */
+/** Placed fittings on a version-2 layout, in hall metres, centred on the hall origin. */
+export function layoutFittings(layout: BuildLayout): KitPlacement[] {
+  const tileM = layoutTileM(layout)
+  const ox = (-layout.w * tileM) / 2
+  const oz = (-layout.h * tileM) / 2
+  const out: KitPlacement[] = []
+  for (const f of layout.fittings ?? []) {
+    const def = FITTING_ITEM[f.kind]
+    if (!def) continue
+    const size = fittingSize(f.kind, f.rot)
+    const x = ox + (f.x + size.w / 2) * tileM
+    const z = oz + (f.y + size.d / 2) * tileM
+    out.push({
+      item: { id: f.id, def, c: 0, r: 0, wear: f.wear, rot: f.rot, hx: x, hz: z, fw: size.w, fd: size.d },
+      x,
+      z,
+    })
+  }
+  return out
 }
 
 /** World position for every item, honouring shared cells. */

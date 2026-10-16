@@ -23,7 +23,7 @@ import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
 import { landingTexture } from './landingArt'
 import { fadeFloodPool } from './nightArt'
-import { CELL, type BridgeCraft } from './view'
+import { CELL, cellX, cellZ, type BridgeCraft } from './view'
 
 /** Apron flood wash: centre distance from the mast and size (across, along), world units. */
 export const FLOOD_REACH = CELL * 0.42
@@ -351,6 +351,14 @@ export function bridgeParts(b: JetBridge): BridgePart[] {
   }
   const inner = at(len * 0.3)
   const outer = at(len * 0.725)
+  // A long chord beside a widebody runs inside the tunnel's own width.
+  if (b.cabFace) {
+    const off = 0.45 * wu
+    inner.x -= b.cabFace.x * off
+    inner.z -= b.cabFace.z * off
+    outer.x -= b.cabFace.x * off
+    outer.z -= b.cabFace.z * off
+  }
   out.push({ name: 'bridge-tunnel-a', kind: 'box', x: inner.x, y: baseY, z: inner.z, yaw, sx: cabW * 0.92, sy: cabH * 0.86, sz: len * 0.6, slot: 'body' })
   out.push({ name: 'bridge-tunnel-b', kind: 'box', x: outer.x, y: baseY - 0.04, z: outer.z, yaw, sx: cabW, sy: cabH * 0.92, sz: len * 0.55, slot: 'body' })
   out.push({ name: 'bridge-stripe-a', kind: 'box', x: inner.x, y: baseY - cabH * 0.42, z: inner.z, yaw, sx: cabW * 0.98, sy: 0.05, sz: len * 0.58, slot: 'stripe' })
@@ -426,7 +434,29 @@ function applyBridgePart(mesh: THREE.Object3D, part: BridgePart) {
 export function posedApronBridge(full: JetBridge, extend: number, craft?: BridgeCraft | null): JetBridge {
   if (!craft) return dockedJetBridge(full, extend)
   const target = dockToAircraft(full, craft)
-  return target ? reachJetBridge(full, target, extend) : dockedJetBridge(full, 0)
+  const posed = target ? reachJetBridge(full, target, extend) : dockedJetBridge(full, 0)
+  if (!target) return posed
+  // The straight chord clips a widebody at mid-reach. Push the cab off the
+  // centreline (either heading) and leave the parked and docked ends put.
+  const u = Math.min(1, Math.max(0, extend))
+  // A reversed widebody leaves the rotunda beside the tail, so the chord runs
+  // the length of the tube. The tunnel box is wider than the gap at the skin.
+  const s = Math.sin(Math.PI * u)
+  const early = Math.sin(Math.PI * Math.pow(u, 0.35))
+  const bow = (s * 1.95 + Math.max(0, early - s) * 0.4) * aircraftWorldPerMeter()
+  if (bow <= 0) return posed
+  const nx = Math.cos(craft.heading)
+  const nz = Math.sin(craft.heading)
+  const dx = posed.cab.x - cellX(craft.x)
+  const dz = posed.cab.z - cellZ(craft.y)
+  const side = -dx * nz + dz * nx >= 0 ? 1 : -1
+  return {
+    ...posed,
+    cab: {
+      x: posed.cab.x + side * -nz * bow,
+      z: posed.cab.z + side * nx * bow,
+    },
+  }
 }
 
 /**

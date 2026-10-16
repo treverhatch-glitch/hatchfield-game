@@ -3,7 +3,7 @@
  * Rejected edits return the input untouched with an `error` and zero cost.
  * Removals refund `refundShare` of the build price (negative cost).
  */
-import { BUILD_TUNING, DOOR_COST, EQUIP_SPEC, FLOOR_COST, ROOM_SPEC, WALL_COST, ZONE_COST } from './config.ts'
+import { BUILD_TUNING, DOOR_COST, EQUIP_SPEC, ROOM_SPEC, floorTileCost, floorTileUpkeep, layoutTileM, wallEdgeCost, wallEdgeUpkeep, zoneTileCost, zoneTileUpkeep } from './config.ts'
 import { STARTER_STORIES, floorOf } from './floors.ts'
 import { edgeKey, edgeTiles, inBounds, isFloor, tileKey } from './grid.ts'
 import type { BuildLayout, BuildZone, Door, Edge, EditResult, Equip, Rect, Room } from './types.ts'
@@ -36,6 +36,11 @@ function clone(l: BuildLayout): BuildLayout {
     verticals: l.verticals?.slice(),
     slabs: l.slabs?.map((s) => ({ ...s, tiles: s.tiles.map((row) => row.slice()), zones: s.zones.map((row) => row.slice()), paint: s.paint?.map((row) => row.slice()) })),
     floorPaint: l.floorPaint?.map((row) => row.slice()),
+    fittings: l.fittings?.map((f) => ({ ...f })),
+    belts: l.belts?.map((b) => ({ ...b, tiles: b.tiles.map((t) => ({ ...t })) })),
+    ports: l.ports?.map((p) => ({ ...p, edge: { ...p.edge } })),
+    sockets: l.sockets?.map((s) => ({ ...s })),
+    unplaced: l.unplaced?.map((u) => ({ ...u })),
   }
 }
 
@@ -65,7 +70,7 @@ export function placeFloor(l: BuildLayout, r: Rect): EditResult {
     next.floor[t.y][t.x] = true
     n++
   }
-  return { layout: next, cost: n * FLOOR_COST.build }
+  return { layout: next, cost: n * floorTileCost(layoutTileM(l)) }
 }
 
 export function removeFloor(l: BuildLayout, r: Rect): EditResult {
@@ -80,7 +85,7 @@ export function removeFloor(l: BuildLayout, r: Rect): EditResult {
     next.zones[t.y][t.x] = null
     n++
   }
-  return { layout: next, cost: refund(n * FLOOR_COST.build) }
+  return { layout: next, cost: refund(n * floorTileCost(layoutTileM(l))) }
 }
 
 export function placeWall(l: BuildLayout, e: Edge): EditResult {
@@ -90,7 +95,7 @@ export function placeWall(l: BuildLayout, e: Edge): EditResult {
   const next = clone(l)
   next.doors = next.doors.filter((d) => edgeKey(d) !== k)
   next.walls.push({ x: e.x, y: e.y, dir: e.dir, floor: floorOf(e) })
-  return { layout: next, cost: WALL_COST.build }
+  return { layout: next, cost: wallEdgeCost(layoutTileM(l)) }
 }
 
 export function removeWall(l: BuildLayout, e: Edge): EditResult {
@@ -98,7 +103,7 @@ export function removeWall(l: BuildLayout, e: Edge): EditResult {
   if (!l.walls.some((w) => edgeKey(w) === k)) return reject(l, 'No wall there.')
   const next = clone(l)
   next.walls = next.walls.filter((w) => edgeKey(w) !== k)
-  return { layout: next, cost: refund(WALL_COST.build) }
+  return { layout: next, cost: refund(wallEdgeCost(layoutTileM(l))) }
 }
 
 /** A door takes the place of a wall segment. */
@@ -186,7 +191,7 @@ export function paintZone(l: BuildLayout, r: Rect, zone: BuildZone | null): Edit
     next.zones[t.y][t.x] = zone
     if (zone) n++
   }
-  return { layout: next, cost: n * ZONE_COST.build, rejected: mask.invalid.length ? mask.invalid : undefined }
+  return { layout: next, cost: n * zoneTileCost(layoutTileM(l)), rejected: mask.invalid.length ? mask.invalid : undefined }
 }
 
 /** Room footprints may not overlap. Zone fit is a validator hint, not a hard stop. */
@@ -247,7 +252,7 @@ export function encloseFloor(l: BuildLayout): EditResult {
       }
     }
   }
-  return { layout: next, cost: (next.walls.length - l.walls.length) * WALL_COST.build }
+  return { layout: next, cost: (next.walls.length - l.walls.length) * wallEdgeCost(layoutTileM(l)) }
 }
 
 /** Apply edits in order, stopping at the first rejection. Handy for tools and tests. */
@@ -276,10 +281,11 @@ export function buildUpkeepPerDay(l: BuildLayout): number {
       if (l.zones[y][x]) zoned++
     }
   }
+  const tileM = layoutTileM(l)
   return (
-    floor * FLOOR_COST.upkeepPerDay +
-    zoned * ZONE_COST.upkeepPerDay +
-    l.walls.length * WALL_COST.upkeepPerDay +
+    floor * floorTileUpkeep(tileM) +
+    zoned * zoneTileUpkeep(tileM) +
+    l.walls.length * wallEdgeUpkeep(tileM) +
     l.doors.reduce((s, d) => s + DOOR_COST[d.kind].upkeepPerDay, 0) +
     l.rooms.reduce((s, r) => s + ROOM_SPEC[r.kind].upkeepPerDay, 0) +
     l.equipment.reduce((s, e) => s + EQUIP_SPEC[e.kind].upkeepPerDay, 0)

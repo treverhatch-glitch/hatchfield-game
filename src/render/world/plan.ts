@@ -78,6 +78,17 @@ export interface TerminalPlan {
 
 export function zoneFor(depth: number, depthN: number, along: number, alongN: number): Zone {
   if (depthN === 1) return along % 2 === 0 ? 'checkin' : 'gate'
+  // Two cells deep has no middle band. Screening sits on the landside row,
+  // shops keep a concourse strip, and three airside cells stay gates.
+  if (depthN === 2 && alongN >= 4) {
+    if (depth === 0) {
+      if (along === 0) return 'security'
+      if (along === alongN - 1) return 'backoffice'
+      return 'checkin'
+    }
+    if (along === 1) return 'shops'
+    return 'gate'
+  }
   if (depth === 0) return 'checkin'
   if (depth === depthN - 1) return 'gate'
   const mid = Math.floor((alongN - 1) / 2)
@@ -160,7 +171,8 @@ export function planTerminal(
           ? [-1.95, -0.65, 0.65, 1.95]
           : [-0.9, 0.9]
       // The end slot stays empty for a common-use or dedicated desk.
-      const slots = full.slice(0, -1)
+      // Two-deep check-in keeps desks on one side so a restroom still fits.
+      const slots = depthN === 2 ? [-2.25, -1.35] : full.slice(0, -1)
       for (const u of slots) {
         prop('counter', u, 0.35, yawAir + Math.PI)
         prop('monitor', u, 0.28, yawAir + Math.PI)
@@ -169,22 +181,25 @@ export function planTerminal(
         if (rand() < 0.75) person('pax', u + (rand() - 0.5) * 0.3, -0.35, yawAir)
         if (rand() < 0.45) person('pax', u + (rand() - 0.5) * 0.4, -0.95, yawAir)
       }
-      if (!facesSecurity) prop('belt', 0, 1.3, yawAir)
+      if (depthN !== 2 && !facesSecurity) prop('belt', 0, 1.3, yawAir)
       // Self check-in, off the lane that leads to security.
-      if (!facesSecurity && density >= 1) prop('kiosk', 2.35, -0.35, yawAir + Math.PI, 1)
-      if (!wcPlaced) {
+      if (depthN !== 2 && !facesSecurity && density >= 1) prop('kiosk', 2.35, -0.35, yawAir + Math.PI, 1)
+      if (depthN !== 2 && !wcPlaced) {
         prop('wc', -2.5, 2.25, yawAir)
         wcPlaced = true
       }
       for (const u of slots) {
         if (rand() < 0.4) prop('bag', u + 0.42, 1.15, yawAir)
       }
-      prop('bin', 2.45, 2.15)
-      for (const u of [-2.3, -1.3, -0.3, 0.7, 1.7]) prop('stanchion', u, -1.55)
-      for (const u of [-1.8, -0.8, 0.2, 1.2, 2.2]) prop('stanchion', u, -2.15)
-      prop('board', 0, -2.55, yawAir + Math.PI)
+      if (depthN !== 2) {
+        prop('bin', 2.45, 2.15)
+        for (const u of [-2.3, -1.3, -0.3, 0.7, 1.7]) prop('stanchion', u, -1.55)
+        for (const u of [-1.8, -0.8, 0.2, 1.2, 2.2]) prop('stanchion', u, -2.15)
+        prop('board', 0, -2.55, yawAir + Math.PI)
+      }
     } else if (zone === 'security') {
-      const lanes = density >= 1 ? [-1.2, 1.2] : [0]
+      // Two-deep screening is one cell. Keep the lane to one side so a placed scanner fits.
+      const lanes = depthN === 2 ? [-1.8] : density >= 1 ? [-1.2, 1.2] : [0]
       for (const u of lanes) {
         prop('xray', u - 0.45, 0, yawAir)
         prop('arch', u + 0.55, 0.15, yawAir)
@@ -198,11 +213,12 @@ export function planTerminal(
       prop('planter', 2.4, 2.3)
     } else if (zone === 'shops') {
       const tint = Math.floor(rand() * 4)
-      prop('kiosk', -1.3, 0.4, yawAir + Math.PI / 2, tint)
-      prop('awning', -0.55, 0.4, yawAir + Math.PI / 2, tint)
-      person('staff', -1.55, 0.4, yawAir + Math.PI / 2)
+      const shopU = depthN === 2 ? -1.9 : -1.3
+      prop('kiosk', shopU, 0.4, yawAir + Math.PI / 2, tint)
+      prop('awning', shopU + 0.75, 0.4, yawAir + Math.PI / 2, tint)
+      person('staff', shopU - 0.25, 0.4, yawAir + Math.PI / 2)
       if (rand() < 0.8) person('pax', -0.1, 0.2, yawAir - Math.PI / 2)
-      const tables = density >= 1 ? [-1.4, 0, 1.4] : [0]
+      const tables = depthN === 2 ? [-1.6] : density >= 1 ? [-1.4, 0, 1.4] : [0]
       for (const v of tables) {
         prop('table', 1.5, v, yawAir)
         prop('stool', 1.05, v, yawAir)
@@ -217,7 +233,7 @@ export function planTerminal(
       prop('bag', 0.2, 1.7, yawAir)
     } else if (zone === 'backoffice') {
       // Landside half: staff offices.
-      for (const u of density >= 1 ? [-1.5, 0, 1.5] : [-0.8, 0.8]) {
+      for (const u of depthN === 2 ? [-2.3, -1.6, -0.9, -0.2, 0.5, 1.2, 1.9, 2.4] : density >= 1 ? [-1.5, 0, 1.5] : [-0.8, 0.8]) {
         prop('counter', u, -1.7, yawAir)
         prop('monitor', u, -1.62, yawAir)
         prop('stool', u, -1.15, yawAir)
@@ -253,7 +269,7 @@ export function planTerminal(
     }
   }
 
-  const rooms = planRooms(t, zones, props, depthN === 1)
+  const rooms = planRooms(t, zones, props, depthN === 1, depthN === 2)
   const plan: TerminalPlan = { zones, props, people, walkers: [], rooms }
 
   // Crowd routes follow the passenger flow and go through doorways, never through walls.

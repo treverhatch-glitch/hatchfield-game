@@ -26,7 +26,7 @@ describe('apron mesh census', { timeout: 20_000 }, () => {
     // Starter apron repeats are signs, not the passenger-budget body parts.
     expect(shared).toEqual([])
     expect(shapes.map((row) => `${row.name}:${row.count}:${row.triangles}`)).toEqual([
-      'PlaneGeometry|v4:8:16',
+      'PlaneGeometry|v4:9:18',
       'gate-sign|v4:6:12',
       'wayfinding-sign|v4:4:8',
     ])

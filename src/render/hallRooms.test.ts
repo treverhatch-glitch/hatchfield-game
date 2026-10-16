@@ -33,8 +33,11 @@ describe('hall room fit', () => {
     }
     const shell = roomShellBounds(rp, fit)
     const shellW = shell.maxX - shell.minX
+    const shellD = shell.maxZ - shell.minZ
     expect(shellW).toBeLessThan(HALL_W - 6)
-    expect(shellW).toBeGreaterThan(HALL_D * 0.7)
+    expect(shellD).toBeLessThan(HALL_D - 1)
+    // The 2×4 stamp is longer than it is wide. The long side still fills the hall.
+    expect(Math.max(shellW, shellD)).toBeGreaterThan(HALL_D * 0.7)
     for (const [x, z] of corners) {
       const p = apronToHall(x, z, fit)
       expect(p.x).toBeGreaterThan(shell.minX)

@@ -9,6 +9,7 @@
  * security, AIR cells after it. Only a security lane joins them.
  */
 import { EQUIP_SPEC, ZONE_SIDE } from '../terminalbuild/config.ts'
+import { beltTileSet, fittingSpec, fittingTiles } from '../terminalbuild/fittings.ts'
 import { floorLinks, type FloorLink } from '../terminalbuild/floors.ts'
 import { edgeKey, edgeBetween, edgeTiles, indexLayout, isFloor, outsideDoors, tileKey, type GridIndex } from '../terminalbuild/grid.ts'
 import type { BuildLayout, Tile } from '../terminalbuild/types.ts'
@@ -54,9 +55,25 @@ const OPEN_S = 2
 
 export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
   const T = PAXNAV_TUNING
-  const k = T.cellsPerTile
+  // 1 m tiles use 0.5 m cells. Legacy 4 m tiles keep the 1 m cells the tests pin.
+  const k = tileM <= 1 ? 2 : T.cellsPerTile
+  const doorCells = tileM <= 1 ? k : T.doorCells
   const margin = T.marginTiles
   const ix = indexLayout(layout)
+  const blocked = new Set<string>()
+  const laneCover = new Map<string, number>()
+  const laneEquips = layout.equipment.filter((e) => e.kind === 'security_lane')
+  for (const f of layout.fittings ?? []) {
+    if (f.kind === 'security_lane') {
+      const found = laneEquips.findIndex((e) => e.id === f.id)
+      const idx = found >= 0 ? found : laneEquips.length
+      for (const t of fittingTiles(f)) laneCover.set(tileKey(t.x, t.y, f.floor), idx)
+      continue
+    }
+    if (!fittingSpec(f.kind).blocksWalk) continue
+    for (const t of fittingTiles(f)) blocked.add(tileKey(t.x, t.y, f.floor))
+  }
+  for (const key of beltTileSet(layout)) blocked.add(key)
   const tw = layout.w + margin * 2
   const th = layout.h + margin * 2
   const gw = tw * k
@@ -70,13 +87,20 @@ export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
     for (let x = 0; x < layout.w; x++) {
       if (!isFloor(layout, x, y)) continue
       const zone = layout.zones[y][x]
-      if (!zone || zone === 'baggage') continue
-      const eq = ix.equipAt.get(tileKey(x, y))
-      if (eq && !EQUIP_SPEC[eq.kind].walkThrough) continue
+      if (!zone || zone === 'baggage' || zone === 'bagroom' || zone === 'vertical') continue
+      const key = tileKey(x, y)
+      if (blocked.has(key)) continue
+      const eq = ix.equipAt.get(key)
+      if (eq && !EQUIP_SPEC[eq.kind].walkThrough && !laneCover.has(key)) continue
       const side = ZONE_SIDE[zone]
-      let bits = side === 'landside' ? PRE : side === 'airside' ? AIR : side === 'staff' ? 0 : PRE | AIR
+      if (side === 'sterile_arr' || side === 'staff') continue
+      let bits = side === 'landside' ? PRE : side === 'airside' ? AIR : PRE | AIR
       const ti = (y + margin) * tw + (x + margin)
-      if (eq?.kind === 'security_lane') {
+      const covered = laneCover.get(key)
+      if (covered != null) {
+        bits = PRE | AIR | LANE
+        tileLane[ti] = covered
+      } else if (eq?.kind === 'security_lane') {
         bits = PRE | AIR | LANE
         tileLane[ti] = lanes.indexOf(eq)
       }
@@ -109,8 +133,8 @@ export function buildNavGrid(layout: BuildLayout, tileM: number): NavGrid {
 
   // Edge passability. Inside one tile everything is open; across a tile edge
   // a wall closes it and a door opens only its span.
-  const lo = Math.floor((k - T.doorCells) / 2)
-  const hi = lo + T.doorCells
+  const lo = Math.floor((k - doorCells) / 2)
+  const hi = lo + doorCells
   const open = new Uint8Array(gw * gh)
   const links = floorLinks(layout)
   const crossing = (a: Tile, b: Tile, along: number): boolean => {

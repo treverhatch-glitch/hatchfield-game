@@ -94,7 +94,7 @@ function docked(flight: Flight, kind: 'fuel' | 'bags', stand: Vec): Truck {
 describe('legacy service spots', () => {
   it('draws the bowser and the bag truck on separate airframe sockets', () => {
     const game = field()
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     for (const airframeId of ['crj700', 'b738'] as const) {
       const flight = parked(game, stand, airframeId)
       const fuel = docked(flight, 'fuel', stand)
@@ -120,7 +120,7 @@ describe('legacy service spots', () => {
 
   it('uses the socket once a dispatched bowser reaches the stand', () => {
     const game = field()
-    const flight = parked(game, { c: 11, r: 6 }, 'crj700')
+    const flight = parked(game, { c: 12, r: 7 }, 'crj700')
     game.beginServicing(flight)
     let draw: { x: number; y: number } | null = null
     for (let i = 0; i < 240 && !draw; i++) {

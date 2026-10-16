@@ -63,7 +63,7 @@ describe('surface rungs', () => {
   it('shows the next pour on the stand card', () => {
     const game = field()
     game.tool = 'pan'
-    game.clickTile({ c: 11, r: 6 })
+    game.clickTile({ c: 12, r: 7 })
     const row = game.buildingCard()?.sections?.find((section) => section.id === 'upgrade')?.rows[0]
     expect(row?.label).toBe('Reinforced concrete needs Field level 3.')
     expect(row?.disabled).toBe(true)

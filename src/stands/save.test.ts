@@ -35,57 +35,57 @@ function reload(game: Game, edit: (snap: Record<string, unknown>) => void): Game
 describe('stand keys on a live field', () => {
   it('writes a concrete rung and no bridge on the starter stands', () => {
     const game = started()
-    expect(game.standSize['11,6']).toBe('narrow')
-    expect(game.standRung['11,6']).toBe(1)
-    expect(game.standClass['11,6']).toBe('M')
-    expect(game.standAccess['11,6']).toBe('remote')
-    expect(game.fittings[hostKey('stand', 11, 6)]).toBeUndefined()
-    expect(game.standIcao({ c: 11, r: 6 })).toBe('C')
-    expect(game.standPaxMode({ c: 11, r: 6 })).toBe('walk')
+    expect(game.standSize['12,7']).toBe('narrow')
+    expect(game.standRung['12,7']).toBe(1)
+    expect(game.standClass['12,7']).toBe('M')
+    expect(game.standAccess['12,7']).toBe('remote')
+    expect(game.fittings[hostKey('stand', 12, 7)]).toBeUndefined()
+    expect(game.standIcao({ c: 12, r: 7 })).toBe('C')
+    expect(game.standPaxMode({ c: 12, r: 7 })).toBe('walk')
   })
 
   it('fills an old jetway and does not raise a rung that is already stored', () => {
     const game = started()
-    game.standAccess['11,6'] = 'jetway'
-    game.standAccess['11,12'] = 'jetway'
+    game.standAccess['12,7'] = 'jetway'
+    game.standAccess['12,10'] = 'jetway'
     game.fittings = {}
     const loaded = reload(game, (snap) => {
       delete snap.standSize
       delete snap.standRung
       delete snap.fittings
     })
-    expect(loaded.standSize['11,6']).toBe('narrow')
-    expect(loaded.standRung['11,6']).toBe(1)
-    expect(loaded.fittings[hostKey('stand', 11, 6)]).toEqual([{ id: 'jet_bridge' }])
-    expect(loaded.standAccess['11,6']).toBe('jetway')
-    expect(loaded.standClass['11,6']).toBe('M')
+    expect(loaded.standSize['12,7']).toBe('narrow')
+    expect(loaded.standRung['12,7']).toBe(1)
+    expect(loaded.fittings[hostKey('stand', 12, 7)]).toEqual([{ id: 'jet_bridge' }])
+    expect(loaded.standAccess['12,7']).toBe('jetway')
+    expect(loaded.standClass['12,7']).toBe('M')
 
-    loaded.standSize['11,12'] = 'light'
-    loaded.standRung['11,12'] = 0
-    loaded.standAccess['11,12'] = 'remote'
-    delete loaded.fittings[hostKey('stand', 11, 12)]
+    loaded.standSize['12,10'] = 'light'
+    loaded.standRung['12,10'] = 0
+    loaded.standAccess['12,10'] = 'remote'
+    delete loaded.fittings[hostKey('stand', 12, 10)]
     loaded.migrateMissingStands()
-    expect(loaded.standRung['11,12']).toBe(0)
-    expect(loaded.standSize['11,12']).toBe('light')
-    expect(loaded.fittings[hostKey('stand', 11, 12)]).toBeUndefined()
+    expect(loaded.standRung['12,10']).toBe(0)
+    expect(loaded.standSize['12,10']).toBe('light')
+    expect(loaded.fittings[hostKey('stand', 12, 10)]).toBeUndefined()
   })
 
   it('keeps a legacy bridge as a bought attachment and leaves a remote stand alone', () => {
     const game = started()
-    const host = hostKey('stand', 11, 6)
-    game.standAccess['11,6'] = 'jetway'
+    const host = hostKey('stand', 12, 7)
+    game.standAccess['12,7'] = 'jetway'
     game.fittings[host] = [{ id: 'jet_bridge', granted: 'legacy' }]
-    game.standAccess['11,12'] = 'remote'
-    delete game.fittings[hostKey('stand', 11, 12)]
+    game.standAccess['12,10'] = 'remote'
+    delete game.fittings[hostKey('stand', 12, 10)]
     const loaded = reload(game, () => {})
     expect(loaded.fittings[host]).toEqual([{ id: 'jet_bridge' }])
-    expect(loaded.standAccess['11,6']).toBe('jetway')
-    expect(loaded.fittings[hostKey('stand', 11, 12)]).toBeUndefined()
-    expect(loaded.standAccess['11,12']).toBe('remote')
+    expect(loaded.standAccess['12,7']).toBe('jetway')
+    expect(loaded.fittings[hostKey('stand', 12, 10)]).toBeUndefined()
+    expect(loaded.standAccess['12,10']).toBe('remote')
     const cash = loaded.cash
     loaded.removeFitting(host, 'jet_bridge')
     expect(loaded.cash - cash).toBe(Math.round(jetBridgeCost('narrow') * BULLDOZE_REFUND))
-    expect(loaded.standAccess['11,6']).toBe('remote')
+    expect(loaded.standAccess['12,7']).toBe('remote')
   })
 
   it('turns a missing access beside a hall into a bought bridge', () => {
@@ -94,8 +94,8 @@ describe('stand keys on a live field', () => {
       delete snap.standAccess
       delete snap.fittings
     })
-    expect(loaded.fittings[hostKey('stand', 11, 6)]).toEqual([{ id: 'jet_bridge' }])
-    expect(loaded.standAccess['11,6']).toBe('jetway')
-    expect(loaded.standPaxMode({ c: 11, r: 6 })).toBe('jetway')
+    expect(loaded.fittings[hostKey('stand', 12, 7)]).toEqual([{ id: 'jet_bridge' }])
+    expect(loaded.standAccess['12,7']).toBe('jetway')
+    expect(loaded.standPaxMode({ c: 12, r: 7 })).toBe('jetway')
   })
 })

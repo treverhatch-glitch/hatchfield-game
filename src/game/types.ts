@@ -922,6 +922,11 @@ export interface TerminalFit {
   secPerMin?: number
   /** Zone paint or a custom stamp. Ceilings come from placed items. */
   redesigned?: boolean
+  /**
+   * Version-2 terminal document (1 m tiles, fittings, belts).
+   * When set, the walk and the hall picture read this instead of the prefab zones.
+   */
+  layout?: BuildLayout
   /** Built from scratch with walls, floors, and zones (src/terminalbuild). Prefab halls leave this unset. */
   build?: BuildLayout
   /**
@@ -934,6 +939,11 @@ export interface TerminalFit {
 export interface GameSnapshot {
   tiles: Tile[][]
   terminalFits: TerminalFit[]
+  /**
+   * Set by the schema 5 → 6 migration. The loader adds `amount` to cash,
+   * announces `note` once, and does not copy the field onto the game.
+   */
+  terminalRebuild?: { label: 'Terminal rebuild refund'; amount: number; note: string }
   cash: number
   /** Serialized airport name and logo. Missing on older saves. */
   branding?: string

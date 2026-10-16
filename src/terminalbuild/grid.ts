@@ -82,7 +82,11 @@ export function sideAt(l: BuildLayout, t: Tile): ZoneSide | null {
 export function standable(l: BuildLayout, ix: GridIndex, t: Tile, who: Mover): boolean {
   if (!isFloor(l, t.x, t.y)) return false
   const zone = l.zones[t.y][t.x]
-  if (who !== 'staff' && (!zone || zone === 'baggage' || zone === 'office')) return false
+  if (who !== 'staff' && (!zone || zone === 'baggage' || zone === 'office' || zone === 'bagroom' || zone === 'vertical')) return false
+  // Legacy 4 m halls still walk arrivals across airside and gates. The split
+  // only applies once the layout is the 1 m document.
+  if (l.version === 2 && who === 'depart' && (zone === 'claim' || zone === 'arrivals')) return false
+  if (l.version === 2 && who === 'arrive' && (zone === 'security' || zone === 'airside' || zone === 'gates')) return false
   const eq = ix.equipAt.get(tileKey(t.x, t.y, floorOf(t)))
   return !eq || EQUIP_SPEC[eq.kind].walkThrough
 }

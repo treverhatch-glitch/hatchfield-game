@@ -199,9 +199,11 @@ describe('hall walkers (paxnav glue)', () => {
       const x = m[12]
       const y = m[13]
       const z = m[14]
-      // Curb pavement is one 4 m tile outside the hall wall.
-      expect(Math.abs(x)).toBeLessThanOrEqual(HALL_W / 2 + 4)
-      expect(Math.abs(z)).toBeLessThanOrEqual(HALL_D / 2 + 4)
+      // Curb pavement is one tile outside the live hall wall.
+      const layout = game.hallNav.nav!.layout
+      const tileM = layout.tileM && layout.tileM > 0 ? layout.tileM : 4
+      expect(Math.abs(x)).toBeLessThanOrEqual((layout.w * tileM) / 2 + 4)
+      expect(Math.abs(z)).toBeLessThanOrEqual((layout.h * tileM) / 2 + 4)
       expect(y).toBeGreaterThan(0.5)
       expect(y).toBeLessThan(0.8)
     }

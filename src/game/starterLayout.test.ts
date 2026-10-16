@@ -71,7 +71,7 @@ describe('starter kits', () => {
       return
     }
 
-    expect(halls).toHaveLength(9)
+    expect(halls).toHaveLength(8)
     expect(first.fits).toHaveLength(1)
     expect(stands).toHaveLength(2)
     expect(standBeltLinked(first.tiles, stands[0])).toBe(true)

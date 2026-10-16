@@ -25,10 +25,10 @@ function card(game: Game, c: number, r: number) {
 describe('jet bridge attachment', () => {
   it('starts with a walk-out stand and sells a bridge on the card', () => {
     const game = field()
-    const host = hostKey('stand', 11, 6)
+    const host = hostKey('stand', 12, 7)
     expect(game.fittings[host]).toBeUndefined()
-    expect(game.standPaxMode({ c: 11, r: 6 })).toBe('walk')
-    const section = card(game, 11, 6)
+    expect(game.standPaxMode({ c: 12, r: 7 })).toBe('walk')
+    const section = card(game, 12, 7)
     const buy = section?.rows.find((row) => row.id.startsWith('fitbuy:'))
     expect(buy?.label).toBe('Jet bridge · bridge_cab · $5,000')
     expect(buy?.disabled).toBe(false)
@@ -36,19 +36,19 @@ describe('jet bridge attachment', () => {
     const before = game.cash
     expect(game.standCardAction(`fitbuy:${host}:jet_bridge`)).toBeUndefined()
     expect(game.cash).toBe(before - jetBridgeCost('narrow'))
-    expect(game.standAccess['11,6']).toBe('jetway')
-    expect(game.standPaxMode({ c: 11, r: 6 })).toBe('jetway')
+    expect(game.standAccess['12,7']).toBe('jetway')
+    expect(game.standPaxMode({ c: 12, r: 7 })).toBe('jetway')
     expect(game.fittings[host]).toEqual([{ id: 'jet_bridge' }])
-    const drop = card(game, 11, 6)?.rows.find((row) => row.id.startsWith('fitdrop:'))
+    const drop = card(game, 12, 7)?.rows.find((row) => row.id.startsWith('fitdrop:'))
     expect(drop?.label).toBe('Remove jet bridge · bridge_cab')
   })
 
   it('roots a bought bridge on the terminal and leaves a fresh stand bridgeless', () => {
     const game = field()
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     expect(jetBridges(game, stands(game))).toHaveLength(0)
     expect(game.bridgeExtendAt(stand)).toBe(0)
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'jet_bridge')).toBe(true)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'jet_bridge')).toBe(true)
     const bridges = jetBridges(game, stands(game))
     expect(bridges).toHaveLength(1)
     const bridge = bridges[0]
@@ -70,7 +70,7 @@ describe('jet bridge attachment', () => {
 
   it('boards a new game on the walk-out path', () => {
     const game = field()
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     const flight = {
       id: 'walk-out',
       airline: 'northline',
@@ -137,7 +137,7 @@ describe('jet bridge attachment', () => {
 
   it('bills a bought bridge and refunds forty percent of that price', () => {
     const game = field()
-    const host = hostKey('stand', 11, 6)
+    const host = hostKey('stand', 12, 7)
     const billed = (game as unknown as { pillarUpkeepBill(): number }).pillarUpkeepBill()
     expect(game.buyFitting(host, 'jet_bridge')).toBe(true)
     const withBridge = (game as unknown as { pillarUpkeepBill(): number }).pillarUpkeepBill()
@@ -145,6 +145,6 @@ describe('jet bridge attachment', () => {
     const cash = game.cash
     game.removeFitting(host, 'jet_bridge')
     expect(game.cash - cash).toBe(Math.round(jetBridgeCost('narrow') * BULLDOZE_REFUND))
-    expect(game.standAccess['11,6']).toBe('remote')
+    expect(game.standAccess['12,7']).toBe('remote')
   })
 })

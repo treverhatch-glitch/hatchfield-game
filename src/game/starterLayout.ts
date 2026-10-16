@@ -74,8 +74,11 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
 
 /** East face of the passenger hall. The public road sits on this column. */
 export const PAX_ROAD_COL = 17
-/** 3×3 hall origin. Airside is west, toward the stands. */
-export const PAX_TERMINAL: Vec = { c: 14, r: 8 }
+/**
+ * 2×4 hall origin (44 m east-west, 88 m north-south).
+ * The long side faces the apron on the west. The east face sits on the road.
+ */
+export const PAX_TERMINAL: Vec = { c: 15, r: 7 }
 
 type Chart = Map<string, Tile>
 
@@ -113,38 +116,38 @@ function paintPassenger(chart: Chart, police: boolean) {
   const putAt = (c: number, r: number, tile: Tile) => put(chart, c, r, tile)
   paintRunways(putAt)
   // Apron on the west face of the hall so the gates read as the airside.
-  // The centre cell of that face is the bag sort, so the corners stay taxi.
-  putAt(11, 9, 'taxi')
-  putAt(13, 8, 'taxi')
-  putAt(13, 10, 'taxi')
-  for (let c = 8; c <= 10; c++) {
-    putAt(c, 6, 'taxi')
-    putAt(c, 12, 'taxi')
+  for (let c = 8; c <= 11; c++) {
+    putAt(c, 7, 'taxi')
+    putAt(c, 10, 'taxi')
   }
-  putAt(11, 6, 'stand')
-  putAt(11, 12, 'stand')
-  for (let r = 8; r <= 10; r++) {
-    for (let c = 14; c <= 16; c++) putAt(c, r, 'terminal')
+  putAt(12, 7, 'stand')
+  putAt(12, 10, 'stand')
+  for (let r = 7; r <= 10; r++) {
+    for (let c = 15; c <= 16; c++) putAt(c, r, 'terminal')
   }
-  // Public road on the east face. Continuous, so drop-off never enters the guard.
-  for (let r = 0; r <= 12; r++) putAt(PAX_ROAD_COL, r, 'road')
-  // North service road. The guard is the only cell joining it to the public road.
-  for (let c = 7; c <= 15; c++) putAt(c, 4, 'road')
-  putAt(16, 4, 'guard')
-  // South apron road. It meets the taxi spine, not column 17, so it is not a second gate.
+  // Public road on the east face. It meets the curb and does not enter the hall.
+  for (let r = 0; r <= 12; r++) {
+    if (r === 2) continue
+    putAt(PAX_ROAD_COL, r, 'road')
+  }
+  putAt(PAX_ROAD_COL, 2, 'guard')
+  // North and south bypasses so trucks reach the apron without crossing the hall.
+  for (let c = 7; c <= 16; c++) putAt(c, 4, 'road')
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
-  // One belt beside the sort, out to both stands. No belt cell touches the hall.
-  putAt(11, 7, 'belt')
-  putAt(11, 8, 'belt')
-  putAt(12, 8, 'belt')
-  putAt(12, 9, 'belt')
-  putAt(12, 10, 'belt')
-  putAt(12, 11, 'belt')
-  putAt(12, 12, 'belt')
-  // Against the west facade. The mesh yaws so the bays face the apron.
-  putAt(13, 9, 'bags')
+  putAt(PAX_ROAD_COL, 14, 'road')
+  // Belts: stand wing, the grass gap, then the hall. Bags join the south run.
+  // The west pad wing stays taxi; these cells are the east wing, not the terminal.
+  putAt(13, 7, 'belt')
+  putAt(14, 7, 'belt')
+  putAt(13, 10, 'belt')
+  putAt(14, 10, 'belt')
+  putAt(13, 11, 'belt')
+  putAt(13, 12, 'belt')
+  // East of the south stand's wing. (12,13) sat inside that 3×3 envelope.
+  putAt(13, 13, 'bags')
   putAt(7, 5, 'fuel')
-  putAt(15, 3, 'cargo')
+  putAt(18, 4, 'road')
+  putAt(19, 4, 'cargo')
   putAt(19, 8, 'fire')
   putAt(19, 10, 'tower')
   putAt(19, 13, 'snack')
@@ -156,11 +159,16 @@ function paintCargo(chart: Chart) {
   paintRunways(putAt)
   for (let c = 8; c <= 11; c++) putAt(c, 10, 'taxi')
   putAt(12, 10, 'stand')
-  for (let r = 0; r <= 12; r++) putAt(PAX_ROAD_COL, r, 'road')
-  for (let c = 13; c <= 15; c++) putAt(c, 10, 'road')
-  putAt(16, 10, 'guard')
-  putAt(15, 9, 'cargo')
+  for (let r = 0; r <= 12; r++) {
+    if (r === 2) continue
+    putAt(PAX_ROAD_COL, r, 'road')
+  }
+  putAt(PAX_ROAD_COL, 2, 'guard')
+  for (let c = 13; c <= 16; c++) putAt(c, 10, 'road')
+  putAt(PAX_ROAD_COL, 10, 'road')
   putAt(6, 10, 'fuel')
+  putAt(18, 5, 'road')
+  putAt(19, 5, 'cargo')
   putAt(19, 8, 'fire')
   putAt(19, 11, 'police')
   putAt(19, 14, 'tower')
@@ -203,8 +211,8 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
     summary: preview.summary,
     terminal: { ...PAX_TERMINAL },
     stands: [
-      { c: 11, r: 6, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
-      { c: 11, r: 12, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
+      { c: 12, r: 7, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
+      { c: 12, r: 10, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
     ],
   }
 }

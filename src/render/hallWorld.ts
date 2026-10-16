@@ -52,6 +52,7 @@ import {
   disposeKitInstances,
   hasKitMesh,
   kitMeshKey,
+  layoutFittings,
   layoutItems,
   slotCenter,
 } from './hallKitMeshes'
@@ -62,7 +63,7 @@ import { HallServiceFx } from './hallService'
 import { nearestFacilityId } from '../ui/inspector/facilityCard.ts'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
-import { BUILD_TUNING, type Edge, type RoomKind } from '../terminalbuild/index.ts'
+import { BUILD_TUNING, layoutTileM, type Edge, type RoomKind } from '../terminalbuild/index.ts'
 import { showLegacyHallFurniture } from './hallRooms'
 import { QUALITY } from './world/quality'
 import { setFidsOpen } from '../fids/open'
@@ -115,6 +116,57 @@ const FLOOR_TINT: Record<ZoneId, string> = {
   arrivals: '#f7f4ee',
   retail: '#f1d3bc',
   toilets: '#e7efe9',
+}
+
+const DOC_TINT: Record<string, string> = {
+  landside: '#f7f4ee',
+  checkin: '#f4f1ea',
+  security: '#f2dca6',
+  airside: '#e7eef6',
+  gates: '#e2e6ea',
+  retail: '#f1d3bc',
+  office: '#e6e2da',
+  claim: '#e4eef2',
+  arrivals: '#e4eef2',
+  baggage: '#e6e0d4',
+  bagroom: '#e6e0d4',
+  vertical: '#dedede',
+}
+
+/** Join collinear wall edges so a 1 m hall is not one mesh per metre. */
+function mergedWallRuns(walls: readonly Edge[], dir: 'E' | 'S'): { x: number; y: number; n: number }[] {
+  const groups = new Map<number, number[]>()
+  for (const e of walls) {
+    if (e.dir !== dir) continue
+    const key = dir === 'E' ? e.x : e.y
+    const along = dir === 'E' ? e.y : e.x
+    const list = groups.get(key)
+    if (list) list.push(along)
+    else groups.set(key, [along])
+  }
+  const out: { x: number; y: number; n: number }[] = []
+  for (const [key, list] of groups) {
+    list.sort((a, b) => a - b)
+    let start = list[0]
+    let prev = list[0]
+    const flush = (end: number) => {
+      const n = end - start + 1
+      if (n <= 0) return
+      out.push(dir === 'E' ? { x: key, y: start, n } : { x: start, y: key, n })
+    }
+    for (let i = 1; i <= list.length; i++) {
+      if (i < list.length && list[i] === prev + 1) {
+        prev = list[i]
+        continue
+      }
+      flush(prev)
+      if (i < list.length) {
+        start = list[i]
+        prev = list[i]
+      }
+    }
+  }
+  return out
 }
 
 const ROOM_COLOR: Partial<Record<HallNode, string>> = {
@@ -291,11 +343,12 @@ export class HallWorld {
     sun.castShadow = preset.shadowMapSize > 0
     sun.shadow.mapSize.set(preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024, preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024)
     sun.shadow.camera.near = 1
-    sun.shadow.camera.far = 90
-    sun.shadow.camera.left = -40
-    sun.shadow.camera.right = 40
-    sun.shadow.camera.top = 30
-    sun.shadow.camera.bottom = -30
+    sun.shadow.camera.far = 120
+    // The 88 m starter is wider than the old 48 m shell. Keep both ends in the map.
+    sun.shadow.camera.left = -52
+    sun.shadow.camera.right = 52
+    sun.shadow.camera.top = 32
+    sun.shadow.camera.bottom = -32
     this.scene.add(sun)
     this.scene.add(new THREE.AmbientLight(HALL_LIGHT.ambient, HALL_LIGHT.ambientI))
 
@@ -976,18 +1029,34 @@ export class HallWorld {
     const layout = nav.live ? nav.nav?.layout : null
     if (layout) {
       // Walkers are live: draw exactly the walls they walk round, gaps at every door.
-      const m = BUILD_TUNING.tileMetres
+      const m = layoutTileM(layout)
       const o = nav.origin()
-      const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
-      for (const e of layout.walls) {
-        if (rooms && !outer(e)) continue
-        const color = outer(e) ? wall : '#c9a27a'
-        const thick = outer(e) ? t : 0.28
-        if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
-        else this.box(m + thick, h, thick, color, o.x + (e.x + 0.5) * m, y, o.z + (e.y + 1) * m)
+      const drawWalls = rooms ? layout.walls.filter((e) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)) : layout.walls
+      if (m <= 1) {
+        for (const run of mergedWallRuns(drawWalls, 'E')) {
+          this.box(t, h, run.n * m, wall, o.x + (run.x + 1) * m, y, o.z + (run.y + run.n / 2) * m)
+        }
+        for (const run of mergedWallRuns(drawWalls, 'S')) {
+          this.box(run.n * m, h, t, wall, o.x + (run.x + run.n / 2) * m, y, o.z + (run.y + 1) * m)
+        }
+      } else {
+        const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
+        for (const e of drawWalls) {
+          const color = outer(e) ? wall : '#c9a27a'
+          const thick = outer(e) ? t : 0.28
+          if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
+          else this.box(m + thick, h, thick, color, o.x + (e.x + 0.5) * m, y, o.z + (e.y + 1) * m)
+        }
       }
-      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
-      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+      if (m <= 1) {
+        const spanW = layout.w * m
+        const spanD = layout.h * m
+        this.box(spanW + 0.6, 0.18, 0.5, '#e7eee9', o.x + spanW / 2, h, o.z)
+        this.box(spanW + 0.6, 0.18, 0.5, '#e7eee9', o.x + spanW / 2, h, o.z + spanD)
+      } else {
+        this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
+        this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+      }
       // No fixed concourse columns: at real size they ran through the carousel and the kit.
       if (rooms) this.buildSecureWalls(zones)
       return
@@ -1056,7 +1125,10 @@ export class HallWorld {
     const open = [...game.hallOpen()].sort().join(',')
     const choke = game.hasSecurityChoke() ? '1' : '0'
     const paint = zones.map((row) => row.join(',')).join('|')
-    const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
+    const doc = fit?.layout?.version === 2 ? fit.layout : null
+    const stuff = doc
+      ? (doc.fittings ?? []).map((f) => `${f.kind}@${f.x},${f.y}r${f.rot}`).join(';')
+      : (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
     const nav = game.hallNav
     const walk = nav.live ? `${nav.nav?.revision}:${nav.nav?.layout.walls.length}:${nav.nav?.layout.doors.length}` : '-'
     const rooms = this.roomPlan ? 'rooms' : 'open'
@@ -1080,19 +1152,40 @@ export class HallWorld {
     const floorPieces: BakePiece[] = []
     const floorGeos: THREE.BufferGeometry[] = []
     const tint = new THREE.Color()
-    for (let r = 0; r < zones.length; r++) {
-      for (let c = 0; c < zones[r].length; c++) {
-        const z = zones[r][c] as ZoneId | null
-        if (!z) continue
-        const pos = this.cellPos(c, r, cols, rows)
-        const geo = new THREE.PlaneGeometry(cw - 0.04, rh - 0.04)
-        geo.rotateX(-Math.PI / 2)
-        floorGeos.push(geo)
-        floorPieces.push({
-          geo,
-          matrix: new THREE.Matrix4().makeTranslation(pos.x, 0.02, pos.z),
-          color: tint.set(FLOOR_TINT[z]).getHex(),
-        })
+    if (doc) {
+      const tileM = layoutTileM(doc)
+      const ox = (-doc.w * tileM) / 2
+      const oz = (-doc.h * tileM) / 2
+      const step = 2
+      for (let y0 = 0; y0 < doc.h; y0 += step) {
+        for (let x0 = 0; x0 < doc.w; x0 += step) {
+          const z = doc.zones[y0]?.[x0]
+          if (!z || !doc.floor[y0]?.[x0]) continue
+          const geo = new THREE.PlaneGeometry(step * tileM - 0.04, step * tileM - 0.04)
+          geo.rotateX(-Math.PI / 2)
+          floorGeos.push(geo)
+          floorPieces.push({
+            geo,
+            matrix: new THREE.Matrix4().makeTranslation(ox + (x0 + step / 2) * tileM, 0.02, oz + (y0 + step / 2) * tileM),
+            color: tint.set(DOC_TINT[z] ?? '#f7f4ee').getHex(),
+          })
+        }
+      }
+    } else {
+      for (let r = 0; r < zones.length; r++) {
+        for (let c = 0; c < zones[r].length; c++) {
+          const z = zones[r][c] as ZoneId | null
+          if (!z) continue
+          const pos = this.cellPos(c, r, cols, rows)
+          const geo = new THREE.PlaneGeometry(cw - 0.04, rh - 0.04)
+          geo.rotateX(-Math.PI / 2)
+          floorGeos.push(geo)
+          floorPieces.push({
+            geo,
+            matrix: new THREE.Matrix4().makeTranslation(pos.x, 0.02, pos.z),
+            color: tint.set(FLOOR_TINT[z]).getHex(),
+          })
+        }
       }
     }
     const floorGeo = bake(floorPieces, true)
@@ -1107,9 +1200,11 @@ export class HallWorld {
     }
     this.fadeCamKey = ''
 
-    const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows).filter(({ item }) =>
-      hallPropAllowed(item.def, zones[item.r]?.[item.c] ?? null),
-    )
+    const laid = doc
+      ? layoutFittings(doc)
+      : layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows).filter(({ item }) =>
+          hallPropAllowed(item.def, zones[item.r]?.[item.c] ?? null),
+        )
     for (const { item: it, x, z } of laid) {
       if (hasKitMesh(it.def) || hallItemProp(it.def)) continue
       const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')

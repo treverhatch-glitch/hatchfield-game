@@ -315,9 +315,12 @@ export class HallArrivals {
     const g = this.grid
     if (!g || this.byId.has(spec.id)) return false
     const gate = this.gateIds.includes(spec.gate) ? spec.gate : (this.gateIds[0] ?? spec.gate)
-    const doors = apronCells(g, gate)
     const out = this.exitField!
-    const ok = doors.filter((c) => Number.isFinite(out.dist[c]))
+    const reachable = (cells: number[]) => cells.filter((c) => Number.isFinite(out.dist[c]))
+    // A gate_apron door on the airside does not reach the curb until a sterile
+    // corridor exists. Stairs and bus arrivals use the claim hall's arrivals door.
+    let ok = reachable(apronCells(g, gate))
+    if (!ok.length) ok = reachable(apronCells(g, ''))
     if (!ok.length) return false
     const r = this.rng
     const T = HALL_ARRIVAL_TUNING

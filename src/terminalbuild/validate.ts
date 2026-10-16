@@ -10,6 +10,7 @@
  * - Equipment is in the right room, not boxed in, and reachable by the people it serves.
  */
 import { EQUIP_SPEC, ROOM_SPEC, ZONE_LABEL } from './config.ts'
+import { beltReachesPort, fittingRoomViolation, fittingTiles, isSecurityKit } from './fittings.ts'
 import {
   around,
   edgeClosed,
@@ -40,8 +41,14 @@ export function serviceTiles(l: BuildLayout, ix: GridIndex, eq: Equip): Tile[] {
   return around(eq).filter((t) => standable(l, ix, t, 'depart') && edgeOpen(ix, eq, t, 'depart'))
 }
 
-function isLane(ix: GridIndex, t: Tile): boolean {
-  return ix.equipAt.get(tileKey(t.x, t.y))?.kind === 'security_lane'
+function laneTileSet(l: BuildLayout): Set<string> {
+  const out = new Set<string>()
+  for (const e of l.equipment) if (e.kind === 'security_lane') out.add(tileKey(e.x, e.y, e.floor ?? 0))
+  for (const f of l.fittings ?? []) {
+    if (f.kind !== 'security_lane') continue
+    for (const t of fittingTiles(f)) out.add(tileKey(t.x, t.y, f.floor))
+  }
+  return out
 }
 
 export interface Reach {
@@ -58,20 +65,21 @@ export interface Reach {
 }
 
 export function reachOf(l: BuildLayout, ix: GridIndex = indexLayout(l)): Reach {
+  const lanes = laneTileSet(l)
+  const isLane = (t: Tile) => lanes.has(tileKey(t.x, t.y, t.floor ?? 0))
   const curb = outsideDoors(l, ['curb'])
     .map((d) => d.tile)
     .filter((t) => standable(l, ix, t, 'depart'))
-  const beforeSec = new Set(flood(curb, walkStep(l, ix, 'depart', (t) => isLane(ix, t))).dist.keys())
+  const beforeSec = new Set(flood(curb, walkStep(l, ix, 'depart', isLane)).dist.keys())
   const departs = new Set(flood(curb, walkStep(l, ix, 'depart')).dist.keys())
-  const gateApron = outsideDoors(l, ['apron'])
+  const gateApron = outsideDoors(l, ['apron', 'gate_apron', 'gate_bridge'])
     .map((d) => d.tile)
     .filter((t) => ix.roomAt.get(tileKey(t.x, t.y))?.kind === 'gate')
-  const arrives = new Set(
-    flood(
-      gateApron.filter((t) => standable(l, ix, t, 'arrive')),
-      walkStep(l, ix, 'arrive', (t) => isLane(ix, t)),
-    ).dist.keys(),
-  )
+  const arrivalStarts = [
+    ...gateApron,
+    ...outsideDoors(l, ['arrivals_in']).map((d) => d.tile),
+  ].filter((t) => standable(l, ix, t, 'arrive'))
+  const arrives = new Set(flood(arrivalStarts, walkStep(l, ix, 'arrive', isLane)).dist.keys())
   return { curb, beforeSec, departs, arrives, gateApron }
 }
 
@@ -151,8 +159,16 @@ export function validateLayout(l: BuildLayout): Validation {
       add({ id: `door_floating:${id}`, severity: 'tip', blocksFlow: false, title: 'Door with no floor', detail: 'This door opens onto nothing on both sides.', fix: 'Lay floor next to it, or remove it.', cells: [a] })
       continue
     }
-    if (fa && fb) continue
-    if (d.kind !== 'curb' && d.kind !== 'apron') {
+    if (fa && fb) {
+      const sideA = sideAt(l, a)
+      const sideB = sideAt(l, b)
+      if ((sideA === 'airside' && sideB === 'sterile_arr') || (sideA === 'sterile_arr' && sideB === 'airside')) {
+        add({ id: `door_sterile:${id}`, severity: 'blocker', blocksFlow: true, title: 'Door joins the gates to baggage claim', detail: 'Arrivals and departures would share a door.', fix: 'Wall this edge. Claim meets the hall only through an exit door.', cells: [a, b] })
+      }
+      continue
+    }
+    const outerOk = d.kind === 'curb' || d.kind === 'apron' || d.kind === 'gate_apron' || d.kind === 'gate_bridge' || d.kind === 'arrivals_in'
+    if (!outerOk) {
       add({ id: `door_kind:${id}`, severity: 'warning', blocksFlow: false, title: 'Inside door on the outer wall', detail: 'Only curb doors and apron doors work on the outside wall.', fix: 'Swap it for a curb door or an apron door.', cells: [tile] })
       continue
     }
@@ -160,8 +176,12 @@ export function validateLayout(l: BuildLayout): Validation {
     if (d.kind === 'curb' && side !== 'landside' && side !== 'either') {
       add({ id: `door_side:${id}`, severity: 'blocker', blocksFlow: false, title: 'Curb door opens past security', detail: 'People off the street would walk straight in without screening.', fix: 'Move the curb door to check-in or the hall before security.', cells: [tile] })
     }
-    if (d.kind === 'apron' && (side === 'landside' || side === 'security')) {
+    const apronish = d.kind === 'apron' || d.kind === 'gate_apron' || d.kind === 'gate_bridge'
+    if (apronish && (side === 'landside' || side === 'security' || side === 'sterile_arr')) {
       add({ id: `door_side:${id}`, severity: 'blocker', blocksFlow: false, title: 'Apron door opens before security', detail: 'The apron is after security. This door lets the public onto it.', fix: 'Move the apron door to a gate or the bag hall.', cells: [tile] })
+    }
+    if (d.kind === 'arrivals_in' && side !== 'sterile_arr') {
+      add({ id: `door_side:${id}`, severity: 'blocker', blocksFlow: false, title: 'Arrivals door opens off the claim hall', detail: 'An arrivals door has to open into baggage claim or the arrivals corridor.', fix: 'Move it onto a claim or arrivals tile.', cells: [tile] })
     }
   }
 
@@ -169,6 +189,7 @@ export function validateLayout(l: BuildLayout): Validation {
   const kinds = new Set(l.rooms.map((r) => r.kind))
   for (const [kind, spec] of Object.entries(ROOM_SPEC) as [RoomKind, (typeof ROOM_SPEC)[RoomKind]][]) {
     if (!spec.required || kinds.has(kind)) continue
+    if (kind === 'bagmakeup' && l.version === 2) continue
     add({ id: `missing_${kind}`, severity: 'blocker', blocksFlow: true, title: `No ${spec.label.toLowerCase()}`, detail: `A terminal cannot open without a ${spec.label.toLowerCase()}.`, fix: `Place a ${spec.label.toLowerCase()} room.`, cells: [] })
   }
   for (const room of l.rooms) {
@@ -242,14 +263,26 @@ export function validateLayout(l: BuildLayout): Validation {
     }
   }
 
-  // 5. Bags.
-  for (const desk of l.equipment.filter((e) => e.kind === 'checkin_desk')) {
-    if (bagRoute(l, ix, desk)) continue
-    add({ id: `bags_no_route:${desk.id}`, severity: 'blocker', blocksFlow: true, title: 'Bags from a desk go nowhere', detail: 'No belt links this check-in desk to a make-up carousel. Bags would be left behind.', fix: 'Run bag belts from the desk to make-up.', cells: [{ x: desk.x, y: desk.y }] })
-  }
-  for (const car of l.equipment.filter((e) => e.kind === 'makeup_carousel')) {
-    if (makeupReachesApron(l, ix, car)) continue
-    add({ id: `makeup_no_apron:${car.id}`, severity: 'blocker', blocksFlow: true, title: 'Bag carts cannot reach the apron', detail: 'No path through the bag hall from this carousel to an apron door.', fix: 'Add an apron door to the baggage zone and keep a lane clear.', cells: [{ x: car.x, y: car.y }] })
+  // 5. Bags. A version-2 hall uses belts and ports. Older halls still use make-up carousels.
+  if (l.version === 2) {
+    for (const piece of (l.fittings ?? []).filter((f) => f.kind === 'checkin_desk' || f.kind === 'bag_drop')) {
+      if (beltReachesPort(l, { x: Math.floor(piece.x), y: Math.floor(piece.y) }, 'bag_out')) continue
+      add({ id: `bags_no_route:${piece.id}`, severity: 'blocker', blocksFlow: true, title: 'Bags from a desk go nowhere', detail: 'No belt links this desk or bag drop to a bag-out port.', fix: 'Run the takeaway belt to a bag-out port.', cells: [{ x: Math.floor(piece.x), y: Math.floor(piece.y) }] })
+    }
+    for (const car of (l.fittings ?? []).filter((f) => f.kind === 'claim_carousel')) {
+      const hit = fittingTiles(car).some((t) => beltReachesPort(l, t, 'bag_in'))
+      if (hit) continue
+      add({ id: `bags_no_feed:${car.id}`, severity: 'blocker', blocksFlow: true, title: 'Claim carousel has no feed', detail: 'No belt links a bag-in port to this carousel.', fix: 'Run the claim belt from a bag-in port to the carousel.', cells: [{ x: Math.floor(car.x), y: Math.floor(car.y) }] })
+    }
+  } else {
+    for (const desk of l.equipment.filter((e) => e.kind === 'checkin_desk')) {
+      if (bagRoute(l, ix, desk)) continue
+      add({ id: `bags_no_route:${desk.id}`, severity: 'blocker', blocksFlow: true, title: 'Bags from a desk go nowhere', detail: 'No belt links this check-in desk to a make-up carousel. Bags would be left behind.', fix: 'Run bag belts from the desk to make-up.', cells: [{ x: desk.x, y: desk.y }] })
+    }
+    for (const car of l.equipment.filter((e) => e.kind === 'makeup_carousel')) {
+      if (makeupReachesApron(l, ix, car)) continue
+      add({ id: `makeup_no_apron:${car.id}`, severity: 'blocker', blocksFlow: true, title: 'Bag carts cannot reach the apron', detail: 'No path through the bag hall from this carousel to an apron door.', fix: 'Add an apron door to the baggage zone and keep a lane clear.', cells: [{ x: car.x, y: car.y }] })
+    }
   }
 
   // 6. Equipment: placement, boxed in, unreachable.
@@ -272,6 +305,22 @@ export function validateLayout(l: BuildLayout): Validation {
     if (!reached(sides, users)) {
       add({ id: `equip_unreachable:${eq.id}`, severity: required ? 'warning' : 'tip', blocksFlow: true, title: `${spec.label} cannot be reached`, detail: 'Nobody can walk to it from the curb.', fix: 'Open a door or path to it.', cells: at })
     }
+  }
+
+  // 6b. Fitting room rules. Security kit stays in the security room. Passport stays sterile.
+  for (const piece of l.fittings ?? []) {
+    if (!isSecurityKit(piece.kind) && piece.kind !== 'passport_booth') continue
+    const why = fittingRoomViolation(l, piece.kind, piece.x, piece.y)
+    if (!why) continue
+    add({
+      id: `room_rule:${piece.id}`,
+      severity: 'blocker',
+      blocksFlow: true,
+      title: piece.kind === 'passport_booth' ? 'Passport booth is outside claim' : 'Security kit is outside security',
+      detail: why,
+      fix: piece.kind === 'passport_booth' ? 'Move the booth into baggage claim or the arrivals corridor.' : 'Move it into the security room.',
+      cells: [{ x: Math.floor(piece.x), y: Math.floor(piece.y) }],
+    })
   }
 
   // 7. Unzoned floor reads as nothing.

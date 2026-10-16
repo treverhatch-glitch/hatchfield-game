@@ -81,16 +81,16 @@ function clocks(game: Game) {
 describe('stand fittings', () => {
   it('stretches the board cap at night and in weather, and the fitting removes that stretch', () => {
     const game = field()
-    const f = flight({ c: 11, r: 6 })
+    const f = flight({ c: 12, r: 7 })
     game.flights = [f]
     const day = cap(game, f)
     const clearPace = paceOf(game, f)
     game.clock = 120
     expect(cap(game, f) / day).toBeCloseTo(1.2)
     game.tool = 'pan'
-    game.clickTile({ c: 11, r: 6 })
+    game.clickTile({ c: 12, r: 7 })
     expect(game.buildingCard()?.note).toContain('Unlit')
-    game.buyFitting(hostKey('stand', 11, 6), 'apron_light')
+    game.buyFitting(hostKey('stand', 12, 7), 'apron_light')
     expect(cap(game, f) / day).toBeCloseTo(1)
     expect(game.buildingCard()?.note ?? '').not.toContain('Unlit')
 
@@ -98,7 +98,7 @@ describe('stand fittings', () => {
     game.weather = 'rain'
     expect(cap(game, f) / day).toBeCloseTo(1.15 * (paceOf(game, f) / clearPace))
     expect(game.buildingCard()?.note).toContain('Weather dwell')
-    game.buyFitting(hostKey('stand', 11, 6), 'gpu_pca')
+    game.buyFitting(hostKey('stand', 12, 7), 'gpu_pca')
     expect(cap(game, f) / day).toBeCloseTo(paceOf(game, f) / clearPace)
     expect(game.buildingCard()?.note ?? '').not.toContain('Weather dwell')
     expect(game.buildingCard()?.note).toBe(HYDRANT_CARD.bowser)
@@ -106,14 +106,14 @@ describe('stand fittings', () => {
 
   it('keeps a dark cable on a GPU truck and skips the truck when the cable is live', () => {
     const game = field()
-    const f = flight({ c: 11, r: 6 })
+    const f = flight({ c: 12, r: 7 })
     game.flights = [f]
     expect(clocks(game).some((row) => row.service === 'gpu')).toBe(true)
     for (let c = 0; c < 6; c++) game.tiles[1]![c] = 'mro'
     expect(game.powerReport().brownout).toBe(true)
-    game.buyFitting(hostKey('stand', 11, 6), 'gpu_pca')
+    game.buyFitting(hostKey('stand', 12, 7), 'gpu_pca')
     game.tool = 'pan'
-    game.clickTile({ c: 11, r: 6 })
+    game.clickTile({ c: 12, r: 7 })
     expect(game.buildingCard()?.note).toContain('Plant is short. A GPU truck is coming.')
     expect(clocks(game).some((row) => row.service === 'gpu')).toBe(true)
     game.progressionBuilt.push('substation')
@@ -123,15 +123,15 @@ describe('stand fittings', () => {
 
   it('holds the de-ice truck at the pad unless the stand has an outlet', () => {
     const game = field()
-    const f = flight({ c: 11, r: 6 })
+    const f = flight({ c: 12, r: 7 })
     game.spawnTruck('deice', f, [{ c: 1, r: 1 }], 'deice')
     expect(game.trucks.at(-1)?.preDwell).toBeCloseTo(9.1)
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'deice_outlet')).toBe(false)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'deice_outlet')).toBe(false)
     game.researchUnlocked.push('deice')
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'deice_outlet')).toBe(false)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'deice_outlet')).toBe(false)
     game.tiles[3]![3] = 'deice'
     const cash = game.cash
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'deice_outlet')).toBe(true)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'deice_outlet')).toBe(true)
     expect(game.cash).toBe(cash - fittingDef('deice_outlet').cost)
     game.spawnTruck('deice', f, [{ c: 1, r: 1 }], 'deice')
     expect(game.trucks.at(-1)?.preDwell).toBeCloseTo(1.1)
@@ -140,7 +140,7 @@ describe('stand fittings', () => {
   it('names the flag socket and bills its upkeep', () => {
     const game = field()
     game.tool = 'pan'
-    game.clickTile({ c: 11, r: 6 })
+    game.clickTile({ c: 12, r: 7 })
     const row = game.buildingCard()?.sections?.find((section) => section.id === 'attachments')?.rows.find((item) =>
       item.id.endsWith(':flag'),
     )
@@ -150,7 +150,7 @@ describe('stand fittings', () => {
     game.standCardAction(row!.id)
     const after = (game as unknown as { pillarUpkeepBill(): number }).pillarUpkeepBill()
     expect(after - before).toBe(fittingDef('flag').upkeepPerDay)
-    const f = flight({ c: 11, r: 6 })
+    const f = flight({ c: 12, r: 7 })
     const day = cap(game, f)
     const clearPace = paceOf(game, f)
     game.clock = 120

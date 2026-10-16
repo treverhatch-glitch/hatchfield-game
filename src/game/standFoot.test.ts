@@ -55,9 +55,9 @@ describe('stand footprints', () => {
       }
     }
 
-    const wing = { c: 12, r: 5 }
+    const wing = { c: 12, r: 6 }
     expect(game.tile(wing)).toBe('grass')
-    expect(seen.has('12,5')).toBe(true)
+    expect(seen.has('12,6')).toBe(true)
 
     game.setTool('snack')
     game.placeSingle(wing)

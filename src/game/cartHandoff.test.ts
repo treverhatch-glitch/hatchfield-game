@@ -75,7 +75,7 @@ describe('socket carts on the field', () => {
     game.tiles[5][6] = 'depot'
     game.tiles[5][5] = 'kitchen'
     game.bumpMap()
-    const flight = parked(game, { c: 11, r: 6 })
+    const flight = parked(game, { c: 12, r: 7 })
     game.tick(0.5)
     const bags = game.cartPoses().filter((pose) => pose.kind === 'bag_cart')
     expect(bags.some((pose) => pose.fromSocket === 'desk_drop' && pose.toSocket === 'makeup_stop' && pose.vehicleSocket === 'cart_bed')).toBe(true)
@@ -93,7 +93,7 @@ describe('socket carts on the field', () => {
     game.tiles[5][6] = 'depot'
     game.tiles[5][5] = 'kitchen'
     game.bumpMap()
-    const flight = parked(game, { c: 11, r: 6 })
+    const flight = parked(game, { c: 12, r: 7 })
     game.tick(0.5)
     game.beginServicing(flight)
     const expected = resolveSocket(aircraftSocketTable(getAircraftSpec(flight.airframeId)), 'catering_door', {
@@ -120,13 +120,13 @@ describe('socket carts on the field', () => {
     const game = field()
     game.tiles[5][5] = 'kitchen'
     game.bumpMap()
-    const flight = parked(game, { c: 11, r: 6 })
+    const flight = parked(game, { c: 12, r: 7 })
     game.tick(0.5)
-    expect(game.cartPoses().some((pose) => pose.standId === '11,6')).toBe(true)
+    expect(game.cartPoses().some((pose) => pose.standId === '12,7')).toBe(true)
     flight.phase = 'gone'
     game.tick(0.5)
-    expect(game.cartPoses().filter((pose) => pose.standId === '11,6')).toEqual([])
+    expect(game.cartPoses().filter((pose) => pose.standId === '12,7')).toEqual([])
     game.tick(2)
-    expect(game.cartPoses().filter((pose) => pose.standId === '11,6')).toEqual([])
+    expect(game.cartPoses().filter((pose) => pose.standId === '12,7')).toEqual([])
   })
 })

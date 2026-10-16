@@ -130,7 +130,7 @@ describe('ground logistics wiring', () => {
     const game = field()
     expect(game.groundSnapshot()).toBeNull()
     expect(game.servicePoses()).toEqual([])
-    const f = parked(game, { c: 11, r: 6 })
+    const f = parked(game, { c: 12, r: 7 })
     game.beginServicing(f)
     expect(f.groundTurn).toBeFalsy()
     expect(game.trucks.some((t) => t.kind === 'fuel')).toBe(true)
@@ -138,7 +138,7 @@ describe('ground logistics wiring', () => {
 
   it('loads the starter bowser beside the farm and never drives it through the tank yard', () => {
     const game = field()
-    const f = parked(game, { c: 11, r: 6 })
+    const f = parked(game, { c: 12, r: 7 })
     game.beginServicing(f)
     const bowser = game.trucks.find((t) => t.kind === 'fuel')!
     expect(game.tile(bowser.home!)).not.toBe('fuel')
@@ -169,13 +169,13 @@ describe('ground logistics wiring', () => {
     const config = buildLogisticsConfig(game.tiles, game.standAccess, false)
     expect(config).toBeTruthy()
     const roads = new RoadGraph(config!.nodes, config!.edges)
-    expect(roads.distance(config!.depotNode, '11,6')).toBeLessThan(Infinity)
-    expect(config!.stands.find((s) => s.id === '11,6')?.access).toBe('stairs')
-    expect(roads.route(config!.depotNode, '11,6').length).toBeGreaterThan(2)
+    expect(roads.distance(config!.depotNode, '12,7')).toBeLessThan(Infinity)
+    expect(config!.stands.find((s) => s.id === '12,7')?.access).toBe('stairs')
+    expect(roads.route(config!.depotNode, '12,7').length).toBeGreaterThan(2)
 
-    const f = parked(game, { c: 11, r: 6 })
+    const f = parked(game, { c: 12, r: 7 })
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('11,6')
+    expect(f.groundTurn).toBe('12,7')
     expect(game.trucks.some((t) => t.kind === 'fuel' || t.kind === 'catering')).toBe(false)
 
     game.tick(3)
@@ -215,7 +215,7 @@ describe('ground logistics wiring', () => {
   it('cancels a departure that stays grounded for fuel past the slot', () => {
     const game = field()
     game.fuelLoads = 0
-    const f = parked(game, { c: 11, r: 6 })
+    const f = parked(game, { c: 12, r: 7 })
     f.phase = 'board'
     f.phaseTime = 400
     game.tick(0.3)

@@ -58,14 +58,16 @@ export function hallFitFor(
 
 /** Centre and size of the stamp the player first placed. Later tiles grow past this. */
 export function stampAnchor(origin: { c: number; r: number }, premade: boolean): { cx: number; cz: number; basisW: number; basisD: number } {
-  const n = premade ? 3 : 2
-  const maxC = origin.c + n - 1
-  const maxR = origin.r + n - 1
+  // Premade starter is 2 cells east-west and 4 cells north-south (44 × 88 m).
+  const cols = 2
+  const rows = premade ? 4 : 2
+  const maxC = origin.c + cols - 1
+  const maxR = origin.r + rows - 1
   return {
     cx: (cellX(origin.c) + cellX(maxC)) / 2,
     cz: (cellZ(origin.r) + cellZ(maxR)) / 2,
-    basisW: n * CELL,
-    basisD: n * CELL,
+    basisW: cols * CELL,
+    basisD: rows * CELL,
   }
 }
 

@@ -8,6 +8,9 @@ import { mulberry32 } from '../playtest/personas.ts'
 import { Game } from './sim.ts'
 import type { AirlineId, ScheduleSlot } from './types.ts'
 
+/** Flights the 150s gap turned in 8 days on this seed, measured before the occupancy gap. */
+const LEGACY_EIGHT_DAY_FLIGHTS = 15
+
 function field(): Game {
   const game = new Game()
   game.sandbox = false
@@ -138,10 +141,9 @@ describe('runway capacity', () => {
     // Booked movements are 3× the retired 150s bank (4 a day → 12). Completions
     // stay under that ceiling: the opening headway, the night closure, and a
     // turnaround longer than the runway hole keep four stands from finishing
-    // 45 flights in eight days. The screened service gate and sort-only belts
-    // finish 13 on this seed. Nothing diverts.
+    // 45 flights in eight days. The 4×2 apron still finishes the 150s bank.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
-    expect(result.done, `diverts ${diverts(game)}`).toBe(13)
+    expect(result.done, `diverts ${diverts(game)}`).toBeGreaterThanOrEqual(LEGACY_EIGHT_DAY_FLIGHTS)
     expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)

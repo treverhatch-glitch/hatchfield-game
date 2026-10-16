@@ -50,8 +50,8 @@ describe('construction', () => {
     expect(game.tile({ c: 8, r: 26 })).toBe('runway')
     expect(game.tile({ c: 7, r: 12 })).toBe('taxi')
     expect(game.tile({ c: 14, r: 22 })).toBe('grass')
-    expect(game.pathStandToRunway({ c: 11, r: 6 })?.length).toBeGreaterThan(1)
-    expect(game.pathStandToRunway({ c: 11, r: 12 })?.length).toBeGreaterThan(1)
+    expect(game.pathStandToRunway({ c: 12, r: 7 })?.length).toBeGreaterThan(1)
+    expect(game.pathStandToRunway({ c: 12, r: 10 })?.length).toBeGreaterThan(1)
   })
 
   it('progress runs even when the van has not arrived, then the tile flips', () => {

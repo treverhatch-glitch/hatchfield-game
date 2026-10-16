@@ -400,6 +400,15 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     const towardR = best.cell.r - s.r
     const port = perpA.dc * towardC + perpA.dr * towardR >= 0 ? perpA : perpB
     const wu = aircraftWorldPerMeter()
+    // Nose-in: the facade is ahead of the nose. Shift the rotunda out to the door line
+    // so the tunnel runs beside the fuselage instead of through it.
+    const noseIn = nose.dc * towardC + nose.dr * towardR > 0
+    if (noseIn && dock) {
+      // Extra half-metre keeps the tunnel box off the skin, not just its centreline.
+      const out = dock.z + 0.9
+      root.x += port.dc * out * wu
+      root.z += port.dr * out * wu
+    }
     const dockX = dock ? sx + (nose.dc * dock.x + port.dc * dock.z) * wu : sx
     const dockZ = dock ? sz + (nose.dr * dock.x + port.dr * dock.z) * wu : sz
     const toStandX = sx - root.x

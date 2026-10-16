@@ -6,10 +6,26 @@
  * "before security" / "after security" (see config.ts labels).
  */
 
-export type BuildZone = 'landside' | 'checkin' | 'security' | 'airside' | 'gates' | 'baggage' | 'retail' | 'office'
+export type BuildZone =
+  | 'landside'
+  | 'checkin'
+  | 'security'
+  | 'airside'
+  | 'gates'
+  | 'baggage'
+  | 'retail'
+  | 'office'
+  | 'claim'
+  | 'arrivals'
+  | 'vertical'
+  | 'bagroom'
 
-/** Which side of the security line a zone sits on. Retail takes the side it is walked from. */
-export type ZoneSide = 'landside' | 'security' | 'airside' | 'staff' | 'either'
+/**
+ * Which side of the security line a zone sits on.
+ * Retail takes the side it is walked from.
+ * `sterile_arr` is arrivals only: it is not a way around security.
+ */
+export type ZoneSide = 'landside' | 'security' | 'airside' | 'staff' | 'either' | 'sterile_arr'
 
 export type RoomKind = 'checkin' | 'security' | 'gate' | 'bagmakeup' | 'retail' | 'toilets' | 'lounge' | 'office'
 
@@ -45,7 +61,15 @@ export interface Edge {
  * - staff: passengers cannot use it.
  * - exit: one-way, after security -> before security only (arrivals).
  */
-export type DoorKind = 'public' | 'curb' | 'apron' | 'staff' | 'exit'
+export type DoorKind =
+  | 'public'
+  | 'curb'
+  | 'apron'
+  | 'staff'
+  | 'exit'
+  | 'gate_bridge'
+  | 'gate_apron'
+  | 'arrivals_in'
 
 export interface Door extends Edge {
   kind: DoorKind
@@ -76,6 +100,83 @@ export interface Equip {
   floor?: number
 }
 
+/** Catalog pieces on the 1 m layout. `Equip` stays until the walk reads fittings directly. */
+export type FittingKind =
+  | 'checkin_desk'
+  | 'checkin_kiosk'
+  | 'bag_drop'
+  | 'queue_rail'
+  | 'bp_podium'
+  | 'security_lane'
+  | 'gate_desk'
+  | 'seat_row'
+  | 'bench'
+  | 'shop_counter'
+  | 'cafe_table'
+  | 'wc_block'
+  | 'claim_carousel'
+  | 'passport_booth'
+  | 'belt'
+  | 'belt_incline'
+  | 'bag_port'
+  | 'fids'
+  | 'wayfinding'
+  | 'escalator'
+  | 'stairs'
+  | 'lift'
+  | 'gate_head'
+
+export interface Fitting {
+  id: string
+  kind: FittingKind
+  /** Min corner, metres. Rot 0 extends +x and +y. Front is +y. */
+  x: number
+  y: number
+  floor: number
+  rot: 0 | 1 | 2 | 3
+  /** 0–100. */
+  wear: number
+  staffed?: boolean
+  gateId?: string
+}
+
+/** Empty growth slot. The same shape as a fitting, with no piece in it yet. */
+export interface FittingSocket {
+  id: string
+  kind: FittingKind
+  x: number
+  y: number
+  floor: number
+  rot: 0 | 1 | 2 | 3
+  gateId?: string
+}
+
+export interface BeltRun {
+  id: string
+  floor: number
+  tiles: { x: number; y: number }[]
+  dir: 'out' | 'in'
+  incline?: { toFloor: number }
+}
+
+export interface Port {
+  id: string
+  kind: 'bag_out' | 'bag_in'
+  edge: Edge
+  /** `terminal:<hallId>:bag_out:<id>` */
+  socket: string
+}
+
+/** A fitting the migration could not place. The player puts it back for free. */
+export interface UnplacedFitting {
+  id: string
+  kind: FittingKind
+  wear: number
+  staffed?: boolean
+  gateId?: string
+  reason?: string
+}
+
 /**
  * One storey of tiles. The ground storey is `BuildLayout.floor` / `zones` /
  * `floorPaint` (index 0). Upper storeys live in `BuildLayout.slabs`.
@@ -104,6 +205,13 @@ export interface Vertical {
 }
 
 export interface BuildLayout {
+  /**
+   * 2 is the 1 m terminal document. Missing means a legacy 4 m build.
+   * The ground slab stays `floor` / `zones` / `floorPaint`. Upper slabs stay `slabs`.
+   */
+  version?: 2
+  /** Metres per tile. Missing means 4. */
+  tileM?: number
   w: number
   h: number
   /**
@@ -132,6 +240,13 @@ export interface BuildLayout {
    * Ids are the Gemini interior plates (see FLOOR_PAINTS).
    */
   floorPaint?: (string | null)[][]
+  fittings?: Fitting[]
+  belts?: BeltRun[]
+  ports?: Port[]
+  /** Empty growth slots. */
+  sockets?: FittingSocket[]
+  /** Fittings a migration could not place. */
+  unplaced?: UnplacedFitting[]
 }
 
 /**

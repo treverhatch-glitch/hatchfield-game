@@ -186,16 +186,16 @@ describe('fitting honesty', () => {
 
   it('paints a flag without moving standing', () => {
     const game = field()
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     const rep = game.reputation
     const standing = game.standingOf('northline')
-    expect(attachment(game, 11, 6, ':flag')?.label).toContain('paint, standing unchanged')
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'flag')).toBe(true)
+    expect(attachment(game, 12, 7, ':flag')?.label).toContain('paint, standing unchanged')
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'flag')).toBe(true)
     expect(game.reputation).toBe(rep)
     expect(game.standingOf('northline')).toBe(standing)
     expect(game.standFlagColor(stand)).toBe(FLAG_CLOTH)
     expect(game.buildingCard()?.note).toContain('Flag · paint, standing unchanged')
-    game.hubLeases = [{ id: 'stand:11,6', kind: 'gate', airlineId: 'northline' }]
+    game.hubLeases = [{ id: 'stand:12,7', kind: 'gate', airlineId: 'northline' }]
     const cloth = rosterAirline('northline')?.primary ?? game.airline('northline').color
     expect(game.standFlagColor(stand)).toBe(cloth)
     expect(cloth).not.toBe(FLAG_CLOTH)
@@ -205,36 +205,36 @@ describe('fitting honesty', () => {
 
   it('shortens jetway boarding by the doors the aircraft can use', () => {
     const game = field()
-    const stand = { c: 11, r: 6 }
-    game.standSize['11,6'] = 'heavy'
-    game.standRung['11,6'] = 2
-    game.standClass['11,6'] = 'L'
-    game.standScale['11,6'] = 'jumbo'
+    const stand = { c: 12, r: 7 }
+    game.standSize['12,7'] = 'heavy'
+    game.standRung['12,7'] = 2
+    game.standClass['12,7'] = 'L'
+    game.standScale['12,7'] = 'jumbo'
     const wide = flight(stand, 'a380')
     const narrow = flight(stand, 'b738')
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'jet_bridge')).toBe(true)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'jet_bridge')).toBe(true)
     const wideOne = cap(game, wide)
     const narrowOne = cap(game, narrow)
     expect(game.usableBridgeDoors(stand, 'a380')).toBe(1)
     expect(game.usableBridgeDoors(stand, 'b738')).toBe(1)
-    expect(attachment(game, 11, 6, ':jet_bridge')?.label).toContain('door 2, shorter boarding, up to the aircraft')
+    expect(attachment(game, 12, 7, ':jet_bridge')?.label).toContain('door 2, shorter boarding, up to the aircraft')
 
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'jet_bridge')).toBe(true)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'jet_bridge')).toBe(true)
     expect(game.usableBridgeDoors(stand, 'a380')).toBe(2)
     expect(game.usableBridgeDoors(stand, 'b738')).toBe(1)
     expect(cap(game, wide)).toBeCloseTo(wideOne / 2)
     expect(cap(game, narrow)).toBe(narrowOne)
     expect(game.buildingCard()?.note).toContain('2 doors · shorter boarding, up to the aircraft')
 
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'jet_bridge')).toBe(true)
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'jet_bridge')).toBe(true)
     expect(game.usableBridgeDoors(stand, 'a380')).toBe(3)
     expect(game.usableBridgeDoors(stand, 'b738')).toBe(1)
     expect(cap(game, wide)).toBeCloseTo(wideOne / 3)
     expect(cap(game, narrow)).toBe(narrowOne)
 
     game.tiles[5]![6] = 'depot'
-    game.standAccess['11,12'] = 'jetway'
-    game.standClass['11,12'] = 'L'
+    game.standAccess['12,10'] = 'jetway'
+    game.standClass['12,10'] = 'L'
     game.bumpMap()
     const ground = (
       game as unknown as {
@@ -242,25 +242,25 @@ describe('fitting honesty', () => {
       }
     ).ensureGround()
     const listed = (ground!.sim as unknown as { stands: Map<string, { bridges?: number }> }).stands
-    expect(listed.get('11,6')?.bridges).toBe(3)
-    expect(listed.get('11,12')?.bridges).toBe(1)
+    expect(listed.get('12,7')?.bridges).toBe(3)
+    expect(listed.get('12,10')?.bridges).toBe(1)
   })
 
   it('draws a mast, a flag, extra bridges, and a bell only when they are bought', () => {
     const game = starterGame()
     game.fieldXp = 700
-    const stand = { c: 11, r: 6 }
+    const stand = { c: 12, r: 7 }
     expect(game.standLit(stand)).toBe(false)
     expect(apronMasts(stands(game))).toHaveLength(0)
-    expect(attachment(game, 11, 6, ':apron_light')?.label).toContain('removes Unlit')
-    expect(game.buyFitting(hostKey('stand', 11, 6), 'apron_light')).toBe(true)
+    expect(attachment(game, 12, 7, ':apron_light')?.label).toContain('removes Unlit')
+    expect(game.buyFitting(hostKey('stand', 12, 7), 'apron_light')).toBe(true)
     const lit = stands(game)
     expect(apronMasts(lit)).toHaveLength(1)
     expect(lit.filter((row) => row.lit)).toHaveLength(1)
 
-    game.standAccess['11,6'] = 'jetway'
-    game.fittings['stand:11,6'] = [{ id: 'jet_bridge' }, { id: 'jet_bridge' }, { id: 'jet_bridge' }]
-    const bridges = jetBridges(game, stands(game)).filter((bridge) => bridge.stand.c === 11 && bridge.stand.r === 6)
+    game.standAccess['12,7'] = 'jetway'
+    game.fittings['stand:12,7'] = [{ id: 'jet_bridge' }, { id: 'jet_bridge' }, { id: 'jet_bridge' }]
+    const bridges = jetBridges(game, stands(game)).filter((bridge) => bridge.stand.c === 12 && bridge.stand.r === 7)
     expect(bridges).toHaveLength(3)
     expect(new Set(bridges.map((bridge) => `${bridge.root.x.toFixed(2)},${bridge.root.z.toFixed(2)}`)).size).toBe(3)
 
