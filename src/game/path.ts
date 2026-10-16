@@ -115,6 +115,9 @@ export function walkableFor(
   )
 }
 
+/** Airside trucks stay off the guard. Outside trips (city edge, delivery, departure) may cross it. */
+export type GateUse = 'airside' | 'outside'
+
 function cellOpen(
   tiles: Tile[][],
   c: number,
@@ -125,16 +128,39 @@ function cellOpen(
   return inBounds(c, r) && walkableFor(kind, tiles[r][c]) && (!pass || pass(c, r))
 }
 
+/**
+ * A truck already on the airside may start or finish on the post (just screened,
+ * or arriving to be screened) but must not pass through it.
+ */
+function gateBlocks(
+  tiles: Tile[][],
+  c: number,
+  r: number,
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  gate: GateUse,
+  start: Vec,
+  goal: Vec,
+): boolean {
+  if (gate !== 'airside' || kind !== 'truck') return false
+  if (!inBounds(c, r) || tiles[r][c] !== 'guard') return false
+  if (c === start.c && r === start.r) return false
+  if (c === goal.c && r === goal.r) return false
+  return true
+}
+
 export function astar(
   tiles: Tile[][],
   start: Vec,
   goal: Vec,
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
   pass?: (c: number, r: number) => boolean,
+  gate: GateUse = 'airside',
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]
   if (!cellOpen(tiles, start.c, start.r, kind, pass) || !cellOpen(tiles, goal.c, goal.r, kind, pass)) return null
+  if (gateBlocks(tiles, start.c, start.r, kind, gate, start, goal)) return null
+  if (gateBlocks(tiles, goal.c, goal.r, kind, gate, start, goal)) return null
 
   // Cells are indexed r * SIZE + c in reused scratch arrays. A cell's g/came/open entries
   // count only when its stamp matches this call, so nothing is cleared or allocated per search.
@@ -178,6 +204,7 @@ export function astar(
       const nc = pc + d.c
       const nr = pr + d.r
       if (!cellOpen(tiles, nc, nr, kind, pass)) continue
+      if (gateBlocks(tiles, nc, nr, kind, gate, start, goal)) continue
       const n = nr * SIZE + nc
       const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
       const ng = searchG[cur] + step
@@ -210,10 +237,11 @@ export function nearestPath(
   goals: Vec[],
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
   pass?: (c: number, r: number) => boolean,
+  gate: GateUse = 'airside',
 ): Vec[] | null {
   let best: Vec[] | null = null
   for (const goal of goals) {
-    const p = astar(tiles, start, goal, kind, pass)
+    const p = astar(tiles, start, goal, kind, pass, gate)
     if (p && (!best || p.length < best.length)) best = p
   }
   return best
@@ -255,6 +283,7 @@ export function pathToNearest(
   start: Vec,
   goals: readonly Vec[],
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  gate: GateUse = 'airside',
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !cellOpen(tiles, start.c, start.r, kind)) return null
   const goal = new Uint8Array(SIZE * SIZE)
@@ -289,6 +318,7 @@ export function pathToNearest(
       const nc = pc + d.c
       const nr = pr + d.r
       if (!cellOpen(tiles, nc, nr, kind)) continue
+      if (gate === 'airside' && kind === 'truck' && tiles[nr][nc] === 'guard' && !goal[nr * SIZE + nc]) continue
       const next = nr * SIZE + nc
       if (parent[next] !== -2) continue
       parent[next] = cur

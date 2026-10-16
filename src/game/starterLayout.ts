@@ -126,11 +126,20 @@ function paintPassenger(chart: Chart, police: boolean) {
   for (let r = 8; r <= 10; r++) {
     for (let c = 14; c <= 16; c++) putAt(c, r, 'terminal')
   }
-  // Public road on the east face. Continuous, so drop-off never enters the guard.
+  // City road on the east face, forked north of the curb.
+  // Column 17 is the passenger branch and runs straight to the hall.
+  // The west cell off that road is the guard. Past it, a service road runs
+  // behind the hall and joins the apron road, so an outside truck can reach
+  // the farm, the shed, the sort, and the stands. The apron road and the
+  // taxi spine stay open for trucks that are already airside.
   for (let r = 0; r <= 12; r++) putAt(PAX_ROAD_COL, r, 'road')
-  // North service road. The guard is the only cell joining it to the public road.
+  putAt(16, 2, 'guard')
+  for (let c = 8; c <= 15; c++) putAt(c, 2, 'road')
+  // Join the service road to the apron road beside the shed, not on the taxi spine.
+  putAt(12, 3, 'road')
+  // Apron road on the airside of the post. It meets the spine and the shed,
+  // and it does not touch the guard or column 17.
   for (let c = 7; c <= 15; c++) putAt(c, 4, 'road')
-  putAt(16, 4, 'guard')
   // South apron road. It meets the taxi spine, not column 17, so it is not a second gate.
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
   // One belt beside the sort, out to both stands. No belt cell touches the hall.
