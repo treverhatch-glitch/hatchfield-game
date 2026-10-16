@@ -5,10 +5,12 @@
  */
 import { spawn } from 'node:child_process'
 import { execSync } from 'node:child_process'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { chromium, type Page } from 'playwright'
 
 const sha = (process.env.PROOF_SHA ?? execSync('git rev-parse --short=12 HEAD', { encoding: 'utf8' })).trim()
+const only = new Set((process.env.PROOF_ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean))
+const want = (name: string) => only.size === 0 || only.has(name)
 const base = process.env.PROOF_BASE ?? 'http://127.0.0.1:45217'
 const outDir = 'docs/devlog/media/traffic-proof-run3'
 const artDir = '/opt/cursor/artifacts'
@@ -63,6 +65,20 @@ await page.evaluate(`(() => {
   const orig = g.tick.bind(g)
   g.tick = (dt) => { if (window.__hold) return; return orig(dt) }
   window.__origTick = orig
+  // Alerts, the roof beat, and a celebration dolly all move the lens during render.
+  // Draw once with the sim, then draw again from the proof aim so the frame is that lens.
+  const origRender = w.render.bind(w)
+  w.render = (game) => {
+    origRender(game)
+    const aim = window.__aim
+    if (!aim) return
+    w.pivot.set(aim.x, 0, aim.z)
+    w.yaw = aim.yaw
+    w.pitch = aim.pitch
+    w.dist = aim.dist
+    w.placeCam()
+    w.renderer.render(w.scene, w.camera)
+  }
   window.__hold = false
   g.speed = 1
 })()`)
@@ -95,18 +111,30 @@ const warmed = await page.evaluate(`(() => {
 console.log('warm', JSON.stringify(warmed))
 
 async function shot(dir: string, i: number) {
-  await page.evaluate(`(() => {
+  const url = (await page.evaluate(`(() => {
     const g = window.__hatch
     window.__hold = false
     g.speed = 1
     window.__origTick(1 / 12)
     g.speed = 0
     window.__hold = true
+    g.camGoal = null
+    g.cameraCue = null
+    g.viewCue = null
     const w = window.__world
+    if (window.__aim) {
+      w.pivot.set(window.__aim.x, 0, window.__aim.z)
+      w.yaw = window.__aim.yaw
+      w.pitch = window.__aim.pitch
+      w.dist = window.__aim.dist
+    }
     w.placeCam()
-  })()`)
-  await page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))')
-  await page.screenshot({ path: `${dir}/frame-${String(i).padStart(3, '0')}.png` })
+    w.render(g)
+    document.querySelectorAll('[data-testid="celebration-banner"],[data-testid="celebration-confetti"]').forEach((el) => { el.style.display = 'none' })
+    return w.renderer.domElement.toDataURL('image/png')
+  })()`)) as string
+  const comma = url.indexOf(',')
+  writeFileSync(`${dir}/frame-${String(i).padStart(3, '0')}.png`, Buffer.from(url.slice(comma + 1), 'base64'))
 }
 
 async function aim(c: number, r: number, dist: number, pitch: number, yaw: number) {
@@ -121,6 +149,9 @@ async function aim(c: number, r: number, dist: number, pitch: number, yaw: numbe
       w.yaw = yaw
       w.pitch = pitch
       w.dist = dist
+      window.__aim = { x: pivot.x, z: pivot.z, yaw, pitch, dist }
+      g.camGoal = null
+      g.cameraCue = null
       w.placeCam()
     })(${JSON.stringify({ pivot, yaw, pitch, dist })})`,
   )
@@ -164,7 +195,10 @@ async function record(name: string, frames: number, follow: (list: Car[]) => { c
     const at = follow(list)
     if (at) await aim(at.c, at.r, dist, pitch, yaw)
     await shot(dir, i)
-    if (i % 24 === 0) console.log(name, i, list.length, at ? `${at.c.toFixed(1)},${at.r.toFixed(1)}` : 'hold')
+    if (i % 12 === 0) {
+      const h = list.find((c) => Math.abs(c.c - (at?.c ?? 0)) < 0.05 && Math.abs(c.r - (at?.r ?? 0)) < 0.05)
+      console.log(name, i, list.length, at ? `${at.c.toFixed(2)},${at.r.toFixed(2)}` : 'hold', h ? `h=${h.heading.toFixed(2)} v=${h.speed.toFixed(1)} lane=${h.lane}` : '')
+    }
   }
   const file = `${outDir}/${name}-${sha}.mp4`
   await encode(dir, 12, file)
@@ -176,7 +210,24 @@ function encode(dir: string, fps: number, file: string) {
   return new Promise<void>((resolve, reject) => {
     const ff = spawn(
       'ffmpeg',
-      ['-y', '-loglevel', 'error', '-framerate', String(fps), '-i', `${dir}/frame-%03d.png`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file],
+      [
+        '-y',
+        '-loglevel',
+        'error',
+        '-framerate',
+        String(fps),
+        '-i',
+        `${dir}/frame-%03d.png`,
+        '-vf',
+        `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='build ${sha}':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.65:x=16:y=h-36`,
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        file,
+      ],
       { stdio: 'inherit' },
     )
     ff.on('error', reject)
@@ -184,83 +235,120 @@ function encode(dir: string, fps: number, file: string) {
   })
 }
 
-// Lane change: catch the frame the nose leaves the road axis, then follow that car.
-const lane = await seek((list) => list.find((c) => c.r > 2 && c.r < 10.5 && c.speed > 1.2 && offAxis(c.heading) > 0.22) ?? null, 12 * 40)
+// Through-lane change: nose off the road axis, still in a through lane, clear of the layby.
+const lane = want('lane-change')
+  ? await seek(
+      (list) =>
+        list.find(
+          (c) => c.r > 2.5 && c.r < 9.5 && c.lane <= 1 && c.speed > 2.2 && offAxis(c.heading) > 0.28 && c.c > 16.72 && c.c < 17.45,
+        ) ?? null,
+      12 * 80,
+    )
+  : null
 console.log('lane trigger', lane)
-if (!lane) throw new Error('no lane change')
-let laneId = lane.id
-await record(
-  'lane-change',
-  12 * 8,
-  (list) => {
-    const car = list.find((c) => c.id === laneId) ?? list.find((c) => c.r > 2 && c.r < 10.5 && offAxis(c.heading) > 0.18)
-    if (car) laneId = car.id
-    return car ? { c: car.c, r: car.r } : null
-  },
-  22,
-  0.62,
-  0.55,
-)
+if (want('lane-change')) {
+  if (!lane) throw new Error('no lane change')
+  const laneId = lane.id
+  await record(
+    'lane-change',
+    12 * 6,
+    (list) => {
+      const car = list.find((c) => c.id === laneId)
+      return car ? { c: car.c, r: car.r } : { c: lane.c, r: lane.r }
+    },
+    18,
+    1.22,
+    0.15,
+  )
+}
 
-const pull = await seek(
-  (list) => list.find((c) => c.r > 6 && c.r < 11 && c.c < 16.7 && c.speed > 0.4 && offAxis(c.heading) > 0.28) ?? null,
-  12 * 50,
-)
+// Leaving a stall: still on the hall side of the curb lane, nose already swung out, moving.
+const pull = want('curb-pull-out')
+  ? await seek(
+      (list) =>
+        list.find((c) => c.r > 3 && c.r < 11 && c.lane === 1 && c.c < 16.7 && c.c > 16.45 && c.speed > 1.4 && offAxis(c.heading) > 0.22) ??
+        null,
+      12 * 90,
+    )
+  : null
 console.log('pull trigger', pull)
-if (!pull) throw new Error('no curb pull-out')
-let pullId = pull.id
-await record(
-  'curb-pull-out',
-  12 * 8,
-  (list) => {
-    const car = list.find((c) => c.id === pullId) ?? list.find((c) => c.c < 16.75 && offAxis(c.heading) > 0.2)
-    if (car) pullId = car.id
-    return car ? { c: car.c, r: car.r } : null
-  },
-  20,
-  0.62,
-  0.7,
-)
+if (want('curb-pull-out')) {
+  if (!pull) throw new Error('no curb pull-out')
+  const pullId = pull.id
+  await record(
+    'curb-pull-out',
+    12 * 6,
+    (list) => {
+      const car = list.find((c) => c.id === pullId)
+      return car ? { c: car.c, r: car.r } : { c: pull.c, r: pull.r }
+    },
+    18,
+    1.22,
+    0.15,
+  )
+}
 
-const south = await seek((list) => list.find((c) => c.r > 10.6 && Math.sin(c.heading) > 0.8 && c.speed > 0.8) ?? null, 12 * 60)
+const south = want('u-turn-south')
+  ? await seek((list) => list.find((c) => c.r > 10.4 && Math.sin(c.heading) > 0.75 && c.speed > 0.8) ?? null, 12 * 70)
+  : null
 console.log('south trigger', south)
-if (!south) throw new Error('no south dead-end approach')
-let southId = south.id
-await record(
-  'u-turn-south',
-  12 * 10,
-  (list) => {
-    const car = list.find((c) => c.id === southId)
-    if (car && car.r > 8) return { c: 17, r: Math.min(12.2, car.r) }
-    const next = list.find((c) => c.r > 10.4)
-    if (next) southId = next.id
-    return { c: 17, r: 11.6 }
-  },
-  28,
-  0.58,
-  0.85,
-)
+if (want('u-turn-south')) {
+  if (!south) throw new Error('no south dead-end approach')
+  let southId = south.id
+  await record(
+    'u-turn-south',
+    12 * 8,
+    (list) => {
+      const car = list.find((c) => c.id === southId)
+      if (car && car.r > 9) return { c: 17, r: Math.min(11.7, Math.max(10.2, car.r)) }
+      const next = list.find((c) => c.r > 10.2 && c.speed > 0.5)
+      if (next) southId = next.id
+      return { c: 17, r: 11.4 }
+    },
+    32,
+    1.15,
+    0.4,
+  )
+}
 
-const north = await seek((list) => list.find((c) => c.r < 2.2 && c.r > -0.2 && Math.sin(c.heading) < -0.8 && c.speed > 0.8) ?? null, 12 * 40)
+const north = want('u-turn-north')
+  ? await seek((list) => list.find((c) => c.r < 1.6 && c.r > -0.4 && Math.abs(Math.cos(c.heading)) > 0.45 && c.speed > 0.6) ?? null, 12 * 50)
+  : null
 console.log('north trigger', north)
-if (!north) throw new Error('no north-end departure')
-await record(
-  'u-turn-north',
-  12 * 10,
-  () => ({ c: 17, r: 1.2 }),
-  30,
-  0.58,
-  Math.PI - 0.85,
-)
+if (want('u-turn-north')) {
+  if (!north) throw new Error('no north-end turn')
+  let northId = north.id
+  await record(
+    'u-turn-north',
+    12 * 8,
+    (list) => {
+      const car = list.find((c) => c.id === northId) ?? list.find((c) => c.r < 2.2 && c.speed > 0.4)
+      if (car) northId = car.id
+      const r = car ? Math.max(-0.15, Math.min(1.8, car.r)) : 0.6
+      return { c: 17, r }
+    },
+    32,
+    1.15,
+    Math.PI,
+  )
+}
 
-await record(
-  'busy-no-overlap',
-  12 * 8,
-  () => ({ c: 17, r: 6 }),
-  42,
-  0.7,
-  0.4,
-)
+if (want('busy-no-overlap')) {
+  await record(
+    'busy-no-overlap',
+    12 * 8,
+    (list) => {
+      const onRoad = list.filter((c) => c.r > 2 && c.r < 10 && c.c > 16.4 && c.c < 17.7)
+      if (onRoad.length < 3) return { c: 17, r: 6 }
+      onRoad.sort((a, b) => a.r - b.r)
+      const mid = onRoad[Math.floor(onRoad.length / 2)]
+      return { c: 17, r: mid.r }
+    },
+    42,
+    1.2,
+    0.2,
+  )
+}
 
 await browser.close()
 console.log('proof sha', sha)

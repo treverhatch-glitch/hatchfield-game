@@ -53,6 +53,55 @@ describe('landside layer', () => {
     layer.dispose()
     expect(instanced(layer)).toHaveLength(0)
   })
+
+  it('draws a hood in front of the glass so the nose is the front of the body', () => {
+    const sim = new LandsideTraffic()
+    const field = starterField({ departures: 8, paxPerDay: 800 })
+    let view = sim.snapshot()
+    for (let t = 0; t < 400; t++) view = sim.tick(0.25, field)
+    const layer = new LandsideLayer()
+    layer.sync(view, false, null)
+    const boxes = instanced(layer).filter((mesh) => mesh.geometry.type === 'BoxGeometry')
+    const bodies = boxes.filter((mesh) => mesh.castShadow)
+    const cabins = boxes.filter((mesh) => !mesh.castShadow)
+    expect(bodies.length).toBeGreaterThan(0)
+    const center = new THREE.Vector3()
+    const size = new THREE.Vector3()
+    let carCabins = 0
+    for (const mesh of cabins) {
+      mesh.geometry.computeBoundingBox()
+      mesh.geometry.boundingBox!.getCenter(center)
+      mesh.geometry.boundingBox!.getSize(size)
+      // Car and taxi glass is the short cabin. It sits aft of the axle (local -X).
+      if (size.x > 1.2 && size.x < 3) {
+        expect(center.x).toBeLessThan(-0.8)
+        carCabins++
+      }
+    }
+    expect(carCabins).toBeGreaterThan(0)
+    for (const mesh of bodies) {
+      const color = mesh.geometry.getAttribute('color')
+      const pos = mesh.geometry.getAttribute('position')
+      expect(color).toBeTruthy()
+      let dark = 0
+      let light = 0
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i)
+        const c = color.getX(i)
+        if (x > 1) {
+          expect(c).toBeLessThan(0.4)
+          dark++
+        }
+        if (x < -1) {
+          expect(c).toBeGreaterThan(0.9)
+          light++
+        }
+      }
+      expect(dark).toBeGreaterThan(0)
+      expect(light).toBeGreaterThan(0)
+    }
+    layer.dispose()
+  })
 })
 
 const pos = new THREE.Vector3()

@@ -86,24 +86,44 @@ interface Fleet {
   sign: Pool | null
 }
 
+/**
+ * Local +X is the nose. The glass cabin sits aft of centre and the front face
+ * of the body is a dark grille, so a lane-change yaw is a turned hood rather
+ * than a box sliding sideways.
+ */
+function paintNose(geometry: THREE.BufferGeometry, length: number): THREE.BufferGeometry {
+  const pos = geometry.getAttribute('position')
+  const colors = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const nose = pos.getX(i) > length * 0.28 ? 0.16 : 1
+    colors[i * 3] = nose
+    colors[i * 3 + 1] = nose
+    colors[i * 3 + 2] = nose
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return geometry
+}
+
 function fleetFor(parent: THREE.Group, kind: VehicleKind): Fleet {
   const { lengthM: length, widthM: width } = LANDSIDE.bodies[kind]
   const height = HEIGHT_M[kind]
   const bus = kind === 'bus'
-  const body = new THREE.BoxGeometry(length, height * 0.45, width).translate(0, height * 0.28, 0)
-  const cabin = new THREE.BoxGeometry(length * (bus ? 0.86 : 0.48), height * 0.42, width * 0.88).translate(
-    bus ? 0 : -length * 0.06,
-    height * 0.68,
-    0,
+  const body = paintNose(
+    new THREE.BoxGeometry(length, height * 0.42, width).translate(0, height * 0.24, 0),
+    length,
   )
+  // Cars: glass over the rear half, long hood in front. Buses: glass runs to a short bumper.
+  const cabinLen = length * (bus ? 0.72 : 0.4)
+  const cabinX = bus ? length * 0.08 : -length * 0.26
+  const cabin = new THREE.BoxGeometry(cabinLen, height * 0.48, width * 0.86).translate(cabinX, height * 0.66, 0)
   return {
-    body: new Pool(parent, body, new THREE.MeshLambertMaterial({ color: '#ffffff' }), true, true),
+    body: new Pool(parent, body, new THREE.MeshLambertMaterial({ color: '#ffffff', vertexColors: true }), true, true),
     cabin: new Pool(parent, cabin, new THREE.MeshLambertMaterial({ color: '#9ec4d4' }), false, false),
     sign:
       kind === 'taxi'
         ? new Pool(
             parent,
-            new THREE.BoxGeometry(0.45, 0.16, 0.22).translate(0, height * 0.95, 0),
+            new THREE.BoxGeometry(0.5, 0.14, 0.28).translate(cabinX, height * 0.96, 0),
             new THREE.MeshLambertMaterial({ color: '#1a1a1a' }),
             false,
             false,
