@@ -3,7 +3,7 @@
  * docs/playtest/STARTER_BOTTLENECK.md can be re-run.
  * Passengers ride to the four-stall curb. Service roads beside the belts
  * clear the stands, and walking passengers own the desks. Check-in stays
- * under the 360s red line for 16 days. The peak is day 8: the passenger
+ * under the 360s red line for 16 days. The peak is day 11: the passenger
  * being served, 338 nav seconds.
  */
 import { describe, expect, it } from 'vitest'
@@ -73,6 +73,6 @@ describe('starter hall bottleneck', () => {
     })
     expect(found.hit).toBeNull()
     expect(found.signed).toEqual(['air_regional_1', 'zoomjet'])
-    expect(found.peak).toEqual({ day: 8, kind: 'checkin_desk', count: 0, waitSec: 338 })
+    expect(found.peak).toEqual({ day: 11, kind: 'checkin_desk', count: 0, waitSec: 338 })
   }, 180_000)
 })

@@ -142,12 +142,11 @@ describe('runway capacity', () => {
     // turnaround longer than the runway hole keep four stands from finishing
     // 45 flights in eight days. The 2×4 hall keeps the stands a bay apart, the
     // city road forks so airside trucks never queue at the guard, and passengers
-    // ride to the layby. Service roads beside the belts let the tugs and the
-    // bowser clear the stands without sitting on the jet taxi. Walking
-    // passengers who reach a door that is still open finish this seed at 17,
-    // above the 15-flight floor. Nothing diverts.
+    // ride to the layby. Bag tugs stay on the truck pavement and meet the taxi
+    // only beside the stand. Walking passengers who reach a door that is still
+    // open finish this seed at 16, above the 15-flight floor. Nothing diverts.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
-    expect(result.done, `diverts ${diverts(game)}`).toBe(17)
+    expect(result.done, `diverts ${diverts(game)}`).toBe(16)
     expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)
@@ -184,19 +183,19 @@ describe('runway capacity', () => {
     const twoRun = runDays(two, 8)
     Math.random = random
     // The city road forks, so apron trucks are not queued at the guard, and
-    // passengers ride to the layby. Service roads keep the tugs off the jet
-    // taxi, and walking passengers own boarding. On this seed the one-strip
+    // passengers ride to the layby. Bag tugs meet the taxi only beside the
+    // stand, and walking passengers own boarding. On this seed the one-strip
     // field finishes 16 (11 of them after the opening) and the two-strip field
-    // finishes 21 (14 after the opening). Nothing diverts. Both stay above
+    // finishes 23 (15 after the opening). Nothing diverts. Both stay above
     // the 15-flight floor.
     const oneGain = oneRun.done - oneRun.atOpening
     const twoGain = twoRun.done - twoRun.atOpening
     expect(oneRun.done).toBe(16)
-    expect(twoRun.done).toBe(21)
+    expect(twoRun.done).toBe(23)
     expect(oneDiverts).toBe(0)
     expect(diverts(two)).toBe(0)
     expect(oneGain).toBe(11)
-    expect(twoGain).toBe(14)
+    expect(twoGain).toBe(15)
   }, 90_000)
 
   it('spawns a guard flight when its strip has a gap', () => {
