@@ -292,7 +292,7 @@ describe('live links between terminals', () => {
     game.tiles[6][other.c - 1] = 'skywalk'
     const near = { c: other.c + 2, r: other.r + 3 }
     game.tiles[near.r][near.c] = 'stand'
-    const far = { c: 12, r: 7 }
+    const far = { c: 11, r: 6 }
     expect(game.connectionLink(`${near.c},${near.r}`, `${far.c},${far.r}`)).toBe('skywalk')
     onward(game, 90, far)
     const transfers = land(game, flight('sky', near))

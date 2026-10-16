@@ -107,7 +107,7 @@ describe('landside wiring', () => {
   it('withholds passenger fees after the curb misses check-ins', () => {
     const game = field()
     hold(game)
-    const stand = { c: 12, r: 7 }
+    const stand = { c: 11, r: 6 }
     for (let i = 0; i < 28; i++) game.flights.push(parked(`hold-${i}`, stand, false))
     game.setFee('paxFee', 24)
     for (let t = 0; t < 90 && game.missedCheckIns < 1; t++) game.tick(1)

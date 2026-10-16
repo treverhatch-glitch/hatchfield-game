@@ -115,13 +115,15 @@ function paintRunways(putAt: (c: number, r: number, tile: Tile) => void) {
 function paintPassenger(chart: Chart, police: boolean) {
   const putAt = (c: number, r: number, tile: Tile) => put(chart, c, r, tile)
   paintRunways(putAt)
-  // Apron on the west face of the hall so the gates read as the airside.
-  for (let c = 8; c <= 11; c++) {
-    putAt(c, 7, 'taxi')
-    putAt(c, 10, 'taxi')
+  // Apron on the west face. The stands stay a full bay apart so both can
+  // taxi while the 2×4 hall occupies the curb.
+  for (const c of [11, 12, 13]) putAt(c, 9, 'taxi')
+  for (let c = 8; c <= 10; c++) {
+    putAt(c, 6, 'taxi')
+    putAt(c, 12, 'taxi')
   }
-  putAt(12, 7, 'stand')
-  putAt(12, 10, 'stand')
+  putAt(11, 6, 'stand')
+  putAt(11, 12, 'stand')
   for (let r = 7; r <= 10; r++) {
     for (let c = 15; c <= 16; c++) putAt(c, r, 'terminal')
   }
@@ -135,14 +137,17 @@ function paintPassenger(chart: Chart, police: boolean) {
   for (let c = 7; c <= 16; c++) putAt(c, 4, 'road')
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
   putAt(PAX_ROAD_COL, 14, 'road')
-  // Belts: stand wing, the grass gap, then the hall. Bags join the south run.
-  // The west pad wing stays taxi; these cells are the east wing, not the terminal.
-  putAt(13, 7, 'belt')
-  putAt(14, 7, 'belt')
+  // Belts reach the 2-wide hall. Column 14 is the gap the old 3-wide hall filled.
+  putAt(11, 7, 'belt')
+  putAt(11, 8, 'belt')
+  putAt(12, 8, 'belt')
+  putAt(13, 8, 'belt')
+  putAt(14, 8, 'belt')
+  putAt(12, 12, 'belt')
+  putAt(13, 12, 'belt')
+  putAt(13, 11, 'belt')
   putAt(13, 10, 'belt')
   putAt(14, 10, 'belt')
-  putAt(13, 11, 'belt')
-  putAt(13, 12, 'belt')
   // East of the south stand's wing. (12,13) sat inside that 3×3 envelope.
   putAt(13, 13, 'bags')
   putAt(7, 5, 'fuel')
@@ -211,8 +216,8 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
     summary: preview.summary,
     terminal: { ...PAX_TERMINAL },
     stands: [
-      { c: 12, r: 7, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
-      { c: 12, r: 10, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
+      { c: 11, r: 6, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
+      { c: 11, r: 12, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
     ],
   }
 }

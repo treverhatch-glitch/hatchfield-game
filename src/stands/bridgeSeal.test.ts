@@ -4,7 +4,7 @@ import type { Flight } from '../game/types.ts'
 import { BRIDGE_RETRACT_SEC } from '../ramp/crewConfig.ts'
 import { hostKey } from './catalog.ts'
 
-const STAND = { c: 12, r: 7 }
+const STAND = { c: 11, r: 6 }
 
 function field(bridge: boolean): Game {
   const game = new Game()

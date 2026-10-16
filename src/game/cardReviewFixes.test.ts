@@ -22,15 +22,15 @@ function attachments(game: Game, c: number, r: number) {
 describe('building card review fixes', () => {
   it('buys and removes a fitting from the card row the panel sends', () => {
     const game = field()
-    const host = hostKey('stand', 12, 7)
+    const host = hostKey('stand', 11, 6)
     expect(game.fittings[host]).toBeUndefined()
-    const buy = attachments(game, 12, 7)?.rows.find((row) => row.id === `fitbuy:${host}:jet_bridge`)
+    const buy = attachments(game, 11, 6)?.rows.find((row) => row.id === `fitbuy:${host}:jet_bridge`)
     expect(buy?.disabled).toBeFalsy()
     const cash = game.cash
     game.buildingCardAction(buy!.id)
     expect(game.cash).toBe(cash - jetBridgeCost('narrow'))
     expect(game.fittings[host]).toEqual([{ id: 'jet_bridge' }])
-    const drop = attachments(game, 12, 7)?.rows.find((row) => row.id.startsWith('fitdrop:'))
+    const drop = attachments(game, 11, 6)?.rows.find((row) => row.id.startsWith('fitdrop:'))
     game.buildingCardAction(drop!.id)
     expect(game.fittings[host]).toBeUndefined()
   })

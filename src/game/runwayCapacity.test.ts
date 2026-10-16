@@ -141,9 +141,9 @@ describe('runway capacity', () => {
     // Booked movements are 3× the retired 150s bank (4 a day → 12). Completions
     // stay under that ceiling: the opening headway, the night closure, and a
     // turnaround longer than the runway hole keep four stands from finishing
-    // 45 flights in eight days. The 4×2 apron still finishes the 150s bank.
+    // 45 flights in eight days. They do finish more than the 150s bank.
     expect(runwayMovementCapacity(1, REAL_SECONDS_PER_GAME_DAY)).toBeGreaterThanOrEqual(4 * 3)
-    expect(result.done, `diverts ${diverts(game)}`).toBeGreaterThanOrEqual(LEGACY_EIGHT_DAY_FLIGHTS)
+    expect(result.done, `diverts ${diverts(game)}`).toBeGreaterThan(LEGACY_EIGHT_DAY_FLIGHTS)
     expect(diverts(game)).toBe(0)
     expect(runwayArrivalGapSec(1)).toBeLessThan(40)
   }, 60_000)

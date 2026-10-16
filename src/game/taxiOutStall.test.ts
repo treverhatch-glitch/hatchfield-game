@@ -85,9 +85,9 @@ describe('taxi-out stall', () => {
   it('a departure rolls while an arrival is still on the far end of the spine', () => {
     const game = field()
     const stands = tilesOf(game.tiles, 'stand')
-    const north = stands.reduce((best, cell) => (cell.r < best.r ? cell : best))
-    const south = stands.reduce((best, cell) => (cell.r > best.r ? cell : best))
-    if (north.r === south.r) throw new Error('starter field needs both stands')
+    const north = stands.find((cell) => cell.r <= 6)
+    const south = stands.find((cell) => cell.r >= 12)
+    if (!north || !south) throw new Error('starter field needs both stands')
     const inbound = game.landingRoute(south)
     const outbound = game.departurePath(pose('dep', 'DEP1', 'taxi_out', north, north.c, north.r, [north]))
     if (!inbound || !outbound || outbound.length < 8) throw new Error('starter departure path is too short')

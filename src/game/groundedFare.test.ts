@@ -80,7 +80,7 @@ function unflown(label: string): boolean {
 describe('grounded flight fares', () => {
   it('refunds passenger fees and the slot fee when the departure is cancelled for fuel', () => {
     const game = field()
-    const flight = parked(game, { c: 12, r: 7 })
+    const flight = parked(game, { c: 11, r: 6 })
     expect(game.fuelOutage(flight)).toBe(true)
     const cashBefore = game.cash
     game.beginServicing(flight)
@@ -118,7 +118,7 @@ describe('grounded flight fares', () => {
 
   it('returns withheld fees when fuel is put on the wing', () => {
     const game = field()
-    const flight = parked(game, { c: 12, r: 7 })
+    const flight = parked(game, { c: 11, r: 6 })
     const before = game.cash
     game.beginServicing(flight)
     const owed = flight.ledger.filter((line) => line.amount > 0 && unflown(line.label)).reduce((sum, line) => sum + line.amount, 0)
@@ -137,7 +137,7 @@ describe('grounded flight fares', () => {
 
   it('tapers apron retail while the flight is grounded and leaves a fueled turn alone', () => {
     const game = field()
-    const dry = parked(game, { c: 12, r: 7 })
+    const dry = parked(game, { c: 11, r: 6 })
     const factor = (game as unknown as { groundedRetailFactor(f: Flight | null): number }).groundedRetailFactor(dry)
     expect(factor).toBe(GROUNDED_RETAIL_TAPER)
     expect(factor).toBeLessThan(1)

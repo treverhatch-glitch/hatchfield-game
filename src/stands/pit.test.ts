@@ -19,7 +19,7 @@ function field(): Game {
 
 function pitRow(game: Game) {
   game.tool = 'pan'
-  game.clickTile({ c: 12, r: 7 })
+  game.clickTile({ c: 11, r: 6 })
   return game.buildingCard()?.sections?.find((section) => section.id === 'attachments')?.rows.find((row) =>
     row.id.startsWith('pit:'),
   )
@@ -35,14 +35,14 @@ describe('hydrant pit row', () => {
     game.researchUnlocked.push('hydrant_fuel')
     expect(pitRow(game)?.label).toBe(`Hydrant pit · $${pit.cost.toLocaleString('en-US')}`)
     const cash = game.cash
-    game.standCardAction('pit:12,7')
-    expect(game.standPits['12,7']).toBe(true)
-    expect(game.standPits['12,10']).toBeUndefined()
+    game.standCardAction('pit:11,6')
+    expect(game.standPits['11,6']).toBe(true)
+    expect(game.standPits['11,12']).toBeUndefined()
     expect(game.cash).toBe(cash - pit.cost)
-    expect(JSON.stringify(game.fittings[hostKey('stand', 12, 7)] ?? [])).not.toContain('hydrant')
+    expect(JSON.stringify(game.fittings[hostKey('stand', 11, 6)] ?? [])).not.toContain('hydrant')
     expect(game.buildingCard()?.note).toBe(HYDRANT_CARD.short)
     expect(pitRow(game)?.label).toBe('This stand already has a pit.')
-    game.standCardAction('pit:12,7')
+    game.standCardAction('pit:11,6')
     expect(game.cash).toBe(cash - pit.cost)
   })
 
@@ -59,8 +59,8 @@ describe('hydrant pit row', () => {
     const loaded = new Game()
     loaded.autosave = false
     expect(loaded.load()).toBe(true)
-    expect(loaded.standPits['12,7']).toBe(true)
-    expect(loaded.standPits['12,10']).toBe(true)
+    expect(loaded.standPits['11,6']).toBe(true)
+    expect(loaded.standPits['11,12']).toBe(true)
     expect(loaded.cash).toBe(game.cash)
 
     loaded.tiles[2]![2] = 'stand'
@@ -74,7 +74,7 @@ describe('hydrant pit row', () => {
     const respected = new Game()
     respected.autosave = false
     expect(respected.load()).toBe(true)
-    expect(respected.standPits['12,7']).toBeUndefined()
+    expect(respected.standPits['11,6']).toBeUndefined()
     expect(respected.hasResearch('hydrant_fuel')).toBe(true)
   })
 })

@@ -75,12 +75,12 @@ describe('catering wiring', () => {
     const game = field()
     game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 12, r: 7 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('12,7')
+    expect(f.groundTurn).toBe('11,6')
     const galley = game.galleyFor(f.id)
     expect(galley?.status).toBe('waiting')
-    expect(galley?.standId).toBe('12,7')
+    expect(galley?.standId).toBe('11,6')
     // The meal fee waits until the hi-lift has finished at catering_door.
     let fees = 0
     for (let i = 0; i < 24 && fees <= 0; i++) game.tick(5)
@@ -96,12 +96,12 @@ describe('catering wiring', () => {
     const game = field()
     game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 12, r: 7 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
     let sawLift = false
     for (let i = 0; i < 12 && !sawLift; i++) {
       game.tick(0.4)
-      const pose = game.cateringPoses().find((p) => p.standId === '12,7')
+      const pose = game.cateringPoses().find((p) => p.standId === '11,6')
       if (pose && pose.liftHeight > 0 && pose.crew.some((c) => c.at === 'lift' || c.at === 'galley')) sawLift = true
     }
     expect(sawLift).toBe(true)
