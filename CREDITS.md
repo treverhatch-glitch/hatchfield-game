@@ -25,3 +25,13 @@ Kenney packs are also published at [kenney.nl](https://kenney.nl). The copies us
 # 3D model credits
 
 Every model under `public/assets/cc0/` is CC0 1.0 (public domain): buses, the ARFF fire engine, trees and shrubs, queue posts, tandem seats, check-in kiosks, e-gates, the cargo warehouse and the animated people. Attribution is not required. The full table (file, model, creator, source page, use) is in [`public/assets/cc0/LICENSES.md`](public/assets/cc0/LICENSES.md). Creators: Innerscene, Grab3D, and Quaternius (via Poly Pizza).
+
+# Ground texture credits
+
+All CC0 1.0. Details and processing notes are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md#ground-textures-cc0).
+
+| File | Use | Source | Author | License |
+| --- | --- | --- | --- | --- |
+| `public/art/textures/airfield/asphalt_*` | Taxiway asphalt | [Asphalt 02](https://polyhaven.com/a/asphalt_02) | Poly Haven | CC0 |
+| `public/art/textures/airfield/road_*` | Service roads and tug pavement | [Worn Asphalt](https://polyhaven.com/a/worn_asphalt) | Poly Haven | CC0 |
+| `public/art/textures/airfield/concrete_detail.webp` | Concrete grain on runway, apron and stands | [Concrete047A](https://ambientcg.com/view?id=Concrete047A) | ambientCG | CC0 |

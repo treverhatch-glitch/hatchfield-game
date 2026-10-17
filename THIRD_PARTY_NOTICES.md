@@ -264,3 +264,15 @@ Used for the fare brackets, city-pair demand, passenger perceived-cost and route
 ## 3D models (CC0)
 
 The glTF models in `public/assets/cc0/` (Innerscene, Grab3D, Quaternius) are dedicated to the public domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). No notice is required. The per-file source list is in `public/assets/cc0/LICENSES.md`.
+
+## Ground textures (CC0)
+
+Files under `public/art/textures/airfield/` that come from outside the project. All are CC0 1.0 (public domain); attribution is not required and is recorded anyway.
+
+| File | Source | Author | License | Processing |
+| --- | --- | --- | --- | --- |
+| `asphalt_albedo.webp`, `asphalt_normal.jpg` (taxiways) | [Poly Haven — Asphalt 02](https://polyhaven.com/a/asphalt_02) | Poly Haven | CC0 | albedo re-encoded WebP q95 (≥43 dB PSNR); normal = original 2K OpenGL JPEG, unchanged |
+| `road_albedo.webp`, `road_normal.jpg` (service roads, tug pavement) | [Poly Haven — Worn Asphalt](https://polyhaven.com/a/worn_asphalt) | Poly Haven | CC0 | albedo colour ×0.25, brightness ×1.1, WebP q95; normal = original 2K OpenGL JPEG |
+| `concrete_detail.webp` (grain over runway/apron/stand slabs) | [ambientCG — Concrete047A](https://ambientcg.com/view?id=Concrete047A) | ambientCG (Lennart Demes) | CC0 | luminance high-pass (σ 48 px, wrap-around), centred on mid grey, lossless WebP |
+
+The runway and apron slab plates (`runway_*.jpg`, `apron_*.jpg`) are authored in-house and unchanged.
