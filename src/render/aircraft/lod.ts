@@ -260,6 +260,13 @@ export class CrossfadeLOD extends THREE.LOD {
       if (retract) {
         gear.rotation[retract.axis] = (1 - this.gearT) * retract.angle
         gear.visible = this.gearT > 0.03
+        // Touchdown squash: the body sinks by squashM, so the main oleos shorten by the
+        // same metres and the tyres stay planted. Rebound (negative) extends them.
+        const legH = gear.userData.legH as number | undefined
+        if (legH && gear.name === 'gear-main') {
+          const squash = this.gearT > 0.98 ? Number(this.parent?.userData.squashM ?? 0) : 0
+          gear.scale.y = THREE.MathUtils.clamp(1 - squash / legH, 0.6, 1.25)
+        }
         if (gear.userData.steer) gear.rotation.y = this.gearT > 0.98 ? this.steer : 0
       } else if (!gear.userData.legs) {
         gear.scale.y = gearScale

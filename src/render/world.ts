@@ -27,6 +27,8 @@ import {
   type ParkedPlane,
 } from './aircraft/index'
 import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimeline } from './flightPose'
+import { getAircraftSpec } from './aircraft/specs'
+import { gearSettle, TOUCHDOWN, TyreSmoke } from './aircraft/touchdown'
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { ORBIT_DEFAULT_DIST, orbitFromLook, panZoomScale } from '../camera/orbit.ts'
@@ -115,6 +117,8 @@ interface DrawnPose {
   pitch: number
   gearDown: boolean
   visible: boolean
+  /** Cells rolled since touchdown (arrival rollout only). Render dressing, never fed to the sim. */
+  touchdown?: number
 }
 
 export { CELL }
@@ -346,6 +350,11 @@ export class World {
   private climbOut = new Map<string, ClimbOut>()
   /** Sim distance before the threshold, latched on the first approach frame. */
   private arrivalBefore = new Map<string, number>()
+  /** Seconds since touchdown per arriving jet; < 0 marks a rollout first seen too late to dress. */
+  private touchdownAge = new Map<string, number>()
+  /** Tyre-smoke puffs shed by the mains on touchdown. */
+  tyreSmoke = new TyreSmoke(aircraftWorldPerMeter())
+  private _contacts: THREE.Vector3[] = []
   private vehicleFleet = new VehicleFleet()
   private landsideLayer = new LandsideLayer()
   private fuelLayer = new FuelLayer()
@@ -520,6 +529,7 @@ export class World {
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
+    this.scene.add(this.tyreSmoke.group)
     this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
     this.entGroup.add(this.vehicleFleet.root)
@@ -1735,7 +1745,11 @@ export class World {
       mesh.visible = pose.visible
       if (pose.visible) {
         mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
-        orientAircraft(mesh, pose.heading, pose.pitch)
+        const settle = this.touchdownSettle(f, pose, step)
+        mesh.position.y -= settle.sinkM * aircraftWorldPerMeter()
+        mesh.userData.squashM = settle.sinkM
+        orientAircraft(mesh, pose.heading, pose.pitch + settle.pitch)
+        if (settle.smoke) this.shedTyreSmoke(f.id, mesh, pose.heading, step)
         const bridged = !!f.stand && game.boughtBridges(f.stand) > 0 && game.bridgeExtend(f.id) > 0
         updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }), bridged)
       }
@@ -1750,9 +1764,68 @@ export class World {
     )
     for (const [id, mesh] of this.jets) {
       if (seen.has(id)) continue
+      mesh.userData.squashM = 0
       releaseAircraft(mesh)
       this.jets.delete(id)
     }
+    for (const id of this.touchdownAge.keys()) {
+      if (seen.has(id)) continue
+      this.touchdownAge.delete(id)
+      this.tyreSmoke.forget(id)
+    }
+    this.tyreSmoke.update(step, this.wr.dayNightSample?.daylight ?? 1)
+  }
+
+  /**
+   * Oleo squash and bounce for the first moments of an arrival rollout.
+   * Driven by the render step only; positions, phases and timings stay the sim's.
+   */
+  private touchdownSettle(
+    f: Game['flights'][number],
+    pose: DrawnPose,
+    step: number,
+  ): { sinkM: number; pitch: number; smoke: boolean } {
+    const none = { sinkM: 0, pitch: 0, smoke: false }
+    if (pose.touchdown == null || f.craft === 'helo') {
+      if (this.touchdownAge.delete(f.id)) this.tyreSmoke.forget(f.id)
+      return none
+    }
+    let age = this.touchdownAge.get(f.id)
+    if (age == null) {
+      // Joined mid-rollout (load, speed jump): no smoke or bounce halfway down the runway.
+      age = pose.touchdown <= TOUCHDOWN.latchCells ? 0 : -1
+    } else if (age >= 0) {
+      age += step
+    }
+    this.touchdownAge.set(f.id, age)
+    if (age < 0) return none
+    const s = gearSettle(age, getAircraftSpec(f.airframeId || 'b738').gear)
+    return { sinkM: s.sinkM, pitch: s.pitch, smoke: age < TOUCHDOWN.smoke.emitSec && step > 0 }
+  }
+
+  /** Puffs at each main-gear contact patch (leg foot projected to the runway). */
+  private shedTyreSmoke(id: string, mesh: THREE.Group, heading: number, step: number) {
+    let legs = mesh.userData.mainLegs as THREE.Object3D[] | undefined
+    if (!legs) {
+      legs = []
+      const mid = mesh.getObjectByName('lod-mid')
+      mid?.traverse((o) => {
+        if (o.name === 'gear-main') legs!.push(o)
+      })
+      mesh.userData.mainLegs = legs
+    }
+    if (legs.length === 0) return
+    mesh.updateMatrixWorld(true)
+    const ground = toWorld(0, 0, 0.04).y
+    const pts = this._contacts
+    pts.length = 0
+    for (const leg of legs) {
+      const v = new THREE.Vector3()
+      leg.getWorldPosition(v)
+      v.y = ground
+      pts.push(v)
+    }
+    this.tyreSmoke.emit(id, pts, heading, step)
   }
 
   /**
@@ -1817,6 +1890,7 @@ export class World {
         pitch: posed.pitch,
         gearDown: true,
         visible: true,
+        touchdown: posed.touchdown,
       }
     }
     this.arrivalBefore.delete(f.id)
@@ -2565,6 +2639,8 @@ export class World {
     this.jets.clear()
     this.climbOut.clear()
     this.arrivalBefore.clear()
+    this.touchdownAge.clear()
+    this.tyreSmoke.dispose()
     this.vehicleFleet.dispose()
     this.landsideLayer.dispose()
     this.fuelLayer.dispose()
