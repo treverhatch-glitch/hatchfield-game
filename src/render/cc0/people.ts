@@ -42,9 +42,12 @@ function hash(s: string): number {
  */
 export function cc0PersonFor(id: string, look: PersonLook): Cc0PersonId | null {
   if (look.age !== 'adult' && look.age !== 'teen') return null
-  if (look.carry !== 'none') return null
+  // Suitcases, carts and strollers are modelled on the procedural body, so those stay; a
+  // briefcase is dropped in favour of the business characters.
+  if (look.carry !== 'none' && look.carry !== 'briefcase') return null
   if (look.crew) return look.crew === 'ground' && !look.wands ? 'worker' : null
   if (look.backpack) return 'adventurer'
+  if (look.carry === 'briefcase') return BY_SHEET.pax_business[hash(id) % BY_SHEET.pax_business.length]
   const list = (look.sheet && BY_SHEET[look.sheet]) || PAX
   return list[hash(id) % list.length]
 }
