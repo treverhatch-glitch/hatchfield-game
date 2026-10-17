@@ -57,6 +57,7 @@ import { boardSnapshot, isFidsSource } from '../../fids/project'
 import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
+import { airfieldTextures } from './airfieldArt'
 import { landingTexture, seasonApronId, seasonGrassId, seasonPavedId } from './landingArt'
 import { propTexture } from './propArt'
 import { benchGeometry, binGeometry, curbFurniture } from './apronProps'
@@ -754,17 +755,26 @@ export class WorldRenderer {
       mat.map = tex
       mat.needsUpdate = true
     }
+    const paved = (mat: THREE.Material | undefined, id: 'asphalt' | 'runway' | 'apron' | null, fallback: THREE.Texture | null) => {
+      if (!(mat instanceof THREE.MeshLambertMaterial)) return
+      const art = id ? airfieldTextures(id, anisotropy) : null
+      mat.normalMap = art?.normalMap ?? null
+      if (art?.normalMap) mat.normalScale.set(0.6, 0.6)
+      assign(mat, art?.map ?? fallback)
+      mat.needsUpdate = true
+    }
     assign(this.surfaceMats.get('grass'), landingTexture(seasonGrassId(seasonId, snow), anisotropy))
     const apron = landingTexture(seasonApronId(seasonId, snow), anisotropy)
-    assign(this.surfaceMats.get('apron'), apron)
-    assign(this.surfaceMats.get('pad'), apron)
-    assign(this.surfaceMats.get('runway'), landingTexture(seasonPavedId(seasonId, snow, wet), anisotropy))
+    const dry = !winter && !wetBit
+    paved(this.surfaceMats.get('apron'), dry ? 'apron' : null, apron)
+    paved(this.surfaceMats.get('pad'), dry ? 'apron' : null, apron)
+    paved(this.surfaceMats.get('runway'), dry ? 'runway' : null, landingTexture(seasonPavedId(seasonId, snow, wet), anisotropy))
     if (winter || wetBit) {
       const plate = landingTexture(winter ? 'snow_asphalt' : 'wet_asphalt', anisotropy)
-      assign(this.surfaceMats.get('taxi'), plate)
+      paved(this.surfaceMats.get('taxi'), null, plate)
       assign(this.surfaceMats.get('road'), plate)
     } else if (this.tex) {
-      assign(this.surfaceMats.get('taxi'), this.tex.asphalt)
+      paved(this.surfaceMats.get('taxi'), 'asphalt', this.tex.asphalt)
       assign(this.surfaceMats.get('road'), this.tex.road)
     }
     assign(this.shoulderMat ?? undefined, landingTexture(winter ? 'snow_grass' : 'dirt_shoulder', anisotropy))
