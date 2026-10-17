@@ -149,8 +149,8 @@ export function rectsGeometry(
 }
 
 export const PAINT_RGB: Record<PaintColor, number> = {
-  white: 0xf2f4f6,
-  yellow: 0xf2c230,
+  white: 0xfafcff,
+  yellow: 0xffbf00,
   red: 0xd0402e,
   black: 0x1c1e22,
   S: 0x6aae7a,
