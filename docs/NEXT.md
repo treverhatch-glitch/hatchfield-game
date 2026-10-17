@@ -44,22 +44,29 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 
 ## Post-playthrough systems (approved by Trever, Oct 17 2026)
 
-**Do not build any of this until plane graphics and the current playthrough are done.** Specs and Trever's conditions only — park here until then.
+Most items below wait until plane graphics and the current playthrough are done. **Exception (Trever Oct 17 ~16:40): the three “start now” tasks may begin immediately** as Jules/sys PRs. Specs live in the agent queue (`sys_16` / `sys_17` / `sys_18`).
 
-### Fixed-step seeded sim
+### Start now — Seeded RNG (no fixed-tick yet)
+- Add one seeded RNG with named substreams (`sim`, `passengers`, `events`, `weather`, `cosmetic`); replace unseeded `Math.random` in sim/gameplay (~116 in `sim.ts` alone).
+- Every **new** game rolls a **fresh random seed** (playthroughs differ). Persist the seed on the save; honor optional `?seed=` for repros.
+- **Do not** change frame/step timing or the `App.tsx` dt cap — the fixed-tick clock stays after the playthrough.
+- **Multiplayer groundwork:** same seed + same command stream → lockstep-ready determinism later.
+- Jules: `sys_16_brief.txt`.
+
+### Start now — Time-slicing of heavy work
+- Frame-budgeted job scheduler (a few ms/frame) for route rebuilds after layout edits, demand recalcs, and autosave serialization.
+- Goal: no hitch when placing buildings so graphics can stay maxed. Results must match non-sliced versions in tests.
+- Jules: `sys_17_brief.txt`.
+
+### Start now — Pathfinder (heap + route cache + crowd feel)
+- Binary-heap A* + route cache keyed on start/goal; **invalidate on any layout change** so new check-in / security is used immediately.
+- Passengers still pick the **shortest live queue**; needs-driven detours (food, shops, getting lost) request a **fresh route**.
+- **Path variation (Trever):** share exact paths **only** in queues and at interaction points (check-in desks, security scanners/x-ray, gates, anything they interact with). Everywhere else: per-agent lateral offset, spacing and speed variation so crowds look alive.
+- Jules: `sys_18_brief.txt`.
+
+### After playthrough — Fixed-tick clock (pairs with seeded RNG)
 - Run the clock in equal, fixed ticks so 5× plays out exactly like 1× on any machine (replays and bug repros match).
-- Every **new** game rolls a **fresh random seed** — flights, delays and events never land at set times. The seed is only for replays / bug repros of one playthrough.
-- Changes sim timing slightly → **after the playthrough only**, with Trever's OK (given Oct 17).
-
-### Time-slicing of heavy work
-- Split route rebuilds, demand recalcs and saves across several frames so big airports don't hitch when you place a building.
-- Same pattern Cities: Skylines / Factorio / OpenTTD / RCT use.
-
-### Pathfinder (heap + route cache)
-- Faster A* with a heap and a cached route table.
-- **Invalidate on any layout change** so a new check-in desk or security lane is used immediately — passengers never skip new stops.
-- Passengers still pick the **shortest live queue** as they walk.
-- Needs-driven detours (food, shops, wandering / getting lost) still request a **fresh route** when the goal changes. Cache only covers path-between-places, not decisions.
+- Slightly shifts timings → **after the playthrough only** (Trever OK given Oct 17, but still gated on playthrough end).
 
 ### Per-airline service rating + airport growth
 - Rating per airline from how well you treat them; airlines grow or leave.
@@ -119,4 +126,6 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 - Trial only behind a test flag today — live game unchanged until adoption PRs.
 
 ### Gate
-Plane graphics pass merged + current playthrough finished → then pull items from this section into [BUILD.md](./BUILD.md) / [EXECUTION.md](./EXECUTION.md) in priority order. Until then: **docs only, no code**.
+- **May code now:** Seeded RNG (`sys_16`), time-slicing (`sys_17`), pathfinder + crowd path variation (`sys_18`) — Jules briefs queued 16:40 Asia/Bangkok Oct 17.
+- **Still docs-only until** plane graphics pass merged + current playthrough finished: fixed-tick clock, airline service ratings, breakdowns, patrol zones, airport rating↔levels, happiness easing, command/undo+hardcore, OD demand, buses, smaller items, Steam rename, CC0 adoption PRs.
+- Then pull remaining items into [BUILD.md](./BUILD.md) / [EXECUTION.md](./EXECUTION.md) in priority order.
