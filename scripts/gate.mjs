@@ -6,7 +6,8 @@
  *   npm run gate -- --full       150-day soak, every bot persona + browser smoke
  *   npm run gate -- --no-install skip npm ci
  *
- * Writes docs/devlog/gate/<sha>.json and .md for the commit it ran against.
+ * Writes test-output/gate/<sha>.json and .md by default. Set UPDATE_SCREENS=1
+ * or GATE_LOG=1 to write docs/devlog/gate/<sha> instead (tracked goldens).
  */
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -291,8 +292,13 @@ function renderMarkdown(summary) {
   return `${lines.join('\n')}`
 }
 
+function gateReportDir() {
+  const tracked = process.env.UPDATE_SCREENS === '1' || process.env.GATE_LOG === '1'
+  return join(root, tracked ? 'docs/devlog/gate' : 'test-output/gate')
+}
+
 function writeReports(summary) {
-  const dir = join(root, 'docs/devlog/gate')
+  const dir = gateReportDir()
   mkdirSync(dir, { recursive: true })
   const stem = summary.sha || 'unknown'
   const jsonPath = join(dir, `${stem}.json`)
@@ -311,7 +317,7 @@ async function main() {
   const dirty = (await git(['status', '--porcelain']))
     .split('\n')
     .map((line) => line.replace(/^\s*\S{1,2}\s+/, '').trim())
-    .filter((path) => path && !path.startsWith('docs/devlog/gate/') && !path.startsWith('docs/playtest/bots/'))
+    .filter((path) => path && !path.startsWith('docs/devlog/gate/') && !path.startsWith('docs/playtest/bots/') && !path.startsWith('test-output/'))
   const shortSha = sha ? sha.slice(0, 12) : 'unknown'
   const nodeVersion = process.version
   const [major, minor] = process.versions.node.split('.').map(Number)

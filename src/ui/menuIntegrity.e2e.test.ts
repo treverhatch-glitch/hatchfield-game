@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Locator, type Page } from 'playwright'
 import { BUILD_MENUS, MANAGE_MENUS } from './nav/taxonomy'
 import { KIT_TABS } from './uiCatalog'
+import { screensDir } from '../test/screens.ts'
 
 const CHROME_PATHS = [
   process.env.PLAYWRIGHT_CHROME,
@@ -51,8 +52,7 @@ describe('every menu opens, has content, and closes', () => {
         const gotIt = page.getByRole('button', { name: 'Got it' })
         if (await gotIt.count()) await gotIt.click()
 
-        const shots = 'docs/screens/ui-audit/taxonomy'
-        mkdirSync(shots, { recursive: true })
+        const shots = screensDir('ui-audit/taxonomy')
 
         for (const menu of BUILD_MENUS) {
           const tab = page.getByTestId(`build-${menu.id}`)

@@ -1,8 +1,8 @@
-import { mkdirSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 import { MAP_VIEWS, type MapViewId } from '../info/types.ts'
+import { screensDir } from '../test/screens.ts'
 
 const SCORE: Record<MapViewId, string> = {
   traffic: 'info-score-pressure',
@@ -13,11 +13,9 @@ const SCORE: Record<MapViewId, string> = {
   fuel: 'info-score-level',
 }
 
-const OUT = 'docs/screens/info-views'
-
 describe('info view screenshots', () => {
   it('opens each view and saves a desktop shot', async () => {
-    mkdirSync(OUT, { recursive: true })
+    const OUT = screensDir('info-views')
     const port = 46341
     const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
