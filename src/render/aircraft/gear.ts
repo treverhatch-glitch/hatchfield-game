@@ -128,8 +128,13 @@ function tyre(R: number, w: number, m: THREE.Matrix4): THREE.BufferGeometry[] {
   const p = new THREE.Vector3()
   for (let i = 0; i < pos.count; i += 3) {
     let zs = 0
-    for (let k = 0; k < 3; k++) zs += Math.abs(p.fromBufferAttribute(pos, i + k).applyMatrix4(inv).z)
-    const c = zs / 3 < h * 0.52 ? C.tread : C.tyre
+    let rs = 0
+    for (let k = 0; k < 3; k++) {
+      const vec = p.fromBufferAttribute(pos, i + k).applyMatrix4(inv)
+      zs += Math.abs(vec.z)
+      rs += Math.sqrt(vec.x * vec.x + vec.y * vec.y)
+    }
+    const c = zs / 3 < h * 0.52 ? C.tread : (rs / 3 < R * 0.82 ? C.well : C.tyre)
     const pr = c === C.tread ? PBR.tread : PBR.tyre
     for (let k = 0; k < 3; k++) {
       col.set([c.r, c.g, c.b], (i + k) * 3)
@@ -153,6 +158,7 @@ function hub(R: number, w: number, outward: number, m: THREE.Matrix4): THREE.Buf
   if (o < 0) prof.reverse()
   const rot = new THREE.Matrix4().makeRotationX(Math.PI / 2)
   const face = paint(new THREE.LatheGeometry(prof, 12).applyMatrix4(rot).applyMatrix4(m), C.hub)
+  const cap = cyl(R * 0.15, w * 0.1, 10, C.chrome, new THREE.Matrix4().multiplyMatrices(m, T(0, 0, o * h * 0.55, Math.PI / 2, 0, 0)))
   // Brake stack: carbon discs and housing filling the inboard half of the rim.
   const stack = cyl(R * 0.5, w * 0.62, 14, C.brake, new THREE.Matrix4().multiplyMatrices(m, T(0, 0, -o * h * 0.25, Math.PI / 2, 0, 0)))
   const bolts: THREE.BufferGeometry[] = []
@@ -161,7 +167,7 @@ function hub(R: number, w: number, outward: number, m: THREE.Matrix4): THREE.Buf
     bolts.push(cyl(R * 0.025, w * 0.08, 5, C.pin,
       new THREE.Matrix4().multiplyMatrices(m, T(Math.cos(a) * R * 0.28, Math.sin(a) * R * 0.28, o * h * 0.36, Math.PI / 2, 0, 0))))
   }
-  return [face, stack, ...bolts]
+  return [face, cap, stack, ...bolts]
 }
 
 /**
@@ -233,7 +239,7 @@ export function legGeometry(shape: LegShape): THREE.BufferGeometry {
 
     // Trunnion pin across the bay and the shock strut with its gland collar.
     parts.push(cyl(sR * 0.55, sR * 6, 12, C.oleo, T(0, top, 0, 0, 0, Math.PI / 2)))
-    parts.push(cyl(sR, oleoLen, 18, C.oleo, T(0, top - oleoLen / 2, 0), sR * 0.94))
+    parts.push(cyl(sR, oleoLen, 18, C.chrome, T(0, top - oleoLen / 2, 0), sR * 0.94))
     parts.push(cyl(sR * 1.12, Math.max(0.05, sR * 0.5), 18, C.link, T(0, yO, 0)))
     // Chrome piston down to the axle or bogie pivot.
     const pistonBot = beamY + (bogie ? sR * 0.4 : 0)

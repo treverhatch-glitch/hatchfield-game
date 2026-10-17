@@ -413,7 +413,8 @@ export function nacelleGeometry(sides: number): THREE.BufferGeometry {
       [0.9, -0.5], [0.93, -0.517], [0.97, -0.52], [1.0, -0.51], [1.025, -0.49], [1.04, -0.45],
       [1.05, -0.36], [1.05, -0.2], [1.035, -0.02], [0.99, 0.12], [0.92, 0.24],
       [0.86, 0.27], [0.7, 0.28], [0.68, 0.33], [0.62, 0.42], [0.55, 0.48],
-      [0.44, 0.5], [0.36, 0.55], [0.24, 0.61], [0.12, 0.66], [0.001, 0.69],
+      [0.44, 0.5], [0.36, 0.55], [0.24, 0.61], [0.12, 0.66], [0.1, 0.66], [0.1, 0.55],
+      [0.05, 0.55], [0.001, 0.69],
     ]
     const pts = prof.map(([r, y]) => new THREE.Vector2(r, y))
     const geo = new THREE.LatheGeometry(pts, Math.max(32, sides * 3))
@@ -463,13 +464,22 @@ export function spinnerConeGeometry(): THREE.BufferGeometry {
     // Lathe spins about +Y; turn the axis to +X so the tip points forward.
     const cone = new THREE.LatheGeometry(pts, 14).rotateZ(-Math.PI / 2)
     cone.computeVertexNormals()
-    return cone
+    const blades = [cone]
+    const bladeGeo = new THREE.BoxGeometry(0.25, 2.6, 0.02).translate(0.1, 1.3, 0)
+    const m = new THREE.Matrix4()
+    for (let i = 0; i < 22; i++) {
+      m.makeRotationX((i / 22) * Math.PI * 2)
+      blades.push(bladeGeo.clone().applyMatrix4(m))
+    }
+    const combined = mergeGeometries(blades)
+    if (combined) combined.computeVertexNormals()
+    return combined || cone
   })
 }
 
 /** Intake lip ring facing +X, ring radius 1, tube radius 0.07. */
 export function intakeLipGeometry(): THREE.BufferGeometry {
-  return sharedGeo('intake-lip', () => new THREE.TorusGeometry(1, 0.07, 5, 20).rotateY(Math.PI / 2))
+  return sharedGeo('intake-lip', () => new THREE.TorusGeometry(1, 0.07, 12, 32).rotateY(Math.PI / 2))
 }
 
 type WingletKind = 'fence' | 'blended' | 'raked'
