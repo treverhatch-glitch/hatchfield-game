@@ -16,6 +16,7 @@ import { tint as lighten } from './buildingSkin'
 import { exteriorTexture } from './exteriorArt'
 import { landingTexture } from './landingArt'
 import { trackWindowGlow, windowGlowTexture } from './nightArt'
+import { metreUv, nameSignTexture, STARTER_TILE_M, StarterExteriorMats, unitPost } from './starterExterior'
 import {
   BAG_COLORS,
   bake,
@@ -260,6 +261,13 @@ export class TerminalBuilding {
   private detail = new THREE.Group()
   /** Prefab II / III: an airside band and a short stub. Real jet bridges stay on the stands. */
   private pier = false
+  /** Exterior PBR set (cladding, glazing, roof deck, canopy). Visual only. */
+  private ext!: StarterExteriorMats
+  private curtains: THREE.Mesh[] = []
+  private skies: THREE.Mesh[] = []
+  /** Airport-view-only dressing: roof deck, skylights, roof plant, door vestibules. */
+  private extOnly: THREE.Object3D[] = []
+  private extGlassOn = false
 
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number; pier?: boolean }) {
     this.info = info
@@ -363,6 +371,7 @@ export class TerminalBuilding {
     const shellM = own(new THREE.MeshLambertMaterial({ vertexColors: true }))
     // Roof tint from the terminal material target; the membrane photo or raster is the map.
     const roofM = own(new THREE.MeshLambertMaterial({ map: this.shared.textures.roof, color: lighten(MATERIAL_TARGETS.terminal.roof) }))
+    const ext = (this.ext = new StarterExteriorMats(8))
 
     const cells = cluster.cells
     const c0 = Math.min(...cells.map((p) => p.c))
@@ -385,11 +394,27 @@ export class TerminalBuilding {
     const slab: THREE.Matrix4[] = []
     const roofFrame = blank()
     const columns = blank()
-    const mullions = blank()
-    const fascia = blank()
-    const hvac = blank()
+    // Exterior pieces, per section and per material (all visual, none touch the footprint).
+    const frame = blank()
+    const clad = blank()
+    const plinth = blank()
+    const soffit = blank()
+    const posts = blank()
+    const doorLeaves = blank()
+    const halo = blank()
+    const vestibule = blank()
+    const parapet = blank()
+    const coping = blank()
+    const units = blank()
+    const fans = blank()
+    const extUnits = blank()
+    const extFans = blank()
+    const extCaps = blank()
+    const skyFrames = blank()
+    const skyGlass = blank()
     const rim = m(0.6)
     const slabH = Math.max(m(0.08), FLOOR_Y - m(0.01))
+    const deckY = ROOF_Y + m(0.17)
     for (const p of cells) {
       const s = sectionOf(p.c)
       const x = cellX(p.c)
@@ -405,21 +430,49 @@ export class TerminalBuilding {
       for (const k of [-0.5, 0.5]) {
         for (const j of [-0.5, 0.5]) columns[s].push(trs(x + k * CELL * 0.5, FLOOR_Y, z + j * CELL * 0.5, 0, m(0.3), ROOF_Y - FLOOR_Y, m(0.3)))
       }
-      if ((p.c * 7 + p.r * 3) % 4 === 0) hvac[s].push(trs(x - CELL / 2 + rim / 2, ROOF_Y + m(0.16), z, 0, m(1.6), m(0.9), m(2.2)))
+      if ((p.c * 7 + p.r * 3) % 4 === 0) {
+        // Packaged rooftop unit on the rim: louvred body, lid, one condenser fan.
+        const ux = x - CELL / 2 + rim / 2
+        units[s].push(trs(ux, ROOF_Y + m(0.16), z, 0, m(1.6), m(0.9), m(2.2)))
+        coping[s].push(trs(ux, ROOF_Y + m(1.06), z, 0, m(1.66), m(0.05), m(2.26)))
+        fans[s].push(trs(ux, ROOF_Y + m(1.11), z + m(0.45), 0, m(0.9), m(0.12), m(0.9)))
+      }
+      // Airport view: a membrane deck with two ridge skylights and a plant zone per bay.
+      for (const k of [-1, 1]) {
+        const sx = x + k * CELL * 0.22
+        const len = CELL - m(6)
+        skyFrames[s].push(trs(sx, deckY, z - m(1.2), 0, m(1.8), m(0.3), len + m(0.3)))
+        skyGlass[s].push(trs(sx, deckY + m(0.3), z - m(1.2), 0, m(1.55), m(0.035), len))
+      }
+      const px = x + ((p.c + p.r) % 2 ? 1 : -1) * CELL * 0.06
+      const pz = z + CELL * 0.36
+      extUnits[s].push(trs(px, deckY, pz, 0, m(3.4), m(1.25), m(2.2)))
+      extCaps[s].push(trs(px, deckY + m(1.25), pz, 0, m(3.46), m(0.05), m(2.26)))
+      for (const k of [-1, 1]) extFans[s].push(trs(px + k * m(0.85), deckY + m(1.3), pz, 0, m(1.05), m(0.14), m(1.05)))
+      extUnits[s].push(trs(px + m(2.9), deckY, pz + m(0.2), 0, m(0.9), m(0.75), m(0.9)))
+      extCaps[s].push(trs(px + m(2.9), deckY + m(0.75), pz + m(0.2), 0, m(0.96), m(0.05), m(0.96)))
     }
 
     // Curtain walls on every exterior side. Openings match facadeOpenings so the
     // landside door and the airside gates are the same holes in both views.
     const glass = Array.from({ length: SHELL_SECTIONS }, () => ({ pos: [] as number[], uv: [] as number[], idx: [] as number[] }))
-    const quad = (s: number, ax: number, az: number, bx: number, bz: number, y0: number, y1: number) => {
+    const PANES = 4
+    const vOf = (y: number) => (y - FLOOR_Y) / (GLASS_TOP - FLOOR_Y)
+    const quad = (s: number, ax: number, az: number, bx: number, bz: number, y0: number, y1: number, u0: number, u1: number) => {
       if (y1 - y0 < m(0.05)) return
       const g = glass[s]
       const b = g.pos.length / 3
       g.pos.push(ax, y0, az, bx, y0, bz, ax, y1, az, bx, y1, bz)
-      g.uv.push(0, 0, 1, 0, 0, 1, 1, 1)
+      // One glazing plate per mullion bay (four per cell edge), so the pane art is never stretched.
+      const v0 = vOf(y0)
+      const v1 = vOf(y1)
+      g.uv.push(u0, v0, u1, v0, u0, v1, u1, v1)
       g.idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2)
     }
     const openings = facadeOpenings(this.info)
+    const land = landsideSide(airside)
+    const landEdges = edges.filter((e) => e.side === land)
+    const signEdge = landEdges.length ? landEdges[Math.floor(landEdges.length / 2)] : null
     for (const e of edges) {
       const s = sectionOf(e.c)
       const v = DIR_VEC[e.side]
@@ -432,8 +485,15 @@ export class TerminalBuilding {
       const flip = e.side === 'n' || e.side === 'e' ? -1 : 1
       const hole = openings.find((o) => o.c === e.c && o.r === e.r && o.side === e.side)
       const gap = hole ? Math.min(h * 0.92, hole.width / 2) : 0
+      const at = (sp: number, out = 0) => ({ x: cx + flip * tx * h * sp + v.dc * out, z: cz + flip * tz * h * sp + v.dr * out })
       const span = (s0: number, s1: number, y0: number, y1: number) => {
-        quad(s, cx + flip * tx * h * s0, cz + flip * tz * h * s0, cx + flip * tx * h * s1, cz + flip * tz * h * s1, y0, y1)
+        quad(s, cx + flip * tx * h * s0, cz + flip * tz * h * s0, cx + flip * tx * h * s1, cz + flip * tz * h * s1, y0, y1, ((s0 + 1) / 2) * PANES, ((s1 + 1) / 2) * PANES)
+      }
+      const yaw = tx ? 0 : Math.PI / 2
+      // Precast plinth along the glass line, stepping round the doors.
+      const plinthRun = (s0: number, s1: number, wrap: number) => {
+        const mid = at((s0 + s1) / 2, m(0.1))
+        plinth[s].push(trs(mid.x, 0, mid.z, yaw, (s1 - s0) * h + wrap, FLOOR_Y + m(0.1), m(0.32)))
       }
       if (gap > m(0.3)) {
         const g = gap / h
@@ -441,49 +501,135 @@ export class TerminalBuilding {
         span(-1, -g, FLOOR_Y, GLASS_TOP)
         span(g, 1, FLOOR_Y, GLASS_TOP)
         span(-g, g, head, GLASS_TOP)
-      } else span(-1, 1, FLOOR_Y, GLASS_TOP)
+        plinthRun(-1, -g, m(0.32))
+        plinthRun(g, 1, m(0.32))
+        // Door portal: jambs, operator housing, and a concrete landing at sill height.
+        for (const sg of [-g, g]) {
+          const j = at(sg, m(0.02))
+          frame[s].push(trs(j.x, FLOOR_Y, j.z, yaw, m(0.18), DOOR_H, m(0.26)))
+        }
+        const hd = at(0, m(0.16))
+        frame[s].push(trs(hd.x, head - m(0.02), hd.z, yaw, gap * 2 + m(0.5), m(0.38), m(0.34)))
+        const landing = at(0, m(0.6))
+        plinth[s].push(trs(landing.x, 0, landing.z, yaw, gap * 2 + m(0.6), FLOOR_Y, m(1.2)))
+        if (hole?.kind === 'entrance') {
+          // Sliding leaves parked open over the side lites, stiles on both edges.
+          for (const side of [-1, 1]) {
+            const c = at(side * (g + g / 2), m(0.09))
+            doorLeaves[s].push(trs(c.x, FLOOR_Y + m(0.02), c.z, yaw, gap, DOOR_H - m(0.06), m(0.04)))
+            for (const st of [g, 2 * g]) {
+              const e2 = at(side * st, m(0.09))
+              frame[s].push(trs(e2.x, FLOOR_Y, e2.z, yaw, m(0.07), DOOR_H - m(0.02), m(0.07)))
+            }
+          }
+        }
+        // Lit lobby plate a little inside the hole, so the closed view never reads through the shell.
+        const vb = at(0, -m(1.6))
+        vestibule[s].push(trs(vb.x, FLOOR_Y, vb.z, yaw, gap * 2 + m(0.8), DOOR_H + m(0.4), m(0.2)))
+      } else {
+        span(-1, 1, FLOOR_Y, GLASS_TOP)
+        plinthRun(-1, 1, m(0.32))
+      }
       for (let k = 0; k <= 4; k++) {
         const o = -h + (k * CELL) / 4
         if (gap > m(0.3) && Math.abs(o) < gap - m(0.05)) continue
-        mullions[s].push(trs(cx + tx * o, FLOOR_Y, cz + tz * o, 0, m(0.12), GLASS_TOP - FLOOR_Y, m(0.12)))
+        frame[s].push(trs(cx + tx * o, FLOOR_Y, cz + tz * o, 0, m(0.12), GLASS_TOP - FLOOR_Y, m(0.12)))
       }
-      const yaw = tx ? 0 : Math.PI / 2
-      mullions[s].push(trs(cx, m(2.35), cz, yaw, CELL, m(0.08), m(0.12)))
-      if (!(gap > m(0.3))) mullions[s].push(trs(cx, FLOOR_Y, cz, yaw, CELL, m(0.16), m(0.18)))
-      fascia[s].push(trs(cx + v.dc * m(0.2), GLASS_TOP, cz + v.dr * m(0.2), yaw, CELL + m(0.3), ROOF_Y + m(0.22) - GLASS_TOP, m(0.45)))
+      frame[s].push(trs(cx, m(2.35), cz, yaw, CELL, m(0.08), m(0.12)))
+      if (!(gap > m(0.3))) frame[s].push(trs(cx, FLOOR_Y, cz, yaw, CELL, m(0.16), m(0.18)))
+      // Shadow-gap reveal under the fascia, then the clad fascia band itself.
+      frame[s].push(trs(cx + v.dc * m(0.06), GLASS_TOP - m(0.08), cz + v.dr * m(0.06), yaw, CELL + m(0.1), m(0.1), m(0.22)))
+      clad[s].push(trs(cx + v.dc * m(0.2), GLASS_TOP, cz + v.dr * m(0.2), yaw, CELL + m(0.3), ROOF_Y + m(0.22) - GLASS_TOP, m(0.45)))
+      // Parapet and coping above the roof line (roof group, so the cutaway lifts them).
+      parapet[s].push(trs(cx + v.dc * m(0.2), ROOF_Y + m(0.22), cz + v.dr * m(0.2), yaw, CELL + m(0.3), m(0.5), m(0.45)))
+      coping[s].push(trs(cx + v.dc * m(0.22), ROOF_Y + m(0.72), cz + v.dr * m(0.22), yaw, CELL + m(0.36), m(0.07), m(0.56)))
       // Landside drop-off canopy.
-      if (e.side === landsideSide(airside)) {
+      if (e.side === land) {
         const ox = cx + v.dc * m(2.4)
         const oz = cz + v.dr * m(2.4)
-        fascia[s].push(trs(ox, m(2.55), oz, yaw, CELL, m(0.14), m(3.6)))
-        mullions[s].push(trs(ox + v.dc * m(1.5) + tx * h * 0.6, 0, oz + v.dr * m(1.5) + tz * h * 0.6, 0, m(0.18), m(2.55), m(0.18)))
-        mullions[s].push(trs(ox + v.dc * m(1.5) - tx * h * 0.6, 0, oz + v.dr * m(1.5) - tz * h * 0.6, 0, m(0.18), m(2.55), m(0.18)))
+        clad[s].push(trs(ox, m(2.55), oz, yaw, CELL, m(0.14), m(3.6)))
+        soffit[s].push(trs(ox, m(2.53), oz, yaw, CELL - m(0.04), m(0.02), m(3.56)))
+        // Upstand edge band round the outer lip.
+        clad[s].push(trs(ox + v.dc * m(1.74), m(2.4), oz + v.dr * m(1.74), yaw, CELL + m(0.04), m(0.4), m(0.14)))
+        for (const sgn of [1, -1]) {
+          const qx = ox + v.dc * m(1.5) + sgn * tx * h * 0.6
+          const qz = oz + v.dr * m(1.5) + sgn * tz * h * 0.6
+          posts[s].push(trs(qx, 0, qz, 0, m(0.26), m(2.55), m(0.26)))
+          frame[s].push(trs(qx, 0, qz, 0, m(0.5), m(0.05), m(0.5)))
+          frame[s].push(trs(qx, m(2.38), qz, 0, m(0.34), m(0.17), m(0.34)))
+        }
+        // Signage band on the fascia beside the brand mark: backlit name panel and a halo strip.
+        if (signEdge && e === signEdge) {
+          const off = flip * CELL * 0.3
+          const sx = cx + tx * off + v.dc * m(0.47)
+          const sz = cz + tz * off + v.dr * m(0.47)
+          const sy = (GLASS_TOP + ROOF_Y + m(0.22)) / 2
+          const yawOut = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
+          frame[s].push(trs(sx - v.dc * m(0.03), sy - m(0.36), sz - v.dr * m(0.03), yaw, m(5.6), m(0.72), m(0.06)))
+          halo[s].push(trs(sx, sy - m(0.36), sz, yaw, m(5.4), m(0.035), m(0.06)))
+          const nameTex = nameSignTexture(`TERMINAL ${index + 1}`)
+          if (nameTex) {
+            this.signTextures.push(nameTex)
+            const nameM = own(new THREE.MeshBasicMaterial({ map: nameTex }))
+            const sign = this.plane(m(5.2), m(0.58), nameM, sx + v.dc * m(0.04), sy, sz + v.dr * m(0.04), yawOut, this.shell)
+            sign.name = 'starter-name-sign'
+          }
+        }
       }
     }
     const beam = this.shared.beam
+    const post = unitPost(18)
+    this.owned.geos.push(post)
     const piece = (list: THREE.Matrix4[], color: number) => list.map((matrix) => ({ geo: beam, matrix, color }))
     this.bakedMesh(piece(slab, 0xffffff), this.floorMat, this.shell, 'terminal-slab', false, true)
-    const hvacM = own(new THREE.MeshLambertMaterial({ color: 0x5b6672 }))
-    this.roofMats.push(roofM, hvacM)
+    this.roofMats.push(roofM, ...ext.roof)
+    // Plain mesh from unit-box (or post) pieces, metre UVs for the seamless plates.
+    const extMesh = (
+      list: THREE.Matrix4[],
+      mat: THREE.Material,
+      into: THREE.Group,
+      name: string,
+      tile = 0,
+      geo: THREE.BufferGeometry = beam,
+      keepUv = false,
+    ) => {
+      if (!list.length) return null
+      const g = bake(list.map((matrix) => ({ geo, matrix, color: 0xffffff })), keepUv)
+      if (!g) return null
+      g.deleteAttribute('color')
+      if (tile > 0) metreUv(g, tile)
+      this.owned.geos.push(g)
+      const mesh = new THREE.Mesh(g, mat)
+      mesh.name = name
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      into.add(mesh)
+      return mesh
+    }
     for (let i = 0; i < SHELL_SECTIONS; i++) {
-      this.bakedMesh(
-        [...piece(columns[i], 0xe6eaee), ...piece(mullions[i], 0x5b6672), ...piece(fascia[i], 0xe6eaee)],
-        shellM,
-        this.shellSections[i],
-        `terminal-shell-${i}`,
-        true,
-      )
+      const sh = this.shellSections[i]
+      const rf = this.roofSections[i]
+      this.bakedMesh(piece(columns[i], 0xe6eaee), shellM, sh, `terminal-shell-${i}`, true)
+      extMesh(frame[i], ext.frame, sh, `starter-frame-${i}`)
+      extMesh(clad[i], ext.clad, sh, `starter-clad-${i}`, STARTER_TILE_M.clad)
+      extMesh(plinth[i], ext.concrete, sh, `starter-plinth-${i}`, STARTER_TILE_M.concrete)
+      extMesh(soffit[i], ext.soffit, sh, `starter-soffit-${i}`, STARTER_TILE_M.soffit)
+      extMesh(posts[i], ext.steel, sh, `starter-posts-${i}`, 0, post)
+      extMesh(doorLeaves[i], ext.door, sh, `starter-doors-${i}`)
+      const glow = extMesh(halo[i], ext.halo, sh, `starter-halo-${i}`)
+      if (glow) glow.castShadow = false
+      const lobby = extMesh(vestibule[i], ext.glass, sh, `starter-lobby-${i}`, 0, beam, true)
+      if (lobby) this.extOnly.push(lobby)
+      extMesh(parapet[i], ext.cladRoof, rf, `starter-parapet-${i}`, STARTER_TILE_M.clad)
+      extMesh(coping[i], ext.frameRoof, rf, `starter-coping-${i}`)
+      extMesh(units[i], ext.unit, rf, `starter-units-${i}`, STARTER_TILE_M.unit)
+      extMesh(fans[i], ext.fan, rf, `starter-fans-${i}`, 0, post)
       if (roofFrame[i].length) {
         const roof = instanced(beam, roofM, roofFrame[i])
         roof.castShadow = true
         roof.receiveShadow = true
         roof.name = `terminal-roof-${i}`
         this.roofSections[i].add(roof)
-      }
-      if (hvac[i].length) {
-        const units = instanced(beam, hvacM, hvac[i])
-        units.castShadow = true
-        this.roofSections[i].add(units)
       }
       const g = glass[i]
       if (g.pos.length) {
@@ -496,6 +642,8 @@ export class TerminalBuilding {
         const curtain = new THREE.Mesh(glassGeo, this.glassMat)
         curtain.name = `terminal-curtain-${i}`
         curtain.renderOrder = 2
+        curtain.receiveShadow = true
+        this.curtains.push(curtain)
         this.shellSections[i].add(curtain)
       }
       const skyCells = cells.filter((p) => sectionOf(p.c) === i)
@@ -506,9 +654,33 @@ export class TerminalBuilding {
         const sky = new THREE.Mesh(skyGeo, this.skyMat)
         sky.name = `terminal-sky-${i}`
         sky.renderOrder = 3
+        this.skies.push(sky)
         this.roofSections[i].add(sky)
+        // Airport view roof: membrane deck over the bay, ridge skylights, roof plant.
+        const deckGeo = quadsGeometry(skyCells, { y: deckY })
+        deckGeo.deleteAttribute('color')
+        if (!deckGeo.getAttribute('normal')) deckGeo.computeVertexNormals()
+        metreUv(deckGeo, STARTER_TILE_M.roof)
+        this.owned.geos.push(deckGeo)
+        const deck = new THREE.Mesh(deckGeo, ext.deck)
+        deck.name = `starter-deck-${i}`
+        deck.castShadow = true
+        deck.receiveShadow = true
+        rf.add(deck)
+        this.extOnly.push(deck)
+        for (const mesh of [
+          extMesh(skyFrames[i], ext.frameRoof, rf, `starter-skyframe-${i}`),
+          extMesh(skyGlass[i], ext.skylight, rf, `starter-skylight-${i}`),
+          extMesh(extUnits[i], ext.unit, rf, `starter-plant-${i}`, STARTER_TILE_M.unit),
+          extMesh(extCaps[i], ext.frameRoof, rf, `starter-plantcap-${i}`),
+          extMesh(extFans[i], ext.fan, rf, `starter-plantfan-${i}`, 0, post),
+        ]) {
+          if (mesh) this.extOnly.push(mesh)
+        }
       }
     }
+    // Hidden until the first frame says which view this is (syncExterior).
+    for (const o of this.extOnly) o.visible = false
 
     this.buildSigns(index)
   }
@@ -1256,6 +1428,7 @@ export class TerminalBuilding {
     if (!enclosed && this.lifeFade > 0) this.stepWalkers(this.time)
     if (!enclosed && this.propFade > 0.001) this.cullInterior(camera)
     this.floorMat.emissiveIntensity = night * 0.32
+    this.syncExterior(enclosed, night)
     // Closed: the curtain plate is the wall, so it does not draw as see-through glass.
     // Open: day stays clear so the cutaway reads through the perimeter.
     if (this.glassMat.transparent === enclosed) {
@@ -1267,6 +1440,17 @@ export class TerminalBuilding {
     this.glassMat.emissiveIntensity = this.glassMat.emissiveMap ? night * 1.15 : night * 1.05
     this.skyMat.opacity = enclosed ? 0.92 : 0.18 * this.roofFade
     this.skyMat.emissiveIntensity = night * 0.25
+  }
+
+  /** Airport view wears the exterior set; terminal view keeps the see-through glass and skylight. */
+  private syncExterior(enclosed: boolean, night: number) {
+    if (enclosed !== this.extGlassOn) {
+      this.extGlassOn = enclosed
+      for (const c of this.curtains) c.material = enclosed ? this.ext.glass : this.glassMat
+      for (const o of this.extOnly) o.visible = enclosed
+      for (const sky of this.skies) sky.visible = !enclosed
+    }
+    this.ext.setNight(night)
   }
 
   /** True once fades, walls, and walkers have nothing left to animate. */
@@ -1391,6 +1575,7 @@ export class TerminalBuilding {
     }
     for (const g of this.owned.geos) g.dispose()
     for (const m of this.owned.mats) m.dispose()
+    this.ext.dispose()
     this.root.traverse((o) => {
       if (o instanceof THREE.InstancedMesh) o.dispose()
     })
