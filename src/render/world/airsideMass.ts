@@ -13,6 +13,10 @@ import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from './building
 import { artTexture } from './textureRegistry'
 import { mountServiceBay, mountSign } from './buildingSign'
 import { addParapet, addVault, softenBuilding } from './roundMass'
+import { cc0Kit, kitInstances } from '../cc0/library'
+
+/** Yaw that turns the CC0 warehouse's loading face toward the dock apron (+Z). */
+export const CC0_WAREHOUSE_YAW = 0
 
 const wu = (meters: number) => meters * WORLD_PER_METER
 
@@ -350,6 +354,7 @@ export function addFireStation(g: THREE.Group, opts?: { bell?: boolean }) {
 
 /** Three truck docks under a canopy. */
 export function addCargoShed(g: THREE.Group) {
+  if (addCc0CargoShed(g)) return
   const span = CELL * 0.9
   const depth = CELL * 0.7
   const wallH = 2.6
@@ -381,6 +386,38 @@ export function addCargoShed(g: THREE.Group) {
   addVault(g, span * 0.9, depth * 0.85, wallH + 0.18, -CELL * 0.02, wall('cargo_terminal', 'roof'), 0.48)
   g.add(body, roof, canopy)
   softenBuilding(g)
+}
+
+/**
+ * Cargo shed drawn with the CC0 warehouse (Grab3D), fitted inside the same footprint as the
+ * procedural shed, with our three dock bays and the CARGO sign kept on its loading face.
+ */
+function addCc0CargoShed(g: THREE.Group): boolean {
+  const kit = cc0Kit('warehouse')
+  if (!kit) return false
+  const span = CELL * 0.9
+  const depth = CELL * 0.7
+  const turned = Math.abs(Math.sin(CC0_WAREHOUSE_YAW)) > 0.5
+  const kx = turned ? kit.size.z : kit.size.x
+  const kz = turned ? kit.size.x : kit.size.z
+  const s = Math.min(span / kx, (depth * 1.05) / kz)
+  const cz = -CELL * 0.04
+  const m = new THREE.Matrix4().compose(
+    new THREE.Vector3(0, 0, cz),
+    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), CC0_WAREHOUSE_YAW),
+    new THREE.Vector3(s, s, s),
+  )
+  const shed = kitInstances(kit, [m], { castShadow: true, receiveShadow: true, name: 'cargo-shed-cc0' })
+  g.add(shed)
+  const frontZ = cz + (kz * s) / 2
+  const h = kit.size.y * s
+  const doorW = Math.max(CELL * 0.18, wu(MODEL_SIZE.box_truck[2]) + 0.3)
+  const apron = wu(MODEL_SIZE.box_truck[0])
+  for (const [i, x] of [[1, -0.28], [2, 0], [3, 0.28]] as const) {
+    mountServiceBay(g, String(i), doorW * 0.92, apron, CELL * x, frontZ + apron * 0.42, '#d7a21a')
+  }
+  mountSign(g, 'CARGO', { w: span * 0.3, h: 0.26, x: 0, y: Math.max(0.6, h * 0.62), z: frontZ + 0.06 }, '#2a2824', '#f4f0e4')
+  return true
 }
 
 /** Capture pad, fluid tank, and a truck bay beside the boom. */

@@ -8,6 +8,7 @@ import * as THREE from 'three'
 import { CELL, WORLD_PER_METER } from './aircraft/specs.ts'
 import { LANDSIDE, pressureColor, type LandsideView, type VehicleKind } from '../landside/index.ts'
 import { SIZE } from '../game/types.ts'
+import { cc0Kit, KitFleet } from './cc0/library.ts'
 
 /** Same ground mapping as the apron: cell column is +X, cell row is +Z. */
 function atCell(c: number, r: number, y = 0): THREE.Vector3 {
@@ -143,10 +144,30 @@ export class LandsideLayer {
   private readonly up = new THREE.Vector3(0, 1, 0)
   private readonly scale = new THREE.Vector3(WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
   private readonly color = new THREE.Color()
+  /** City buses drawn with the CC0 12 m low-floor bus once it has loaded (uniform scale to our 12 m). */
+  private busKit: KitFleet | null = null
+
+  private syncCc0Buses(list: LandsideView['vehicles']): boolean {
+    const kit = cc0Kit('city_bus')
+    if (!kit) return false
+    if (!this.busKit) {
+      this.busKit = new KitFleet(kit)
+      this.busKit.group.name = 'landside-bus-cc0'
+      this.group.add(this.busKit.group)
+    }
+    const s = (LANDSIDE.bodies.bus.lengthM / kit.size.x) * WORLD_PER_METER
+    const frames = list.map((vehicle) => {
+      this.turn.setFromAxisAngle(this.up, -vehicle.heading)
+      return new THREE.Matrix4().compose(atCell(vehicle.c, vehicle.r, 0), this.turn, new THREE.Vector3(s, s, s))
+    })
+    this.busKit.sync(frames)
+    return true
+  }
 
   sync(view: LandsideView, open: boolean, focus: string | null): void {
     for (const kind of KINDS) {
       const list = view.vehicles.filter((vehicle) => vehicle.kind === kind)
+      if (kind === 'bus' && this.syncCc0Buses(list)) continue
       let fleet = this.fleets.get(kind)
       if (!fleet && !list.length) continue
       if (!fleet) {
@@ -270,6 +291,8 @@ export class LandsideLayer {
       fleet.sign?.dispose()
     }
     this.fleets.clear()
+    this.busKit?.dispose()
+    this.busKit = null
     this.people?.dispose()
     this.people = null
     for (const tile of this.tiles.values()) {

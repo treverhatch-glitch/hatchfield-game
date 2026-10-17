@@ -18,6 +18,23 @@ export interface Part {
   rot?: [number, number, number]
   /** Drawn only inside hall-camera range. Repeated trim, not the silhouette. */
   near?: boolean
+  /**
+   * CC0 model anchor: once that kit has loaded this part draws as the model (pos is the
+   * floor point under it, rot[1] its yaw, size its per-axis scale). Never drawn as a primitive.
+   */
+  cc0?: string
+  /** Procedural part that a loaded CC0 kit of this id replaces. */
+  cc0Hide?: string
+}
+
+/** Floor anchor for a CC0 kit (see Part.cc0). Scale defaults to 1. */
+export function cc0Anchor(kit: string, pos: Part['pos'], yaw = 0, scale: Part['size'] = [1, 1, 1]): Part {
+  return { prim: 'box', size: scale, pos, mat: 'chrome', rot: [0, yaw, 0], cc0: kit }
+}
+
+/** Tag procedural parts as replaced by a CC0 kit once it loads. */
+export function cc0Hides(kit: string, parts: Part[]): Part[] {
+  return parts.map((p) => (p.cc0 ? p : { ...p, cc0Hide: kit }))
 }
 
 export const part = (
@@ -62,6 +79,7 @@ export function rowX(parts: Part[], n: number, pitch: number): Part[] {
 export function footprint(parts: Part[]): { w: number; d: number; h: number } {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, h = 0
   for (const q of parts) {
+    if (q.cc0) continue
     const yaw = q.rot?.[1] ?? 0
     const c = Math.abs(Math.cos(yaw)), s = Math.abs(Math.sin(yaw))
     const hw = (q.size[0] * c + q.size[2] * s) / 2

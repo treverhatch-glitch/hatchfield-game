@@ -21,3 +21,7 @@ Freesound rows are excerpts of the CC0 recording, trimmed from the preview encod
 | `alert.ogg` | Alert tone | [Kenney Interface Sounds — error_001](https://opengameart.org/content/interface-sounds), three beeps | Kenney (Kenney.nl) | CC0 |
 
 Kenney packs are also published at [kenney.nl](https://kenney.nl). The copies used here were downloaded from the OpenGameArt pages linked above, which mark them CC0.
+
+# 3D model credits
+
+Every model under `public/assets/cc0/` is CC0 1.0 (public domain): buses, the ARFF fire engine, trees and shrubs, queue posts, tandem seats, check-in kiosks, e-gates, the cargo warehouse and the animated people. Attribution is not required. The full table (file, model, creator, source page, use) is in [`public/assets/cc0/LICENSES.md`](public/assets/cc0/LICENSES.md). Creators: Innerscene, Grab3D, and Quaternius (via Poly Pizza).

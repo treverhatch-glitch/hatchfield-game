@@ -10,6 +10,7 @@ import { emitPerson, PART_DEFS, partGeometry, type PartDef } from './parts.ts'
 import { InstancePool } from './pool.ts'
 import { blendPose, copyPose, neutralPose, phaseRate, samplePose, type JointPose } from './pose.ts'
 import type { PersonLook, PersonPose } from './types.ts'
+import { Cc0PeopleLayer, cc0PeopleReady, cc0PersonFor } from '../render/cc0/people.ts'
 
 export interface PeopleAgent {
   /** Stable id: animation phase is tracked per id. */
@@ -62,6 +63,10 @@ export class PeopleRenderer {
   private readonly sphere = new THREE.Sphere()
   private readonly cam = new THREE.Vector3()
   private readonly color = new THREE.Color()
+  /** CC0 animated bodies for eligible adults (see render/cc0/people.ts); null until the models load. */
+  private cc0: Cc0PeopleLayer | null = null
+  /** Per id: the CC0 character chosen from the look, or null for the procedural body. */
+  private readonly cc0Pick = new Map<string, ReturnType<typeof cc0PersonFor>>()
 
   constructor(
     parent: THREE.Object3D,
@@ -116,6 +121,11 @@ export class PeopleRenderer {
     const levels = assignPeopleLod(dist, lite, this.lod)
 
     this.pool.reset()
+    if (!this.cc0 && cc0PeopleReady()) {
+      this.cc0 = new Cc0PeopleLayer()
+      this.group.add(this.cc0.group)
+    }
+    this.cc0?.begin()
     let near = 0
     let mid = 0
     let far = 0
@@ -145,11 +155,24 @@ export class PeopleRenderer {
       if (lod === 0) near++
       else if (lod === 1) mid++
       else far++
+      if (this.cc0) {
+        let pick = this.cc0Pick.get(a.id)
+        if (pick === undefined) {
+          pick = cc0PersonFor(a.id, a.look)
+          this.cc0Pick.set(a.id, pick)
+        }
+        if (pick && this.cc0.push(pick, a.pose, phase, a.x, a.y, a.z, a.yaw, 1.75 * a.look.height, upm)) {
+          instances++
+          continue
+        }
+      }
       if (lod !== 2) this.poseFor(a, phase, dt)
       emitPerson(a.look, lod, this.joints, a.x, a.y, a.z, a.yaw, upm, sink)
     }
     for (const id of this.phases.keys()) if (!seen.has(id)) this.phases.delete(id)
     for (const id of this.blends.keys()) if (!seen.has(id)) this.blends.delete(id)
+    for (const id of this.cc0Pick.keys()) if (!seen.has(id)) this.cc0Pick.delete(id)
+    this.cc0?.end()
 
     for (const [id, mesh] of this.meshes) {
       mesh.count = this.pool.count(id)
@@ -188,6 +211,9 @@ export class PeopleRenderer {
     for (const mesh of this.meshes.values()) mesh.dispose()
     this.meshes.clear()
     this.material.dispose()
+    this.cc0?.dispose()
+    this.cc0 = null
+    this.cc0Pick.clear()
     this.phases.clear()
     this.blends.clear()
   }

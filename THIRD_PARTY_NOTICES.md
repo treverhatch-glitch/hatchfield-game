@@ -260,3 +260,7 @@ Used for the fare brackets, city-pair demand, passenger perceived-cost and route
 
 - **BlueSky** (TU Delft, MIT): https://github.com/TUDelft-CNS-ATM/bluesky. Closest-point-of-approach conflict detection, top-of-descent planning and required-time-of-arrival metering, reimplemented from the published concepts. We use none of its navdata, BADA or OpenAP data.
 - **OpenLoco** (OpenLoco developers, MIT): https://github.com/OpenLoco/OpenLoco. Patterns only: eased station-style ratings, reliability and breakdown timers, two-phase game commands and vehicle order lists, all written fresh for Hatchfield.
+
+## 3D models (CC0)
+
+The glTF models in `public/assets/cc0/` (Innerscene, Grab3D, Quaternius) are dedicated to the public domain under CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). No notice is required. The per-file source list is in `public/assets/cc0/LICENSES.md`.

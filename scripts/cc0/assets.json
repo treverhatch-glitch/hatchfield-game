@@ -1,0 +1,29 @@
+{
+  "note": "Sources are the original CC0 downloads (see public/assets/cc0/LICENSES.md). src paths are relative to the download root.",
+  "assets": [
+    { "out": "city-bus.glb", "src": "more/vehicles/innerscene-12-m-low-floor-city-bus.glb" },
+    { "out": "fire-engine.glb", "src": "more/vehicles/innerscene-fire-engine-pumper.glb" },
+    { "out": "warehouse.glb", "src": "warehouse.glb" },
+    { "out": "tree-oak.glb", "src": "more/trees/innerscene-oak-light.glb" },
+    { "out": "tree-maple.glb", "src": "more/trees/innerscene-maple-light.glb" },
+    { "out": "tree-linden.glb", "src": "more/trees/innerscene-linden-light.glb" },
+    { "out": "tree-oak-round.glb", "src": "oak-tree.glb" },
+    { "out": "tree-palm.glb", "src": "palm-tree.glb" },
+    { "out": "shrub.glb", "src": "more/trees/innerscene-rounded-shrub.glb" },
+    { "out": "queue-post.glb", "src": "more/interior/innerscene-queue-post-with-extended-belt.glb" },
+    { "out": "tandem-seats.glb", "src": "more/interior/innerscene-tandem-waiting-seats.glb" },
+    { "out": "checkin-kiosk.glb", "src": "more/interior/innerscene-ticket-kiosk-original-public-kiosk.glb" },
+    { "out": "e-gate.glb", "src": "more/interior/innerscene-ticket-gate-public-transport-furniture.glb" },
+    { "out": "person-worker.glb", "src": "q-worker.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-casual.glb", "src": "q-casual.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-businessman.glb", "src": "q-businessman.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-adventurer.glb", "src": "more/people/polypizza-adventurer-ZwF0K7WBmu.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-woman-a.glb", "src": "more/people/polypizza-animated-woman-qJ2gsTUBHL.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-woman-b.glb", "src": "more/people/polypizza-animated-woman-nIItLV9nxS.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-suit.glb", "src": "more/people/polypizza-man-in-suit-mQnGoME1ez.glb", "opts": { "keepAnims": "\\|(Man_Idle|Man_Walk|Man_Sitting)$" } },
+    { "out": "person-punk.glb", "src": "more/people/polypizza-punk-BTALZymknF.glb", "opts": { "keepAnims": "\\|(Idle|Walk|Interact)$" } },
+    { "out": "person-woman-casual.glb", "src": "more/people/polypizza-woman-casual-jpKRgGDxhk.glb", "opts": { "keepAnims": "\\|(Female_Idle|Female_Walk|Female_Sitting|Man_Idle|Man_Walk|Man_Sitting)$" } },
+    { "out": "person-woman-dress.glb", "src": "more/people/polypizza-woman-in-dress-zMyPlQXBzq.glb", "opts": { "keepAnims": "\\|(Female_Idle|Female_Walk|Female_Sitting|Man_Idle|Man_Walk|Man_Sitting)$" } },
+    { "out": "person-woman-tank.glb", "src": "more/people/polypizza-woman-in-tank-top-XqzeZGB7iU.glb", "opts": { "keepAnims": "\\|(Female_Idle|Female_Walk|Female_Sitting|Man_Idle|Man_Walk|Man_Sitting)$" } }
+  ]
+}

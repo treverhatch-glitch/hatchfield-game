@@ -1,4 +1,5 @@
 import { installAircraftEnvironment } from './aircraft/env'
+import { CC0_DEBUG_VEHICLES, cc0Generation } from './cc0/library'
 import * as THREE from 'three'
 import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
@@ -888,7 +889,7 @@ export class World {
   rebuildTiles(game: Game) {
     // Cheap revision check — avoid flattening 32² tiles into a string every frame.
     const pierTier = prefabTier(game)
-    const hash = `${game.mapRev}|${game.lateMeshSig()}|${pierTier}`
+    const hash = `${game.mapRev}|${game.lateMeshSig()}|${pierTier}|${cc0Generation()}`
     if (hash !== this.tileHash) {
       this.tileHash = hash
       this.releaseTiles()
@@ -2113,6 +2114,7 @@ export class World {
     }
     const posed = extraVehicleYard()
     if (posed) for (const item of posed) this.vehicleFrame.push(item)
+    for (const item of CC0_DEBUG_VEHICLES) this.vehicleFrame.push(item as unknown as (typeof this.vehicleFrame)[number])
     this.vehicleFleet.sync(this.vehicleFrame, this.camera.position)
     this.syncVehicleShadows()
     setVehicleSurfaceTime(game.clock)

@@ -20,7 +20,7 @@ describe('terminal props registry', () => {
   it('batches many placements into few instanced draws', () => {
     const places = Array.from({ length: 40 }, (_, i) => ({ type: 'gate_seating' as const, x: i * 10, z: 0 }))
     const g = buildTerminalProps(places)
-    const parts = terminalProp('gate_seating').parts.length
+    const parts = terminalProp('gate_seating').parts.filter((p) => !p.cc0).length // CC0 anchors draw only when the model is loaded
     const count = g.children.reduce((s, c) => s + (c as THREE.InstancedMesh).count, 0)
     expect(count).toBe(parts * 40)
     expect(g.children.length).toBeLessThan(30)
