@@ -56,6 +56,7 @@ import { readMapView } from '../info/read.ts'
 import { steerAngle } from './vehicleAnim.ts'
 import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
+import { BlobShadows, type BlobCaster } from './world/blobShadows.ts'
 import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
@@ -416,6 +417,9 @@ export class World {
   private captureWanted = false
   private perfOverlay = retainPerfOverlay()
   private headlights = new VehicleHeadlights()
+  private vehicleShadows = new BlobShadows('vehicle-blob-shadows', 512)
+  private vehicleCasters: BlobCaster[] = []
+  private sunDirTmp = new THREE.Vector3()
   private headlightRoots: THREE.Object3D[] = []
   private headlightPool: THREE.Object3D[] = []
 
@@ -498,6 +502,7 @@ export class World {
     this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
     this.entGroup.add(this.vehicleFleet.root)
+    this.entGroup.add(this.vehicleShadows.mesh)
     this.entGroup.add(this.landsideLayer.group)
     this.entGroup.add(this.fuelLayer.group)
     this.entGroup.add(this.infoTint.group)
@@ -2086,6 +2091,7 @@ export class World {
     const posed = extraVehicleYard()
     if (posed) for (const item of posed) this.vehicleFrame.push(item)
     this.vehicleFleet.sync(this.vehicleFrame, this.camera.position)
+    this.syncVehicleShadows()
     setVehicleSurfaceTime(game.clock)
     const mapView = mapViewSnapshot()
     const traffic = mapView.active === 'traffic'
@@ -2283,6 +2289,18 @@ export class World {
       const glass = obj.parent?.getObjectByName('pod-glass')
       if (glass) glass.position.x = obj.position.x
     })
+  }
+
+  /** Soft sun-following ground shadow under every ground vehicle, every zoom, day and night. */
+  private syncVehicleShadows() {
+    const out = this.vehicleCasters
+    out.length = 0
+    for (const v of this.vehicleFrame) {
+      const s = v.scale || 1
+      out.push({ x: v.x, y: v.y, z: v.z, yaw: v.yaw, length: v.size[0] * s, width: v.size[2] * s, height: v.size[1] * s })
+    }
+    this.sunDirTmp.copy(this.sun.position).sub(this.sun.target.position)
+    this.vehicleShadows.sync(out, this.sunDirTmp, this.wr.dayNightSample?.daylight ?? 1)
   }
 
   /** Headlamps follow trucks and service vehicles. Pools stay off on Low. */
