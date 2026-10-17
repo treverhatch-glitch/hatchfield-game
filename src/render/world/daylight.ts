@@ -5,6 +5,7 @@
  */
 import type { Weather } from '../../game/types'
 import { DAYLIGHT_KEYS, LIGHT_LOOK, SUN_DISC, type DaylightKey } from '../look'
+import { moonDirection as coreMoon, sunDirection as coreSun } from '../../core/sunPath.ts'
 
 /** Sim day is 180 s; `Game.isNight()` is the last third. Map so night = 19:00–08:00. */
 export const DAY_SECONDS = 180
@@ -115,40 +116,19 @@ export function starsFactor(hour: number): number {
   return 1 - smoothstep(SUN_DISC.dawnStart, SUN_DISC.dawnEnd, h)
 }
 
-function unit(v: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
-  const l = Math.hypot(v.x, v.y, v.z) || 1
-  return { x: v.x / l, y: v.y / l, z: v.z / l }
-}
-
 /**
- * Moon arc from 20:00 to 06:00. Rises in the east, sets in the west,
- * opposite the sun's south bias. One directional light follows it, so
- * night does not pay for a second shadow map.
+ * Moon arc from 20:00 to 06:00 and the day sun arc. The math lives in the engine-agnostic
+ * `core/sunPath.ts`; these wrappers keep the plain {x,y,z} shape the rig has always used.
+ * One directional light follows the moon at night, so night does not pay for a second shadow map.
  */
 export function moonDirection(hour: number): { x: number; y: number; z: number } {
-  const h = ((hour % 24) + 24) % 24
-  const t = h >= 20 ? (h - 20) / 10 : (h + 4) / 10
-  const a = t * Math.PI
-  const elev = Math.max(0.22, Math.sin(a)) * 0.95
-  return unit({
-    x: Math.cos(a) * Math.cos(elev),
-    y: Math.sin(elev),
-    z: -0.28 * Math.cos(elev),
-  })
+  const d = coreMoon(hour)
+  return { x: d.x, y: d.y, z: d.z }
 }
 
-export function sunDirection(hour: number): { x: number; y: number; z: number } {
-  const h = ((hour % 24) + 24) % 24
-  const day = h >= 6 && h <= 20
-  if (!day) return moonDirection(h)
-  const a = ((h - 6) / 14) * Math.PI
-  const elev = Math.max(0.12, Math.sin(a)) * 1.05
-  // East (+x) in the morning, west (−x) in the evening, a little south (+z).
-  return unit({
-    x: Math.cos(a) * Math.cos(elev),
-    y: Math.sin(elev),
-    z: 0.35 * Math.cos(elev),
-  })
+export function sunDirection(hour: number, season?: string | null): { x: number; y: number; z: number } {
+  const d = coreSun(hour, season)
+  return { x: d.x, y: d.y, z: d.z }
 }
 
 export function skyState(hour: number, weather: Weather = 'clear'): SkyState {

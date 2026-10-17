@@ -4,6 +4,7 @@
  * so it works at every zoom and on every quality tier, by day and (softer) at night.
  */
 import * as THREE from 'three'
+import { shadowCast } from '../../core/sunPath.ts'
 
 export interface BlobCaster {
   x: number
@@ -25,8 +26,6 @@ export const BLOB_LOOK = {
   day: 0.9,
   night: 0.55,
   y: 0.05,
-  /** Max ground offset as a multiple of caster height. */
-  maxOffset: 2.2,
   /** Minimum sun-side spill (× caster height) so a shadow still shows beside the body under a high sun. */
   minSpill: 0.45,
 } as const
@@ -63,7 +62,6 @@ export function blobTexture(size = 64): THREE.DataTexture {
 export class BlobShadows {
   readonly mesh: THREE.InstancedMesh
   private readonly mat: THREE.MeshBasicMaterial
-  private readonly dummy = new THREE.Object3D()
   private readonly fade: THREE.InstancedBufferAttribute
   private cap: number
 
@@ -103,41 +101,63 @@ export class BlobShadows {
   }
 
   /**
-   * @param sunDir direction from the ground toward the sun (any length)
-   * @param daylight 1 = day, 0 = night
+   * @param sunDir direction from the ground toward the sun or moon (any length), i.e. the rig's
+   *   time-of-day light from `core/sunPath.sunDirection(hour, season)`.
+   * @param daylight 1 = day, 0 = night (moonlight: softer, still visible)
    */
   sync(list: readonly BlobCaster[], sunDir: THREE.Vector3, daylight: number) {
     const n = Math.min(list.length, this.cap)
-    const len = Math.hypot(sunDir.x, sunDir.y, sunDir.z) || 1
-    const sy = Math.max(0.35, sunDir.y / len)
-    const ox = -sunDir.x / len / sy
-    const oz = -sunDir.z / len / sy
     const d = Math.max(0, Math.min(1, daylight))
     this.mat.opacity = BLOB_LOOK.night + (BLOB_LOOK.day - BLOB_LOOK.night) * d
+    const e = this.mesh.instanceMatrix.array as Float32Array
     for (let i = 0; i < n; i++) {
       const c = list[i]
       const lift = c.lift ?? 0
-      const k = Math.min(c.height * 0.9 + lift, BLOB_LOOK.maxOffset * Math.max(c.height, 0.01) + lift)
-      // Shadow falls away from the sun; airborne casters shrink and fade with height.
       const shrink = 1 / (1 + lift * 0.12)
-      // Under a near-overhead sun the projected offset collapses and the blob hides under the body;
-      // keep a minimum spill along the sun's ground heading (or a fixed SE lean if it is straight up).
-      let gx = ox * k
-      let gz = oz * k
-      const g = Math.hypot(gx, gz)
-      const minG = BLOB_LOOK.minSpill * c.height * (1 / (1 + lift * 0.12))
-      if (g < minG) {
-        const hx = g > 1e-4 ? gx / g : 0.6
-        const hz = g > 1e-4 ? gz / g : 0.8
-        gx = hx * minG
-        gz = hz * minG
-      }
-      this.dummy.position.set(c.x + gx, c.y - lift + BLOB_LOOK.y, c.z + gz)
-      this.dummy.rotation.set(0, c.yaw, 0)
-      this.dummy.scale.set((c.length * 1.25 + c.height * 0.7) * shrink, 1, (c.width * 1.6 + c.height * 0.55) * shrink)
-      this.dummy.updateMatrix()
-      this.mesh.setMatrixAt(i, this.dummy.matrix)
-      this.fade.setX(i, (c.alpha ?? 1) * Math.min(1, shrink * shrink * 1.1))
+      // Low sun: long shadow; high sun: short. Airborne casters slide along the same heading.
+      const cast = shadowCast(sunDir, c.height, lift)
+      const ux = cast.ux
+      const uz = cast.uz
+      const len = (c.length * 1.25 + c.height * 0.7) * shrink
+      const wid = (c.width * 1.6 + c.height * 0.55) * shrink
+      // Footprint axes in world space (yaw about +Y).
+      const cy = Math.cos(c.yaw)
+      const sy = Math.sin(c.yaw)
+      const ax = cy * len
+      const az = -sy * len
+      const bx = sy * wid
+      const bz = cy * wid
+      // Stretch the footprint along the shadow heading by the cast length.
+      const ext = Math.hypot(ax * ux + az * uz, bx * ux + bz * uz) || 1
+      const throwLen = cast.castLength * shrink
+      const k = throwLen / ext
+      const da = k * (ax * ux + az * uz)
+      const db = k * (bx * ux + bz * uz)
+      // Centre: half the throw out from the base, plus the airborne slide; never fully hidden under the body.
+      const off = Math.max(throwLen * 0.5, BLOB_LOOK.minSpill * c.height * shrink) + cast.slide
+      const px = c.x + ux * off
+      const py = c.y - lift + BLOB_LOOK.y
+      const pz = c.z + uz * off
+      const o = i * 16
+      e[o] = ax + da * ux
+      e[o + 1] = 0
+      e[o + 2] = az + da * uz
+      e[o + 3] = 0
+      e[o + 4] = 0
+      e[o + 5] = 1
+      e[o + 6] = 0
+      e[o + 7] = 0
+      e[o + 8] = bx + db * ux
+      e[o + 9] = 0
+      e[o + 10] = bz + db * uz
+      e[o + 11] = 0
+      e[o + 12] = px
+      e[o + 13] = py
+      e[o + 14] = pz
+      e[o + 15] = 1
+      // Long shadows spread their darkness; airborne ones fade with height.
+      const spread = 1 / (1 + 0.12 * (throwLen / Math.max(ext, 1e-3)))
+      this.fade.setX(i, (c.alpha ?? 1) * Math.min(1, shrink * shrink * 1.1) * (0.55 + 0.45 * spread))
     }
     this.mesh.count = n
     this.mesh.instanceMatrix.needsUpdate = true
