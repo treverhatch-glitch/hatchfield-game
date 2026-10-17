@@ -43,6 +43,11 @@ export function attachBuildingMaterial(mat: THREE.MeshStandardMaterial): void {
   mat.needsUpdate = true
 }
 
+/** Forget a material on dispose so rebuilt shells do not pile up in the tracked set. */
+export function detachBuildingMaterial(mat: THREE.MeshStandardMaterial): void {
+  tracked.delete(mat)
+}
+
 function defaultBuild(renderer: THREE.WebGLRenderer): THREE.Texture | null {
   const pm = new THREE.PMREMGenerator(renderer)
   try {
