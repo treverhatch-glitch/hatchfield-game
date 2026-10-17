@@ -9,8 +9,8 @@ import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { mountSockets } from '../socketMount'
 import { MODEL_SIZE } from '../vehicleModels'
-import { metreUv, skinBox, skinMaterial, tankUv, tint, yardMaterial } from './buildingSkin'
-import { artTexture, type ArtTextureId } from './textureRegistry'
+import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from './buildingSkin'
+import { artTexture } from './textureRegistry'
 import { mountServiceBay, mountSign } from './buildingSign'
 import { addParapet, addVault, softenBuilding } from './roundMass'
 
@@ -18,16 +18,6 @@ const wu = (meters: number) => meters * WORLD_PER_METER
 
 function wall(target: Parameters<typeof skinMaterial>[0], part: Parameters<typeof skinMaterial>[1]) {
   return skinMaterial(target, part)
-}
-
-function plated(color: string, id: ArtTextureId, roughness: number, metalness = 0.25): THREE.MeshStandardMaterial {
-  const map = artTexture(id, 16)
-  return new THREE.MeshStandardMaterial({
-    color: map ? tint(color, 0.4) : color,
-    map: map ?? undefined,
-    roughness,
-    metalness,
-  })
 }
 
 function based(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
@@ -175,6 +165,19 @@ function earthBerm(g: THREE.Group, x: number, z: number, radius: number, mat: TH
 }
 
 /**
+ * Fuel depot palette Trever approved with the one-way depot (a082419b, Oct 15). a14850ed swapped
+ * these for tinted photo plates (gravel berms, corrugated canopy, plated steel), which changed the
+ * depot's look without anyone asking. Keep them plain; the regression test pins every value.
+ */
+export const FUEL_FARM_LOOK = {
+  steel: { color: '#8b949e', roughness: 0.4, metalness: 0.55 },
+  dark: { color: '#3a4048', roughness: 0.45, metalness: 0.5 },
+  concrete: { color: '#c9c6bf', roughness: 0.82 },
+  earth: { color: '#5d7a3a', roughness: 0.95 },
+  canopy: { color: '#c5ccd3', roughness: 0.55, metalness: 0.35 },
+} as const
+
+/**
  * Stage-III depot: tanks sit in grass earth berms under a drive-through canopy,
  * and the yard carries tire tracks. No decorative tanker is parked in the yard:
  * the bowser that loads here is the live truck on the taxi cell beside the farm.
@@ -186,11 +189,19 @@ export function addFuelFarm(g: THREE.Group) {
   const roof = skinMaterial('fuel_farm', 'roof')
   const trim = skinMaterial('fuel_farm', 'trim')
   const bandMat = new THREE.MeshStandardMaterial({ color: '#2d6a4f', roughness: 0.4, metalness: 0.2 })
-  const steel = plated('#8b949e', 'tank_steel', 0.4, 0.55)
-  const dark = plated('#3a4048', 'tank_steel', 0.45, 0.5)
-  const concrete = plated('#c9c6bf', 'apron_concrete', 0.82, 0.05)
-  const earth = plated('#5d7a3a', 'gravel_yard', 0.95, 0.02)
-  const canopyMat = plated('#c5ccd3', 'hangar_cladding', 0.55, 0.35)
+  // Approved depot look (one-way depot restyle a082419b, Oct 15): plain painted steel, grass
+  // berms and a smooth canopy. Do not swap these for photo plates; buildingMass.test.ts pins them.
+  const look = FUEL_FARM_LOOK
+  const steel = new THREE.MeshStandardMaterial({ ...look.steel })
+  const dark = new THREE.MeshStandardMaterial({ ...look.dark })
+  const concrete = new THREE.MeshStandardMaterial({ ...look.concrete })
+  const earth = new THREE.MeshStandardMaterial({ ...look.earth })
+  const canopyMat = new THREE.MeshStandardMaterial({ ...look.canopy })
+  steel.name = 'fuel-steel'
+  dark.name = 'fuel-dark'
+  concrete.name = 'fuel-concrete'
+  earth.name = 'fuel-berm-earth'
+  canopyMat.name = 'fuel-canopy'
 
   const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   yard.rotation.x = -Math.PI / 2

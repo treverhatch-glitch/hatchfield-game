@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { HANGAR_DESIGN, HANGAR_HEAD_CLEAR_M, HANGAR_SIDE_CLEAR_M } from '../../scale/data'
-import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './airsideMass'
+import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm, FUEL_FARM_LOOK } from './airsideMass'
 import { addFuelRail, addHangar, addOilStation, addPeopleMover, addSkywalk, addTravelator } from '../../scale/placeholders'
 import { hangarClearsDesign, hangarOpeningM } from './hangarMass'
 import { MODEL_SIZE } from '../vehicleModels'
@@ -194,5 +194,72 @@ describe('concept building massing', () => {
     }
     signFacesFront(fuel)
     signFacesFront(oil)
+  })
+})
+
+describe('fuel depot approved look (regression guard)', () => {
+  /** Every mesh with its geometry size and material look, in build order. */
+  function lookSignature(g: THREE.Object3D): string[] {
+    const out: string[] = []
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      const look = mats.map((m) => {
+        const s = m as THREE.MeshStandardMaterial
+        const color = s.color ? s.color.getHexString() : '-'
+        const r = s.roughness != null ? s.roughness.toFixed(2) : '-'
+        const mt = s.metalness != null ? s.metalness.toFixed(2) : '-'
+        return `${m.type}:${color}:r${r}:m${mt}:${s.map ? 'map' : 'plain'}`
+      })
+      const pos = mesh.geometry?.getAttribute('position')
+      out.push(`${mesh.name || '-'}|${mesh.geometry?.type}|v${pos ? pos.count : 0}|${look.join(',')}`)
+    })
+    return out
+  }
+
+  it('keeps the approved palette: plain steel, grass berms, smooth canopy (no photo plates)', () => {
+    expect(FUEL_FARM_LOOK).toEqual({
+      steel: { color: '#8b949e', roughness: 0.4, metalness: 0.55 },
+      dark: { color: '#3a4048', roughness: 0.45, metalness: 0.5 },
+      concrete: { color: '#c9c6bf', roughness: 0.82 },
+      earth: { color: '#5d7a3a', roughness: 0.95 },
+      canopy: { color: '#c5ccd3', roughness: 0.55, metalness: 0.35 },
+    })
+    const fuel = new THREE.Group()
+    addFuelFarm(fuel)
+    const seen = new Map<string, THREE.MeshStandardMaterial>()
+    fuel.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (m.name.startsWith('fuel-')) seen.set(m.name, m as THREE.MeshStandardMaterial)
+    })
+    const want: Record<string, string> = {
+      'fuel-steel': '8b949e',
+      'fuel-dark': '3a4048',
+      'fuel-berm-earth': '5d7a3a',
+      'fuel-canopy': 'c5ccd3',
+    }
+    for (const [name, hex] of Object.entries(want)) {
+      const m = seen.get(name)
+      expect(m, name).toBeTruthy()
+      expect(m!.color.getHexString(), name).toBe(hex)
+      expect(m!.map, `${name} must stay unplated`).toBeNull()
+    }
+    // Berms read as green grass mounds, not gravel.
+    const berm = fuel.getObjectByName('fuel-berm') as THREE.Mesh | undefined
+    expect(berm).toBeTruthy()
+    let bermGreen = false
+    berm!.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
+      if (m && m.color && m.color.getHexString() === '5d7a3a' && !m.map) bermGreen = true
+    })
+    expect(bermGreen).toBe(true)
+  })
+
+  it('matches the recorded mesh/material signature (any look change must update this on purpose)', () => {
+    const fuel = new THREE.Group()
+    addFuelFarm(fuel)
+    expect(lookSignature(fuel)).toMatchSnapshot()
   })
 })
