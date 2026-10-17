@@ -113,7 +113,7 @@ export class BlobShadows {
     for (let i = 0; i < n; i++) {
       const c = list[i]
       const lift = c.lift ?? 0
-      const shrink = 1 / (1 + lift * 0.12)
+      const shrink = 1 / (1 + lift * 0.05)
       // Low sun: long shadow; high sun: short. Airborne casters slide along the same heading.
       const cast = shadowCast(sunDir, c.height, lift)
       const ux = cast.ux
