@@ -26,3 +26,4 @@ dist-ssr
 # unpacked at build time by scripts/unpack-art.mjs
 public/art/textures/buildings/*.jpg
 public/art/refs/airlines/*.jpg
+public/asset_trial/

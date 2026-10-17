@@ -1,4 +1,5 @@
 import { installAircraftEnvironment } from './aircraft/env'
+import { ASSET_TRIAL, installAssetTrial, trialAugmentVehicles, trialFilterVehicles, trialHidesFlight, trialLayerJet } from './assetTrial'
 import * as THREE from 'three'
 import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
@@ -535,6 +536,7 @@ export class World {
       sun: this.sun,
     })
     this.offGfx = subscribeGraphicsQuality((level) => this.applyGraphicsQuality(level))
+    if (ASSET_TRIAL) installAssetTrial(this.scene)
   }
 
   addPlotFence() {
@@ -1702,7 +1704,7 @@ export class World {
       releaseAircraft(old)
       this.jets.delete(id)
     }
-    this.parkedFleet.sync(planes, this.camera)
+    this.parkedFleet.sync(ASSET_TRIAL ? planes.filter((p) => !trialHidesFlight(p.id)) : planes, this.camera)
     this.lastParked = planes
 
     const seen = new Set<string>()
@@ -1734,6 +1736,7 @@ export class World {
         const bridged = !!f.stand && game.boughtBridges(f.stand) > 0 && game.bridgeExtend(f.id) > 0
         updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }), bridged)
       }
+      if (ASSET_TRIAL) trialLayerJet(mesh, f.id)
       const stuck = mesh.getObjectByName('bridges')
       if (stuck) mesh.remove(stuck)
       mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
@@ -2109,7 +2112,8 @@ export class World {
     }
     const posed = extraVehicleYard()
     if (posed) for (const item of posed) this.vehicleFrame.push(item)
-    this.vehicleFleet.sync(this.vehicleFrame, this.camera.position)
+    if (ASSET_TRIAL) trialAugmentVehicles(this.vehicleFrame)
+    this.vehicleFleet.sync(ASSET_TRIAL ? trialFilterVehicles(this.vehicleFrame) : this.vehicleFrame, this.camera.position)
     this.syncVehicleShadows()
     setVehicleSurfaceTime(game.clock)
     const mapView = mapViewSnapshot()
