@@ -512,9 +512,25 @@ describe('geometry builders', () => {
     ])
     expect(g.getAttribute('position').count).toBe(8)
     expect(g.getAttribute('color').getX(4)).toBeGreaterThan(g.getAttribute('color').getY(4))
+
+    // Check that brightness was bumped: for red, R is multiplied by 1.15 and roughly ~0.725
+    expect(g.getAttribute('color').getX(4)).toBeCloseTo(0.725, 2)
+
     const uv = g.getAttribute('uv')
     const p = g.getAttribute('position')
     expect(uv.getX(0)).toBeCloseTo(p.getX(0) / 1.6)
+  })
+
+  it('paint material uses crisp alpha clip with fwidth', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
+
+    // Find the paint material indirectly since we don't return it
+    const mat = (wr as any).paintMat
+    expect(mat.transparent).toBe(true)
+    expect(mat.alphaTest).toBe(0.5)
+    expect(mat.polygonOffsetFactor).toBe(-4)
+    expect(mat.onBeforeCompile).toBeDefined()
   })
 
   it('outer ground frame leaves the plot uncovered and faces up', () => {
