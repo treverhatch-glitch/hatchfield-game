@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
+import { screensDir } from '../test/screens.ts'
 
 const CHROME_PATHS = [process.env.PLAYWRIGHT_CHROME, '/usr/bin/google-chrome', '/usr/local/bin/google-chrome'].filter(
   (path): path is string => Boolean(path),
@@ -79,8 +81,8 @@ describe('check-in desk themes', () => {
         expect(harborShot.ok).toBe(true)
         expect(harborShot.rgb[1]).toBeGreaterThan(harborShot.rgb[0] + 30)
         expect(harborShot.rgb[1]).toBeGreaterThan(harborShot.rgb[2])
-        mkdirSync('docs/screens/checkin', { recursive: true })
-        await page.screenshot({ path: 'docs/screens/checkin/desk-harbor.png' })
+        const shots = screensDir('checkin')
+        await page.screenshot({ path: join(shots, 'desk-harbor.png') })
 
         const second = await page.evaluate(() => {
           const game = (window as unknown as { __hatch: Hatch }).__hatch
@@ -96,7 +98,7 @@ describe('check-in desk themes', () => {
         expect(northShot.ok).toBe(true)
         expect(northShot.rgb[2]).toBeGreaterThan(northShot.rgb[0] + 30)
         expect(northShot.rgb[2]).toBeGreaterThan(northShot.rgb[1])
-        await page.screenshot({ path: 'docs/screens/checkin/desk-northline.png' })
+        await page.screenshot({ path: join(shots, 'desk-northline.png') })
       } finally {
         await browser.close()
       }
