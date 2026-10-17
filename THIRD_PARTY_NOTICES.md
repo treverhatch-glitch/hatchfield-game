@@ -276,3 +276,15 @@ Files under `public/art/textures/airfield/` that come from outside the project. 
 | `concrete_detail.webp` (grain over runway/apron/stand slabs) | [ambientCG — Concrete047A](https://ambientcg.com/view?id=Concrete047A) | ambientCG (Lennart Demes) | CC0 | luminance high-pass (σ 48 px, wrap-around), centred on mid grey, lossless WebP |
 
 The runway and apron slab plates (`runway_*.jpg`, `apron_*.jpg`) are authored in-house and unchanged.
+
+## Building skin textures (CC0)
+
+Files under `public/art/textures/skins/` (albedo sRGB, OpenGL normal, roughness; seamless 2K). All sources are CC0 1.0 (public domain); attribution is not required and is recorded anyway. The plates are rebuilt by `scripts/build-skin-textures.py`.
+
+| File | Source | Author | License | Processing |
+| --- | --- | --- | --- | --- |
+| `brick_*` (fire station, kiosk walls) | [ambientCG — Bricks105](https://ambientcg.com/view?id=Bricks105) | ambientCG (Lennart Demes) | CC0 | 2K JPG; colour 50% saturation, AO^0.6 baked in, slight warm shift, mean luminance 0.70; normal = original OpenGL map re-encoded; roughness scaled to mean 0.85 |
+| `cladding_*` (hangar, cargo, baggage hall, warehouse, parking, MRO, guard post walls and doors) | [ambientCG — CorrugatedSteel007A](https://ambientcg.com/view?id=CorrugatedSteel007A) | ambientCG (Lennart Demes) | CC0 | colour converted to neutral grey (mottle ×0.8) with AO^1.4 and a gentle rib shade from the normal X baked in; normal = original OpenGL map; roughness 0.6×orig+0.4, mean 0.85 |
+| `panel_*` (police station, catering kitchen walls) | [ambientCG — Concrete034](https://ambientcg.com/view?id=Concrete034) | ambientCG (Lennart Demes) | CC0 | grey grain (contrast ×0.45) with drawn 1 m panel joints and per-panel tone; normal = drawn joints + original normal ×0.6 |
+| `block_*` (vehicle depot walls) | [ambientCG — Concrete034](https://ambientcg.com/view?id=Concrete034) | ambientCG (Lennart Demes) | CC0 | grain under drawn 400×200 mm concrete-block courses (running bond, recessed joints, per-block tone) |
+| `membrane_*` (service building roofs) | [ambientCG — Concrete034](https://ambientcg.com/view?id=Concrete034) | ambientCG (Lennart Demes) | CC0 | grain + periodic mottle under drawn 1 m lapped membrane seams |

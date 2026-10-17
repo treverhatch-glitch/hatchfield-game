@@ -35,3 +35,13 @@ All CC0 1.0. Details and processing notes are in [`THIRD_PARTY_NOTICES.md`](THIR
 | `public/art/textures/airfield/asphalt_*` | Taxiway asphalt | [Asphalt 02](https://polyhaven.com/a/asphalt_02) | Poly Haven | CC0 |
 | `public/art/textures/airfield/road_*` | Service roads and tug pavement | [Worn Asphalt](https://polyhaven.com/a/worn_asphalt) | Poly Haven | CC0 |
 | `public/art/textures/airfield/concrete_detail.webp` | Concrete grain on runway, apron and stands | [Concrete047A](https://ambientcg.com/view?id=Concrete047A) | ambientCG | CC0 |
+
+# Building skin texture credits
+
+All CC0 1.0. Details and processing notes are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md#building-skin-textures-cc0).
+
+| File | Use | Source | Author | License |
+| --- | --- | --- | --- | --- |
+| `public/art/textures/skins/brick_*` | Fire station and kiosk brick | [Bricks105](https://ambientcg.com/view?id=Bricks105) | ambientCG | CC0 |
+| `public/art/textures/skins/cladding_*` | Profiled steel cladding (hangar, cargo, baggage hall, warehouse, parking, MRO, guard post) | [CorrugatedSteel007A](https://ambientcg.com/view?id=CorrugatedSteel007A) | ambientCG | CC0 |
+| `public/art/textures/skins/panel_*`, `block_*`, `membrane_*` | Precast panels, concrete block, roof membrane (grain under drawn joints) | [Concrete034](https://ambientcg.com/view?id=Concrete034) | ambientCG | CC0 |
