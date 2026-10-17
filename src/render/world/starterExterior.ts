@@ -222,7 +222,7 @@ export class StarterExteriorMats {
     this.night = n
     this.glass.emissiveIntensity = this.glass.emissiveMap ? n * 1.25 : n * 1.15
     this.door.emissiveIntensity = n * 0.55
-    this.skylight.emissiveIntensity = n * 0.7
+    this.skylight.emissiveIntensity = n * 1.15
     this.soffit.emissiveIntensity = this.soffit.emissiveMap ? 0.05 + n * 2.4 : n * 0.6
     const halo = 0.55 + n * 0.45
     this.halo.color.setRGB(0.75 * halo, 0.89 * halo, 1.0 * halo)
