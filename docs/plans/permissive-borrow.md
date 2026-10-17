@@ -25,7 +25,7 @@ Nothing was dropped. All five are MIT or Apache-2.0 at the root. The caveats are
 - **Ground ATC:** `src/atc/groundControl.ts` (`GroundControl`). FIFO cell reservations, one exclusive lock per runway with right-of-way order (arrival on short final, vacating, departure, crossing), deadlock check, `canLand`/`requestLanding`. Hold-at-line for departures is built in. It is already stronger than OpenTaxi's StopGo controllers, so **keep it and don't replace it**.
 - **Runway spacing:** `src/atc/capacity.ts` uses fixed `ARRIVAL_OCCUPANCY_SEC = 14` and `DEPARTURE_OCCUPANCY_SEC = 14` for every type, plus slot slack constants. There is no wake or type-based separation in the live sim. `src/airside/runway.ts` (`getWakeMultiplier`, `runwayCapacity`) and `src/airside/holdshort.ts` (`detectConflicts`) exist but **nothing in `src/` imports them**.
 - **Go-arounds:** `Game.goAround()` in `src/game/sim.ts` (~line 25960) fires when the runway isn't clear on short final. It charges fuel, hits standing and reputation, nudges the slot, and diverts at `ATC_MAX_GO_AROUNDS`. There is only one reason (runway or exit blocked) and no scoring breakdown.
-- **Approach and taxi paths:** `Game.landingRoute()` (sim.ts ~24675) builds runway-strip cells plus the reversed taxi path. `src/game/flightpath.ts` (`inboundApproach`, `sampleFlightPath`) is not imported anywhere. Taxi uses `astar()` in `src/game/path.ts`, a grid A* with a **linear open-list scan** (O(n²)), no turn cost, 4-neighbour.
+- **Approach and taxi paths:** `Game.landingRoute()` (sim.ts ~24675) builds runway-strip cells plus the reversed taxi path. `src/game/flightpath.ts`: `inboundApproach` is live in `sim.ts`; only `sampleFlightPath` is unused (corrected in §11). Taxi uses `astar()` in `src/game/path.ts`, a grid A* with a **linear open-list scan** (O(n²)), no turn cost, 4-neighbour.
 - **Airlines and demand:** `src/airlines/logic.ts` (unlocks, contract offers, rating), `roster.ts` (46 airlines, fleet pools), `contracts/*` (seasonal contract lines with `origin`/`destination` strings, per-pax and landing fees), and `rival/demand.ts` (fee/service/capacity split with Bellwater). There is **no city-pair demand, no fare model and no load-factor-driven growth or exit**.
 - **Ratings and wear:** `src/ratings/stars.ts`, `levelgates/gates.ts`, and `maintenance/wear.ts` (`breakdownChance`, `repairCost`, not wired). Undo exists at `src/features/undo`. The seeded RNG is `src/features/shared/rng.ts` (`createRng`).
 - **Airframes:** `src/game/airframes.ts` has 31 types. **22 of them have an openScope performance file:** bn2p, dhc6, crj7, a20n, b738, a321, b789, b77w, a359, at72/at76, b752, b763, b748, c130, pc12, a388, a124, c5, bcs3, b38m, a21n.
@@ -194,3 +194,113 @@ All tasks share these **rules**:
 - PB-26 Arrival metering (speed to slot)
 
 The full briefs are in `/workspace/gfx_baseline/jules_queue.md` under "Permissive-borrow tasks (17 Oct)".
+
+---
+
+## 11. Cross-reference with existing plans (17 Oct 2026)
+
+*Written 17 Oct 2026, ~17:30 Asia/Bangkok. Checked against `github/main` 49a4358e. Read-only: no browsers, builds or tests were run.*
+
+This note checks the permissive-borrow plan (this plan, tasks PB-01..PB-10 and PB-20..PB-26) against every planning source we have: `docs/NEXT.md` (including "Post-playthrough systems" and sys_16/17/18), `docs/PROGRESSION.md`, `docs/atc/GROUND_CONTROL.md`, `docs/atc/RUNWAY_CAPACITY.md`, `docs/design/HUB_PROGRESSION.md`, `AGENTS.md`, the Jules queue (sys_01..sys_18), the OpenRCT2/OpenTTD study (`REPORT.md`, `TARGETS.md`), and the code that already exists.
+
+### 11.0 Corrections to the borrow plan (found while checking the code)
+
+1. **`src/game/flightpath.ts` is used.** `sim.ts` imports `inboundApproach` and `hasLeftMap` (line 882, called near line 9732). Only `sampleFlightPath` is unused. PB-03's glideslope math belongs next to it, not in a new file.
+2. **There are already two breakdown models.** `maintenance/wear.ts` `breakdownChance()` is never called, but `logistics/maintenance.ts` has its own `breakdownChance(v)`. That one runs on every logistics vehicle trip (default `baseBreakdownPerTrip` 0.002, condition and overdue-service terms) and seems to be live through `createLogisticsAdapter` in `sim.ts`. PB-10's `reliability.ts` would make a third.
+3. **A per-airline service rating already exists, unwired.** `src/features/ratings/ratings.ts` scores each airline 0–100 from punctuality, turnaround, fees and passenger mood, smooths it, and raises "threat to leave" or "more slots" signals. That covers half of PB-08 and the NEXT "per-airline service rating" item.
+4. **The command/undo stack already exists, unwired:** `src/features/undo/undo.ts`.
+5. **Jules sys_11 (sent 11:50) is told to delete `features/undo` and `features/ratings`** as dead code. Both are the starting point for approved post-playthrough items (see §3).
+6. **A city table exists:** `src/fids/cities.ts` (12 fictional names, no population or position). PB-06 should extend it, not add a second `cities.ts`.
+7. **A wake table already exists twice:** `airside/data.ts` `WAKE_MULTIPLIERS` and `airside/runway.ts` `getWakeMultiplier` / `calculateAverageWakePenalty` / `runwayCapacity`. Nothing imports `airside/runway.ts`, `airside/holdshort.ts` or `airside/index.ts`. The sim only uses `airside/data.ts` and `airside/tower.ts`.
+
+### 11.1 Map: borrow item → existing plan/code → layer → phase → verdict
+
+Layers: **L0** core sim/determinism · **L1** pathing/movement · **L2** airside ATC · **L3** maintenance/staff · **L4** airline economy/demand · **L5** ratings/progression (stars, Field Level, level gates, Airport Council, reputation) · **L6** UI/info views.
+
+| Item | Maps to (doc / task / code) | Layer | Phase | Verdict | Why |
+|---|---|---|---|---|---|
+| PB-01 Runway separation table | `airside/runway.ts` getWakeMultiplier + `airside/data.ts` WAKE_MULTIPLIERS (unused); `atc/capacity.ts` flat 14 s; RUNWAY_CAPACITY.md | L2 | Pre (standalone) | **MERGE-INTO PB-01, absorbing airside/runway.ts** | One wake/SRS table only. PB-01 becomes the source, and `airside/runway.ts` is re-pointed at it or retired. |
+| PB-02 Go-around reasons + tower score | `Game.goAround()` (one reason); GROUND_CONTROL.md penalties; `ratings/stars.ts` sub-scores; NEXT "explainable rating" | L2 → L5 | Pre (standalone) | **NEW (reasons); MERGE-INTO PB-09 components (score)** | The reasons are new and useful. The tower score should be one part of the single airport rating, not a separate meter. |
+| PB-03 CPA predictor + procedures | `game/flightpath.ts` (`inboundApproach`, live); `GroundControl` reservations; render `flightPose` | L2 | **Later** | **REDUNDANT (CPA, for now) / MERGE-INTO flightpath.ts (glideslope)** | Ground conflicts can't happen by construction (FIFO cells plus runway lock). Airborne paths are single-file. Glideslope math is render-adjacent. |
+| PB-04 Heap A* + turn A* | **sys_18** (heap A*, cache, owns `path.ts`, shares `paxnav/field.ts` Heap); **sys_14** truck cache; REPORT §2.2 | L1 | Pre (heap done by sys_18) | **REDUNDANT with sys_18 (heap); keep only `astarTurn`** | sys_18 already builds the heap on the shared Heap. A second `pathHeap.ts` would be a third heap and a second A*. |
+| PB-05 Taxi route audit | `airside/holdshort.ts` detectConflicts (unused); `atc/trafficStress.test.ts`; sys_09 guard-post tests | L2 (tests) | Pre (standalone) | **NEW, reusing holdshort.ts** | Test-only, no behaviour change. Fold `detectConflicts` in rather than writing a parallel checker. Complements sys_09. |
+| PB-06 Market model (fare, demand, cabins) | NEXT "Destination demand (Cargodist-style), Web Worker"; `rival/demand.ts` (share split); `contracts/*` origin/dest strings; `fids/cities.ts`; OurAirports note | L4 | Pre (standalone) | **MERGE-INTO NEXT "Destination demand" (PB-06 is its kernel)** | One demand model. PB-06 is the pure kernel. The OD worker (later) runs it off-thread through sys_17. Extend `fids/cities.ts`. |
+| PB-07 Perceived cost + route planner | sys_03 airline `ladderTier` 0–5; PROGRESSION T1–T5 + Field Level gates; `wave3/fleetGrowth.ts`; roster FLEET_POOLS; REPORT §2.4 value-for-money | L4 | Pre (standalone) | **NEW, gated by sys_03** | `pickAirframe` must pick only from the airline's tier-allowed pool. It can't bypass the ladder or Field Level. |
+| PB-08 Load-factor watch | `features/ratings` (threatBelow / requestAbove); `diplomacy/departure.ts` exitAirline; HUB_PROGRESSION rivalries / Bellwater; NEXT "per-airline rating + growth" | L4 | Pre (standalone) | **MERGE-INTO per-airline service rating** | Load factor is one input to the airline rating. Exits must go through `diplomacy/departure.ts`, not a new exit path. |
+| PB-09 Eased rating | NEXT "explainable airport rating ↔ levels" + "happiness easing"; REPORT §2.3.1 and §2.7; `ratings/stars.ts` (unused); `levelgates` `rating` stat; `game/reputation.ts` display easing; sys_02 council happiness; `features/ratings` smoothing | L5 | Pre (standalone) | **NEW, as the one shared helper** | Five places smooth or score something already. PB-09 becomes the single target-plus-breakdown-plus-ease helper the others use later. |
+| PB-10 Reliability / breakdown timer | `maintenance/wear.ts` breakdownChance (uncalled); `logistics/maintenance.ts` breakdownChance (live); NEXT "Breakdowns and inspections"; REPORT §2.6 | L3 | Pre (standalone) | **MERGE-INTO maintenance/wear.ts** | Add the reliability decay, timeout draw and inspect functions to `wear.ts` (reusing `EQUIPMENT_WEAR_RATES`). Don't add a third model. |
+| PB-20 Type-based separation live | `capacity.ts` 14 s; `runwayArrivalGapSec` 32 s; RUNWAY_CAPACITY.md; 15-flight floor | L2 | Post + **Trever timing sign-off** | **CONFLICTS with "no timing changes without sign-off"** | It changes spawn spacing and flight counts. Needs a flag defaulting off, a Trever OK, and the 15/0 floor. |
+| PB-21 Go-around reasons + tower score live | `Game.goAround`, GROUND_CONTROL.md penalties | L2/L6 | Post | **NEW (reason text) / MERGE-INTO PB-24 (score)** | Alert wording is safe. The score feeds the rating only through PB-24, and must not double-charge reputation. |
+| PB-22 Heap/turn taxi live | sys_18 (heap live already); `GroundControl.arbitrate` | L1/L2 | Post + sign-off | **REDUNDANT (heap part) with sys_18; keep turn penalty + tie-break** | Turn-penalty routes are longer, so it's a taxi-time change. |
+| PB-23 Market → offers, growth, exit | NEXT "per-airline rating + airport growth"; sys_03 tiers; `features/ratings`; diplomacy departure; hub rivalries; `rival/demand.ts` | L4 | Post | **MERGE-INTO NEXT "per-airline service rating + growth"** | That's one feature. "Bigger planes as the airport grows" runs through tier ladder plus Field Level plus load factor. |
+| PB-24 Eased rating → stars, levels, happiness | NEXT "explainable rating ↔ levels" + "happiness easing"; sys_02 council happiness; `levelgates`; `ratings/stars.ts` | L5 | Post | **MERGE-INTO NEXT "explainable rating ↔ levels" (one task)** | One airport rating feeds stars, Field Level/level gates and the council. Happiness easing in `guests.ts` goes in the same pass. |
+| PB-25 Reliability → vehicles, mechanics | NEXT "Breakdowns and inspections (wire breakdownChance)"; `logistics/maintenance.ts`; patrol zones | L3 | Post | **MERGE-INTO NEXT "Breakdowns and inspections"** | Same item. It must reconcile with the live logistics breakdowns, not add a second roll on the same truck. |
+| PB-26 Arrival metering | fixed-tick clock (post); `delaySlot`/go-around; 0-divert floor | L2/L0 | Post, **after fixed-tick + PB-20, Trever sign-off** | **CONFLICTS with timing rule until signed off** | It's a pure timing change and is only predictable once the tick is fixed. |
+| OpenLoco command estimate/apply | NEXT "Commands → undo/replay (+hardcore)"; `features/undo` | L0/L6 | Post | **MERGE-INTO NEXT commands/undo** | Build on `features/undo` (if sys_11 is stopped from deleting it). |
+| OpenLoco bus orders | NEXT "Buses (city + apron)" | L4/L1 | Post / full launch | **MERGE-INTO NEXT Buses** | Same item. Order lists are the data shape. |
+
+### 11.2 Redundancy and overlap clusters — decisions
+
+#### A. Pathfinding: PB-04 vs sys_14 vs sys_18 (and PB-22)
+- **Survivor: sys_18.** It owns `src/game/path.ts`: heap A* on the shared `Heap` (moved out of `paxnav/field.ts`), one route cache keyed on tiles version + kind + gate + start + goal, invalidated on any layout change, partial paths, and crowd path variation.
+- **sys_14 (truck path LRU): folded into sys_18.** The sys INDEX already says this. If sys_14 publishes first, sys_18 extends its cache rather than adding a second.
+- **PB-04: heap half dropped.** Only `astarTurn` (turn penalty for jets) survives, as a small follow-up that reuses sys_18's heap. No `pathHeap.ts`, and it can't start until sys_18 lands.
+- **PB-22: shrinks to** the turn penalty for jets plus the remaining-distance tie-break in `GroundControl.arbitrate`. Post-playthrough, behind a flag, and it needs timing sign-off (longer taxi legs).
+
+#### B. Ratings and happiness: PB-09/PB-24 vs study "happiness eases" vs Council happiness vs stars/levels vs airline rating
+What exists now: `ratings/stars.ts` (weighted sub-scores → stars, unused), `levelgates/gates.ts` (has a `rating` stat), `game/reputation.ts` (0–100, display easing), `prestigestars/`, `council/` + **sys_02** (adds council happiness 0–100 from on-time, missed flights, noise, satisfaction, standing), and `features/ratings` (per-airline, smoothed).
+- **Survivor: PB-09** as the one pure helper: `targetFromComponents → {target, breakdown}` and `easeToward`.
+- **PB-24 + NEXT "explainable airport rating ↔ airport levels" + NEXT "happiness easing" = one post-playthrough task.** One `airportRating()` built from PB-09 components (on-time, happy share, lost passengers, uptime, litter, value for money, tower score from PB-02). It eases toward target and feeds `ratings/stars.ts`, `levelgates` `rating` and Field Level. Passenger happiness in `guests.ts` eases with the same helper.
+- **sys_02 Council happiness stays as is** (it's in flight). In the PB-24 pass, compute it from the same components so Council happiness and airport rating can't disagree. No new currency.
+- **Tower score (PB-02)** becomes a component, not its own meter.
+
+#### C. Breakdowns: PB-10/PB-25 vs wear.ts vs logistics/maintenance.ts vs NEXT "breakdowns after playthrough"
+- **Survivor: NEXT "Breakdowns and inspections"**, with PB-25 folded in.
+- **PB-10 is rescoped:** add `decayReliability`, `drawTimeoutToBreakdown(rel, rng)` and `inspect` **inside `maintenance/wear.ts`**, reusing `EQUIPMENT_WEAR_RATES` and the seeded RNG. Still pre-playthrough safe: new exports only, and the sim only imports `repairCost`.
+- **Post:** wire it to terminal equipment (belts, jetways, scanners: the gap the study names), and make `logistics/maintenance.ts` call the shared function instead of its own formula. One roll per vehicle, never two. Mechanics' patrol zones come after.
+
+#### D. Airline economy: PB-06/07/08/23 vs airline tiers 0–5, cargo ladder and Cargodist demand
+- **Order of truth:** sys_03 (airline `ladderTier` 0–5, roster merge) and sys_04 (cargo C-tiers) define **who may fly what**. PB-06/07/08 decide **how much and where** inside those limits.
+- **PB-06 = the kernel of NEXT "Destination demand (Cargodist-style)".** One demand model, not two. Extend `fids/cities.ts` with population, income and position. Later the Web Worker / sys_17 scheduler runs it.
+- **PB-07** `pickAirframe(…, allowedIds)`: `allowedIds` must come from the sys_03 tier pool plus Field Level plus stand/runway class. Upgauging never jumps a tier.
+- **PB-08 → an input to the per-airline service rating** (`features/ratings` shape: threat / request). Exits go through `diplomacy/departure.ts` `exitAirline`, and a walk to Bellwater goes through `rival/` + HUB_PROGRESSION rivalries. No new exit path.
+- **PB-23 = NEXT "Per-airline service rating + airport growth"**, one task, after sys_03 has merged.
+- **Cargo:** sys_04's ladder stays separate. PB-06 demand is used for freight lanes only in the later OD-worker pass.
+
+#### E. Runway separation: PB-01/PB-20 vs unused airside/runway.ts
+- **Survivor: PB-01** (`atc/separation.ts` + `separationData.ts` from openScope numbers). It must **absorb** `airside/runway.ts` `getWakeMultiplier` and `airside/data.ts` `WAKE_MULTIPLIERS`, so there's one table. Re-export from `airside/runway.ts` or delete it later. `holdshort.ts` goes to PB-05.
+- `GAP_SCALE` must make the starter mix exactly today's 14 s (`capacity.ts`), so nothing changes until PB-20.
+- **PB-20** is post-playthrough, flag off, **and needs Trever's timing sign-off**. It changes `runwayArrivalGapSec` (32 s) seeding and the per-day booked turns in RUNWAY_CAPACITY.md.
+
+#### F. Timing: PB-03/PB-26 vs fixed-tick and timing rules
+- **PB-26 (metering) waits for the fixed-tick clock**, then PB-20, then a separate Trever OK. With variable dt it can't be repeated or tested exactly.
+- **PB-03 moves to "later".** CPA adds little while `GroundControl` makes ground conflicts impossible and approaches are single-file. Glideslope math goes into `flightpath.ts` when someone touches approach visuals.
+- **sys_16 (seeded RNG) comes before** every PB task that draws random numbers (PB-07 proposals, PB-10 timeouts). Those briefs should use the sys_16 streams once merged (`features/shared/rng.ts` until then).
+
+### 11.3 Conflicts with Trever's rules
+
+1. **No sim timing changes without sign-off.** PB-20 (spawn spacing), PB-22 (longer taxi), PB-26 (inbound speed) and the fixed-tick clock change timing. The first three need **their own** OK on top of "after the playthrough". The fixed-tick clock already has his OK, gated on the playthrough. PB-25 breakdowns change throughput, not timing, but still need a soak.
+2. **15+ flights, 0 diverts.** At risk from PB-20 (fewer booked turns with heavies), PB-25 (broken tugs or bowsers stall turns, which leads to holds and diverts), and PB-26 (metering hands off to go-around and divert). Each needs `runwayCapacity.test.ts` with the flag on, plus a seeded mixed-fleet soak.
+3. **Progression gates.** Regional to international unlocks (passport control, body scanners) are **on hold** until the core loop is solid. PB-06's `×1.05 intl / ×1.1 intercontinental` fare multipliers and PB-07's long-range fallback must not offer international routes or bypass sys_03/Field Level. Keep `flightType` domestic-only until that gate opens.
+4. **Guard post rules.** Only outside vehicles pass the guard post; internal airside traffic never does. sys_18's cache key and PB-04 `astarTurn` must keep the `pass`/`gate` arguments that keep airside trucks off `guard` tiles. sys_09's tests must stay green. PB-05 can add a "service route crosses guard" audit.
+5. **Double penalty.** Go-arounds already cost −0.6 standing and −0.25 reputation (GROUND_CONTROL.md). PB-21's tower score must feed the rating breakdown without charging reputation again.
+6. **Dead-code cleanup vs approved items.** sys_11 deletes `features/undo` (needed for commands/undo + hardcore) and `features/ratings` (per-airline rating). Recommendation: tell sys_11 to **keep both** and list them as "waiting to be wired", like the late-game models it already spares.
+
+### 11.4 Consolidated order
+
+**Now (pre-playthrough; additive, nothing imported by `sim.ts`)**
+1. sys_16 Seeded RNG, sys_17 time-slicing, sys_18 pathfinder (absorbs sys_14 and PB-04's heap). Already approved and queued.
+2. Standalone pure modules in parallel: PB-01 (absorbs the `airside/runway.ts` wake table), PB-02 (reasons, plus score as a component), PB-05 (reuses `holdshort.ts`), PB-09 (shared rating helper), PB-10 (inside `wear.ts`), PB-06 (extends `fids/cities.ts`), PB-07 (tier-gated), PB-08 (rating input).
+3. After sys_18 merges: `astarTurn` (the rest of PB-04).
+
+**After the playthrough (flags default off, in this order)**
+1. Fixed-tick clock (approved, gated).
+2. PB-21 go-around reason text in alerts (no timing change).
+3. Breakdowns and inspections (NEXT + PB-25; one shared model with logistics).
+4. One airport rating ↔ stars, levels and Council, plus happiness easing (NEXT + PB-24 + tower score).
+5. Per-airline service rating + growth (NEXT + PB-23 + PB-08), after sys_03.
+6. Destination demand worker (NEXT + PB-06 kernel on sys_17).
+7. Commands/undo + hardcore (on `features/undo`), staff patrol zones, buses.
+8. Each needs Trever's timing OK: PB-22 turn-penalty taxi, then PB-20 type-based separation, then PB-26 metering.
+
+**Later:** PB-03 CPA/procedures, regional to international progression (on hold).
