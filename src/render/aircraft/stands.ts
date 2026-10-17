@@ -1,5 +1,6 @@
 import type { RealDoor } from './realworld'
 import { airframeStations, engineLayout, propRadius } from './layout'
+import { loftStation } from './geom'
 import {
   AIRCRAFT_VISUAL_SCALE,
   BRIDGE_CAB_M,
@@ -146,7 +147,80 @@ export function doorBoxes(spec: ModelSpec): DoorBox[] {
  * fairing or a rear nacelle: then the drawn door slides a little clear, or is trimmed lower.
  */
 export function renderDoorBoxes(spec: ModelSpec): DoorBox[] {
-  return clearDoors(spec, rawDoorBoxes(spec))
+  const raw = rawDoorBoxes(spec)
+  if (spec.family === 'helo') return heloCabinDoors(spec, raw)
+  return clearDoors(spec, realStations(spec, raw))
+}
+
+/**
+ * Drawn-door stations where the nominal fraction puts a turboprop's forward door inside its
+ * propeller arc. Real ATR 42/72 forward cargo doors and the Dash 8-400 forward airstair sit just
+ * aft of the flight deck, well ahead of the prop plane; the Twin Otter's forward doors are the
+ * crew doors beside the cockpit. Render-only: `doorBoxes` (sim service sockets) keeps the nominal
+ * stations, so turnaround timing is untouched.
+ */
+const RENDER_DOOR_T: Record<string, { t: number; to: number }[]> = {
+  atr72: [{ t: 0.28, to: 0.15 }],
+  atr42: [{ t: 0.28, to: 0.175 }],
+  q400: [{ t: 0.28, to: 0.11 }],
+  dhc6: [{ t: 0.22, to: 0.15 }],
+}
+
+function realStations(spec: ModelSpec, boxes: DoorBox[]): DoorBox[] {
+  const moves = RENDER_DOOR_T[spec.id]
+  if (!moves) return boxes
+  const nose = spec.lengthM / 2
+  return boxes.map((b) => {
+    const m = moves.find((mv) => Math.abs(mv.t - b.door.t) < 1e-6)
+    return m && b.door.side !== 0 ? { ...b, x: nose - m.to * spec.lengthM } : b
+  })
+}
+
+/** Helicopter cabin: the stretch of the loft at (nearly) full section, before the boom taper. */
+export function heloCabin(spec: ModelSpec): { x0: number; x1: number } {
+  const nose = spec.lengthM / 2
+  let t0 = 0
+  let t1 = 1
+  for (let t = 0; t <= 1; t += 0.0025) {
+    if (loftStation('helo', t).r >= 0.9) {
+      t0 = t
+      break
+    }
+  }
+  for (let t = t0; t <= 1; t += 0.0025) {
+    if (loftStation('helo', t).r < 0.9) {
+      t1 = t - 0.0025
+      break
+    }
+  }
+  return { x0: nose - t1 * spec.lengthM, x1: nose - t0 * spec.lengthM }
+}
+
+/**
+ * Helicopter doors seat on the cabin, never on the thin tail boom: the big sliding cabin door
+ * on each side mid-cabin, and the baggage hatch low on the aft cabin behind it (AW139, S-76).
+ * The nominal fractions are whole-length stations (rotor tips included) and land on the boom.
+ */
+function heloCabinDoors(spec: ModelSpec, boxes: DoorBox[]): DoorBox[] {
+  const cab = heloCabin(spec)
+  const len = cab.x1 - cab.x0
+  const centerY = spec.gear + spec.ry
+  const paxW = Math.min(1.5, spec.rx * 0.9, len * 0.36)
+  const paxX = cab.x0 + len * 0.52
+  return boxes.map((b) => {
+    if (b.door.side === 0) return b
+    if (b.door.kind === 'cargo') {
+      const w = Math.min(0.8, len * 0.17)
+      const h = Math.min(0.75, spec.ry * 0.5)
+      const x = Math.max(cab.x0 + w / 2 + 0.12, Math.min(paxX - paxW / 2 - w / 2 - 0.2, cab.x0 + len * 0.2))
+      const y = centerY - spec.ry * 0.22
+      return { ...b, x, y, w, h, sillM: y - h / 2, swing: -1 }
+    }
+    const h = Math.min(1.45, spec.ry * 0.95)
+    const y = centerY - spec.ry * 0.12
+    // Sliding cabin door: drawn as a leaf that opens aft along the skin.
+    return { ...b, x: paxX, y, w: paxW, h, sillM: y - h / 2, swing: -1 }
+  })
 }
 
 /** Axis-aligned volume in airframe metres (+X nose, +Y up, +Z port). */
@@ -196,16 +270,48 @@ export function airframeKeepouts(spec: ModelSpec): Vol[] {
     for (const s of [1, -1]) out.push(vol('fairing', cx - spec.rootChord * 0.95, cx + spec.rootChord * 0.95, cy - spec.ry * 0.42, cy + spec.ry * 0.42 + 0.2, 0, s * (rx * 0.93 + 0.15)))
   }
   const eng = spec.engines
-  const prop = eng.kind === 'turboprop'
-  const R = prop ? propRadius(spec) : 0
   for (const p of engineLayout(spec)) {
     const r = eng.radius * 1.15
     out.push(vol('nacelle', p.x - eng.length * 0.6, p.x + eng.length * 0.6, p.y - r, p.y + r, p.z - r, p.z + r))
-    if (prop && eng.mount !== 'nose') {
-      const hub = p.x + eng.length * 0.55
-      out.push(vol('prop', hub - 0.3, hub + 0.3, p.y - R - 0.15, p.y + R + 0.15, p.z - R - 0.15, p.z + R + 0.15))
-    }
   }
+  out.push(...propArcVolumes(spec))
+  return out
+}
+
+/** Fore/aft keep-clear around the prop plane, as a fraction of the prop radius, plus blade depth. */
+export const PROP_ARC_MARGIN = 0.75
+
+/**
+ * Swept volume of each wing-mounted propeller: the disc itself ('prop') and its arc carried
+ * inboard across the fuselage side ('prop-arc'), widened fore and aft by `margin`·R + 0.3 m.
+ * A door that opens inside the arc reads as opening into the spinning blades from any angle;
+ * real turboprops keep their doors well ahead of or behind the prop plane.
+ */
+export function propArcVolumes(spec: ModelSpec, margin = PROP_ARC_MARGIN): Vol[] {
+  const eng = spec.engines
+  if (eng.kind !== 'turboprop' || eng.mount === 'nose') return []
+  const R = propRadius(spec)
+  const out: Vol[] = []
+  for (const p of engineLayout(spec)) {
+    const hub = p.x + eng.length * 0.55
+    const s = Math.sign(p.z) || 1
+    out.push(vol('prop', hub - 0.3, hub + 0.3, p.y - R - 0.15, p.y + R + 0.15, p.z - R - 0.15, p.z + R + 0.15))
+    const m = 0.3 + margin * R
+    out.push(vol('prop-arc', hub - m, hub + m, p.y - R - 0.15, p.y + R + 0.15, 0, p.z + s * (R + 0.15)))
+  }
+  return out
+}
+
+/** Airframe x ranges (metres) a fuselage title must stay clear of: nacelles and prop arcs. */
+export function titleKeepoutsX(spec: ModelSpec, margin = 0.5): [number, number][] {
+  const eng = spec.engines
+  if (eng.count === 0 || eng.mount !== 'wing') return []
+  const out: [number, number][] = []
+  for (const p of engineLayout(spec)) {
+    if (p.z < 0) continue
+    out.push([p.x - eng.length * 0.6, p.x + eng.length * 0.6])
+  }
+  for (const v of propArcVolumes(spec, margin)) if (v.what === 'prop-arc' && v.z1 > 0) out.push([v.x0, v.x1])
   return out
 }
 
@@ -238,7 +344,6 @@ function doorClear(spec: ModelSpec, b: DoorBox, keep: Vol[], placed: DoorBox[]):
  * service sockets read `doorBoxes`, which stays on the published stations.
  */
 function clearDoors(spec: ModelSpec, boxes: DoorBox[]): DoorBox[] {
-  if (spec.family === 'helo') return boxes
   const keep = airframeKeepouts(spec)
   const nose = spec.lengthM / 2
   const xMax = nose - spec.lengthM * 0.07

@@ -16,6 +16,7 @@ import { LIVERY_ART } from './liveryUv'
 import { DEFAULT_TEXTURE_QUALITY, type TextureQuality } from './liveryFiles'
 import type { AirlineLiveryTex } from './liveryTex'
 import { MODEL_SPECS, DERIVED_SPECS, type Livery } from './specs'
+import { titleKeepoutsX } from './stands'
 
 export const LIVERY_KEY_SEP = '@'
 
@@ -185,28 +186,46 @@ function drawWordmark(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   // Longer airframes carry a smaller share of the strip per letter.
   const high = !p.helicopter && (MODEL_SPECS[p.modelId] ?? DERIVED_SPECS[p.modelId])?.wingHigh === true
   // High-wing types carry their titles above the window line, clear of the wing and windows.
-  const size = Math.round(h * (p.helicopter ? 0.16 : high ? 0.17 : lengthM > 60 ? 0.2 : 0.24))
+  let size = Math.round(h * (p.helicopter ? 0.16 : high ? 0.17 : lengthM > 60 ? 0.2 : 0.24))
   ctx.font = `bold ${size}px sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
   ctx.fillStyle = luma(p.fuselage) < 0.55 ? WHITE : p.scheme === 'solid' ? WHITE : p.tail
   const [u0, u1] = titleSpan(p.modelId, p.helicopter)
-  ctx.fillText(p.wordmark, w * u0, h * (high ? 0.19 : 0.33), w * (u1 - u0))
+  const span = w * (u1 - u0)
+  // A short clear band shrinks the lettering evenly instead of squashing it sideways.
+  const natural = ctx.measureText?.(p.wordmark)?.width ?? 0
+  if (natural > span && natural > 0) {
+    size = Math.max(Math.round(h * 0.1), Math.floor(size * (span / natural)))
+    ctx.font = `bold ${size}px sans-serif`
+  }
+  ctx.fillText(p.wordmark, w * u0, h * (high ? 0.19 : 0.33), span)
 }
 
 /**
  * Plate U span for the fuselage titles. Port reads the plate nose→tail and starboard tail→nose
  * (outwardUv), so on high-wing types the span must miss the wing chord on BOTH sides: it goes
  * in the clear band beyond the wing and its mirror, forward of the wing on one side and aft of
- * it on the other, never under it.
+ * it on the other, never under it. Turboprops also keep the lettering clear of the nacelles and
+ * the propeller arc (stands.titleKeepoutsX), so a blade or cowling never cuts across the name.
  */
 export function titleSpan(modelId: string, helicopter = false): [number, number] {
   if (helicopter) return [0.2, 0.7]
   const spec = MODEL_SPECS[modelId] ?? DERIVED_SPECS[modelId]
   if (!spec || !spec.wingHigh) return [0.2, 0.62]
   const half = spec.rootChord / 2 / spec.lengthM
-  const le = Math.max(0, spec.wingAt - half - 0.07)
-  const te = Math.min(1, spec.wingAt + half + 0.07)
+  let le = Math.max(0, spec.wingAt - half - 0.07)
+  let te = Math.min(1, spec.wingAt + half + 0.07)
+  // Grow the blocked band over any nacelle or prop arc that touches it (fractions from the nose).
+  const nose = spec.lengthM / 2
+  for (const [x0, x1] of titleKeepoutsX(spec)) {
+    const a = (nose - x1) / spec.lengthM
+    const b = (nose - x0) / spec.lengthM
+    if (b >= le - 0.02 && a <= te + 0.02) {
+      le = Math.max(0, Math.min(le, a - 0.01))
+      te = Math.min(1, Math.max(te, b + 0.01))
+    }
+  }
   // Exclude [le, te] and its mirror [1 - te, 1 - le].
   const lo = Math.min(le, 1 - te)
   const hi = Math.max(te, 1 - le)

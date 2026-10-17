@@ -739,7 +739,8 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     windows: false,
     rotor: 6.9,
     blades: 5,
-    fenestron: true,
+    // Real AW139: four-blade conventional tail rotor on the port side of the fin.
+    fenestron: false,
   }),
   s76: spec({
     id: 's76',

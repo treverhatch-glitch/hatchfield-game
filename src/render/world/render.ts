@@ -47,6 +47,7 @@ import { FEEDBACK } from '../../feedback/config.ts'
 import { actorsFrom, bubbleFor } from './guestActors'
 import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
+import { softShadowRadius } from './softShadows'
 import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
 import { baseLevel, QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
@@ -627,6 +628,8 @@ export class WorldRenderer {
       sc.bottom = -fit.half
       sc.updateProjectionMatrix()
     }
+    // Constant-width soft penumbra on the ground at every zoom (softShadows.ts).
+    this.sun.shadow.radius = softShadowRadius(camDist, fit.half, Math.max(1, this.q.shadowMapSize), this.q.shadowRadius)
     this.sun.position.set(fit.x + s.sunDir.x * 160, s.sunDir.y * 160, fit.z + s.sunDir.z * 160)
     this.sun.target.position.set(fit.x, 0, fit.z)
     this.sun.target.updateMatrixWorld()

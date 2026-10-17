@@ -1,8 +1,8 @@
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
-import { renderDoorBoxes, type DoorBox } from './stands'
-import { cylinderSides, fanBladeGeometry, propBladeGeometry, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { heloCabin, renderDoorBoxes, type DoorBox } from './stands'
+import { cylinderSides, fanBladeGeometry, propBladeGeometry, rotorBladeGeometry, spinBlurTexture, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
 import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
 import { engineLayout, propRadius } from './layout'
@@ -456,8 +456,9 @@ function addPropBlades(
     const painted = paintMesh(mesh, name === 'fan' ? 'fan' : 'dark', frame.livery, 'mesh', frame.tier)
     hub.add(painted)
     frame.meshes.push(painted)
+    hub.userData.blades = [painted]
     if (name === 'prop') {
-      // Spinner cone on the hub, and a faint motion-blur disc the LOD shows while the prop turns.
+      // Spinner cone on the hub, and a soft motion-blur disc the LOD fades in with prop speed.
       const cone = new THREE.Mesh(spinnerConeGeometry())
       cone.scale.set(radius * 0.32, radius * 0.17, radius * 0.17)
       cone.position.x = -radius * 0.08
@@ -465,19 +466,40 @@ function addPropBlades(
       const paintedCone = paintMesh(cone, 'lip', frame.livery, 'mesh', frame.tier)
       hub.add(paintedCone)
       frame.meshes.push(paintedCone)
-      const blur = new THREE.Mesh(
-        unitDisc('prop-blur'),
-        new THREE.MeshBasicMaterial({ color: '#2a2d31', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
-      )
-      blur.scale.setScalar(radius)
-      blur.name = 'prop-blur'
-      blur.visible = false
-      blur.userData.ownMat = true
-      hub.add(blur)
+      // The disc does not turn with the hub: a stationary blur reads steady and so does its shadow.
+      const blur = spinBlurDisc('prop', radius * 1.02)
+      blur.position.copy(hub.position)
+      blur.position.x += 0.02
+      frame.group.add(blur)
+      hub.userData.blur = blur
     }
     frame.group.add(hub)
     frame.spinners.push(hub)
   }
+}
+
+/**
+ * Motion-blur disc for a spinning prop or rotor: radial soft alpha (clear hub, faint body,
+ * denser tip track, feathered rim). Hidden and fully transparent at rest; lod.ts fades it in
+ * with spool. Its custom depth material uses hashed alpha, so a spinning disc throws a soft,
+ * partial disc shadow (PCF blurs the hash) instead of the frozen blades.
+ */
+export function spinBlurDisc(kind: 'prop' | 'rotor', radius: number): THREE.Mesh {
+  const alphaMap = spinBlurTexture(kind)
+  const blur = new THREE.Mesh(
+    unitDisc(kind === 'prop' ? 'prop-blur' : 'rotor-blur'),
+    new THREE.MeshBasicMaterial({ color: kind === 'prop' ? '#24272b' : '#2a2c30', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, alphaMap }),
+  )
+  blur.customDepthMaterial = new THREE.MeshDepthMaterial({ alphaMap, alphaHash: true, opacity: 0, side: THREE.DoubleSide })
+  blur.scale.setScalar(radius)
+  blur.name = kind === 'prop' ? 'prop-blur' : 'rotor-blur'
+  blur.visible = false
+  blur.castShadow = false
+  blur.receiveShadow = false
+  blur.userData.ownMat = true
+  blur.userData.blurMax = kind === 'prop' ? 0.42 : 0.3
+  blur.raycast = () => {}
+  return blur
 }
 
 function addFans(frame: Frame) {
@@ -654,13 +676,37 @@ function addGear(frame: Frame) {
 
   if (spec.skids) {
     if (tier === 'high') return
-    for (const sign of [1, -1]) {
-      const skid = new THREE.Mesh(unitBox())
-      skid.scale.set(spec.lengthM * 0.46, 0.08, 0.1)
-      skid.position.set(0, localGround + 0.04, sign * spec.rx * 0.75)
-      const painted = paintMesh(skid, 'metal', frame.livery, 'mesh', tier)
+    // Skids sit under the cabin (not the boom) on two cross tubes that reach the belly.
+    const cab = heloCabin(spec)
+    const cabLen = cab.x1 - cab.x0
+    const skidX = (cab.x0 + cab.x1) / 2
+    const skidZ = spec.rx * 0.78
+    const skidY = localGround + 0.04
+    const push = (mesh: THREE.Mesh) => {
+      const painted = paintMesh(mesh, 'metal', frame.livery, 'mesh', tier)
       gear.add(painted)
       frame.meshes.push(painted)
+    }
+    for (const sign of [1, -1]) {
+      const skid = new THREE.Mesh(unitBox())
+      skid.scale.set(cabLen * 1.18, 0.08, 0.1)
+      skid.position.set(skidX, skidY, sign * skidZ)
+      push(skid)
+    }
+    for (const f of [0.22, 0.74]) {
+      const x = cab.x0 + cabLen * f
+      const st = skinAt(frame, x)
+      const bellyY = st.mid - spec.ry * st.r * 0.82 - spec.gear
+      const bellyZ = spec.rx * st.r * 0.55
+      for (const sign of [1, -1]) {
+        const dz = skidZ - bellyZ
+        const dy = bellyY - skidY
+        const strut = new THREE.Mesh(unitBox())
+        strut.scale.set(0.09, Math.hypot(dy, dz), 0.09)
+        strut.position.set(x, (bellyY + skidY) / 2, sign * (skidZ + bellyZ) / 2)
+        strut.rotation.x = sign * Math.atan2(dz, dy)
+        push(strut)
+      }
     }
     return
   }
@@ -964,7 +1010,12 @@ function addLogo(frame: Frame) {
     frame.meshes.push(mesh as PaintedMesh)
   }
   if (frame.spec.family === 'helo') {
-    place(frame.tailX + frame.spec.lengthM * 0.08, frame.centerY + frame.spec.ry * 0.15, frame.spec.rx + 0.04, 0.7)
+    // On the fin, flush with its skin (the boom is far too thin to carry a mark).
+    const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number } | undefined
+    if (!fin) return
+    const half = Math.max(0.1, frame.spec.rx * 0.1) * 0.5
+    const size = Math.min(0.62, fin.h * 0.42, fin.chord * 0.5)
+    place(fin.x - fin.chord * 0.12, fin.y + fin.h * 0.42, -(half + 0.02), size)
     return
   }
   const { finX, thick, rootY, finH } = finPose(frame)
@@ -1169,8 +1220,17 @@ function addCockpitWindows(frame: Frame) {
   addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
 }
 
+/** Main-rotor mast station: over the aft cabin, where the gearbox sits on a real AW139 / S-76. */
+export function heloMastX(spec: ModelSpec): number {
+  const cab = heloCabin(spec)
+  // Over the aft cabin, but no further forward than lets the blade tips overhang the nose by
+  // 5% of the length (keeps the overall rotors-turning length true to the published figure).
+  const limit = spec.lengthM / 2 - spec.spanM / 2 + spec.lengthM * 0.05
+  return Math.max(cab.x0 + 0.2, Math.min(cab.x0 + (cab.x1 - cab.x0) * 0.22, limit))
+}
+
 function addHelo(frame: Frame) {
-  const { spec, tier, centerY, nose, tailX } = frame
+  const { spec, tier, centerY, tailX } = frame
   if (tier !== 'high') {
     const sides = fuselageSides(tier === 'low' ? 'low' : 'mid')
     const body = new THREE.Mesh(paintedLoftGeometry('helo', sides, fuselagePaint(frame.livery)))
@@ -1179,118 +1239,163 @@ function addHelo(frame: Frame) {
     body.name = 'fuselage'
     markLivery(addMesh(frame, body, 'body', 'mesh', tier === 'mid'), 'fuselage', fuselageBox(frame))
   }
-  if (tier === 'mid') {
-    addBox(
-      frame,
-      [spec.lengthM * 0.22, spec.ry * 0.55, spec.rx * 1.7],
-      [nose - spec.lengthM * 0.42, centerY + spec.ry * 0.15, 0],
-      'glass',
-      'mesh',
-    ).name = 'cockpit'
-  }
-  const mastH = Math.max(0.4, spec.heightM - (centerY + spec.ry))
-  if (tier !== 'high') {
-    addCylinder(
-      frame,
-      0.12,
-      mastH,
-      [0, centerY + spec.ry + mastH / 2, 0],
-      'metal',
-      'mesh',
-      'y',
-    )
-  }
+  const mastX = heloMastX(spec)
+  const roofY = skinAt(frame, mastX).top
   const rotorY = spec.heightM - 0.05
+  if (tier === 'mid') {
+    const cab = heloCabin(spec)
+    // Flush cabin and cockpit side windows on the full-section cabin (the old glass block stood
+    // proud of the boom taper).
+    const panes: THREE.Matrix4[] = []
+    const winY = centerY + spec.ry * 0.28
+    const len = cab.x1 - cab.x0
+    const wins = [
+      { x: cab.x1 - len * 0.13, w: len * 0.16, h: spec.ry * 0.5 },
+      { x: cab.x1 - len * 0.33, w: len * 0.13, h: spec.ry * 0.42 },
+    ]
+    // Skin half-width at a station, at the window's height, so panes follow the loft taper.
+    const skinZAt = (x: number) => {
+      const st = skinAt(frame, x)
+      const k = Math.min(0.95, Math.abs(winY - st.mid) / (spec.ry * st.r))
+      return spec.rx * st.r * Math.sqrt(1 - k * k) - 0.014
+    }
+    for (const side of [1, -1]) {
+      for (const w of wins) {
+        const za = skinZAt(w.x - w.w / 2)
+        const zb = skinZAt(w.x + w.w / 2)
+        const yaw = -side * Math.atan2(zb - za, w.w)
+        panes.push(compose(w.x, winY, side * (za + zb) / 2, 0, yaw, 0, w.w, w.h, 0.04))
+      }
+    }
+    addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
+    // Engine and gearbox cowling on the cabin roof, under the mast.
+    const cowl = new THREE.Mesh(smoothSphere())
+    cowl.scale.set(len * 0.36, spec.ry * 0.36, spec.rx * 0.62)
+    cowl.position.set(mastX - len * 0.04, roofY - spec.ry * 0.08, 0)
+    cowl.name = 'cowling'
+    addMesh(frame, cowl, 'body', 'mesh', true)
+    // Tail: swept fin at the boom end, small tailplane ahead of it.
+    const finChord = Math.max(1, spec.lengthM * 0.085)
+    const finH = Math.max(1.1, spec.ry * 1.15)
+    const finX = tailX + finChord * 0.5
+    const boomTop = skinAt(frame, finX).top
+    const fin = new THREE.Mesh(finGeometry(frame.livery.tail || frame.livery.stripe, frame.livery.stripe))
+    fin.scale.set(finChord, finH, Math.max(0.1, spec.rx * 0.1))
+    fin.position.set(finX, boomTop - 0.05, 0)
+    fin.name = 'tail'
+    addMesh(frame, fin, 'tail', 'mesh', true)
+    const stabX = tailX + spec.lengthM * 0.14
+    const stab = new THREE.Mesh(stabGeometry())
+    stab.scale.set(Math.max(0.5, spec.lengthM * 0.045), 0.08, spec.tailSpan)
+    stab.position.set(stabX, skinAt(frame, stabX).mid, 0)
+    stab.name = 'stab'
+    addMesh(frame, stab, 'tail', 'mesh', true)
+    frame.group.userData.heloFin = { x: finX, y: boomTop - 0.05, h: finH, chord: finChord }
+  }
+  if (tier !== 'high') {
+    // Mast from the cowling up to the hub.
+    addCylinder(frame, 0.16, rotorY - roofY + 0.1, [mastX, (roofY + rotorY) / 2, 0], 'metal', 'mesh', 'y')
+  }
   if (tier === 'low') {
     const disc = new THREE.Mesh(unitDisc('rotor'))
     disc.scale.setScalar(spec.rotor)
-    disc.position.set(0, rotorY, 0)
+    disc.position.set(mastX, rotorY, 0)
     disc.name = 'rotor'
     addMesh(frame, disc, 'dark', 'mesh')
     frame.spinners.push(disc)
-  } else if (tier === 'mid') {
-    const hub = new THREE.Group()
-    hub.name = 'rotor'
-    hub.position.set(0, rotorY, 0)
-    const blades = Math.max(2, Math.min(4, spec.blades || 4))
-    const matrices: THREE.Matrix4[] = []
-    for (let i = 0; i < blades; i++) {
-      const angle = (i / blades) * Math.PI * 2
-      matrices.push(
-        compose(
-          Math.cos(angle) * spec.rotor * 0.5,
-          0.02,
-          Math.sin(angle) * spec.rotor * 0.5,
-          0,
-          -angle,
-          0,
-          spec.rotor,
-          0.06,
-          0.18,
-        ),
-      )
-    }
-    const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), blades)
-    matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
-    mesh.instanceMatrix.needsUpdate = true
-    const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', tier)
-    hub.add(painted)
-    frame.meshes.push(painted)
-    frame.group.add(hub)
-    frame.spinners.push(hub)
-    if (spec.fenestron) {
-      addCylinder(frame, 0.55, 0.18, [tailX + 0.4, centerY, 0], 'metal', 'mesh', 'z')
-    } else {
-      const tail = new THREE.Group()
-      tail.name = 'tail-rotor'
-      tail.position.set(tailX + 0.15, centerY + spec.ry * 0.2, spec.rx + 0.15)
-      const mini: THREE.Matrix4[] = []
-      for (let i = 0; i < 2; i++) {
-        mini.push(compose(0, 0, 0, 0, 0, i * Math.PI * 0.5, 1.3, 0.08, 0.12))
-      }
-      const bladesMesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), 2)
-      mini.forEach((matrix, i) => bladesMesh.setMatrixAt(i, matrix))
-      bladesMesh.instanceMatrix.needsUpdate = true
-      const paintedTail = paintMesh(bladesMesh, 'dark', frame.livery, 'mesh', tier)
-      tail.add(paintedTail)
-      frame.meshes.push(paintedTail)
-      frame.group.add(tail)
-      frame.spinners.push(tail)
-    }
-  } else {
-    // Close-up: extra blades fade in on the same axis.
-    const hub = new THREE.Group()
-    hub.name = 'rotor'
-    hub.position.set(0, rotorY, 0)
-    const extra = Math.max(0, (spec.blades || 4) - 4)
-    if (extra > 0) {
-      const matrices: THREE.Matrix4[] = []
-      for (let i = 0; i < extra; i++) {
-        const angle = Math.PI / (extra + 1) + (i * Math.PI) / extra
-        matrices.push(
-          compose(
-            Math.cos(angle) * spec.rotor * 0.5,
-            0.05,
-            Math.sin(angle) * spec.rotor * 0.5,
-            0,
-            -angle,
-            0,
-            spec.rotor,
-            0.05,
-            0.16,
-          ),
-        )
-      }
-      const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), extra)
-      matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
-      mesh.instanceMatrix.needsUpdate = true
-      const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', tier)
-      hub.add(painted)
-      frame.meshes.push(painted)
-      frame.group.add(hub)
-      frame.spinners.push(hub)
-    }
+    return
   }
+  if (tier !== 'mid') return
+  // Main rotor: every blade, tapered with swept tips and washout, on a hub with grips.
+  const hub = new THREE.Group()
+  hub.name = 'rotor'
+  hub.position.set(mastX, rotorY, 0)
+  const blades = Math.max(2, spec.blades || 4)
+  const chord = spec.rotor * (blades >= 5 ? 0.082 : 0.074)
+  const rootR = 0.55
+  const bladeGeo = rotorBladeGeometry(spec.rotor, chord, rootR)
+  const mats: THREE.Matrix4[] = []
+  const grips: THREE.Matrix4[] = []
+  for (let i = 0; i < blades; i++) {
+    const angle = (i / blades) * Math.PI * 2
+    mats.push(compose(0, 0.02, 0, 0, angle, 0, 1, 1, 1))
+    grips.push(compose(Math.cos(angle) * 0.36, 0.02, -Math.sin(angle) * 0.36, 0, angle, 0, 0.42, 0.13, 0.2))
+  }
+  const bladeMesh = new THREE.InstancedMesh(bladeGeo, new THREE.MeshBasicMaterial(), blades)
+  mats.forEach((m, i) => bladeMesh.setMatrixAt(i, m))
+  bladeMesh.instanceMatrix.needsUpdate = true
+  bladeMesh.name = 'rotor-blades'
+  const paintedBlades = paintMesh(bladeMesh, 'dark', frame.livery, 'mesh', tier)
+  hub.add(paintedBlades)
+  frame.meshes.push(paintedBlades)
+  const gripMesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), blades)
+  grips.forEach((m, i) => gripMesh.setMatrixAt(i, m))
+  gripMesh.instanceMatrix.needsUpdate = true
+  const paintedGrips = paintMesh(gripMesh, 'metal', frame.livery, 'mesh', tier)
+  hub.add(paintedGrips)
+  frame.meshes.push(paintedGrips)
+  const hubCore = new THREE.Mesh(unitCylinder(cylinderSides(tier)))
+  hubCore.scale.set(0.34, 0.26, 0.34)
+  hubCore.position.y = 0.02
+  const paintedHub = paintMesh(hubCore, 'metal', frame.livery, 'mesh', tier)
+  hub.add(paintedHub)
+  frame.meshes.push(paintedHub)
+  const cap = new THREE.Mesh(smoothSphere())
+  cap.scale.set(0.24, 0.14, 0.24)
+  cap.position.y = 0.17
+  const paintedCap = paintMesh(cap, 'dark', frame.livery, 'mesh', tier)
+  hub.add(paintedCap)
+  frame.meshes.push(paintedCap)
+  hub.userData.blades = [paintedBlades]
+  frame.group.add(hub)
+  frame.spinners.push(hub)
+  const blur = spinBlurDisc('rotor', spec.rotor)
+  blur.position.set(mastX, rotorY + 0.03, 0)
+  frame.group.add(blur)
+  hub.userData.blur = blur
+  // Swashplate under the hub (static).
+  addCylinder(frame, 0.3, 0.06, [mastX, rotorY - 0.32, 0], 'metal', 'mesh', 'y')
+
+  const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number }
+  if (spec.fenestron) {
+    // Shrouded fan in the fin.
+    addCylinder(frame, Math.min(0.55, fin.h * 0.3), 0.22, [fin.x - fin.chord * 0.05, fin.y + fin.h * 0.32, 0], 'metal', 'mesh', 'z')
+    return
+  }
+  // Conventional tail rotor on the port side of the fin.
+  const tailR = Math.max(0.9, spec.rotor * 0.19)
+  const tail = new THREE.Group()
+  tail.name = 'tail-rotor'
+  tail.position.set(fin.x - fin.chord * 0.12, fin.y + fin.h * 0.62, Math.max(0.1, spec.rx * 0.1) * 0.5 + 0.28)
+  const tailBlades = 4
+  const tm: THREE.Matrix4[] = []
+  const edgeOn = new THREE.Matrix4().makeRotationX(Math.PI / 2)
+  for (let i = 0; i < tailBlades; i++) {
+    // Blade geometry spans +X with its chord on Z: stand the chord up (about X), then fan the
+    // blades round the lateral (Z) axis the rotor spins on.
+    tm.push(new THREE.Matrix4().makeRotationZ((i / tailBlades) * Math.PI * 2).multiply(edgeOn))
+  }
+  const tailMesh = new THREE.InstancedMesh(rotorBladeGeometry(tailR, tailR * 0.17, 0.12, 0), new THREE.MeshBasicMaterial(), tailBlades)
+  tm.forEach((m, i) => tailMesh.setMatrixAt(i, m))
+  tailMesh.instanceMatrix.needsUpdate = true
+  const paintedTail = paintMesh(tailMesh, 'dark', frame.livery, 'mesh', tier)
+  tail.add(paintedTail)
+  frame.meshes.push(paintedTail)
+  const tailHub = new THREE.Mesh(unitCylinder(cylinderSides(tier)))
+  tailHub.scale.set(0.14, 0.2, 0.14)
+  tailHub.rotation.x = Math.PI / 2
+  const paintedTailHub = paintMesh(tailHub, 'metal', frame.livery, 'mesh', tier)
+  tail.add(paintedTailHub)
+  frame.meshes.push(paintedTailHub)
+  tail.userData.blades = [paintedTail]
+  frame.group.add(tail)
+  frame.spinners.push(tail)
+  const tailBlur = spinBlurDisc('rotor', tailR)
+  tailBlur.rotation.x = Math.PI / 2
+  tailBlur.position.copy(tail.position)
+  tailBlur.position.z += 0.03
+  frame.group.add(tailBlur)
+  tail.userData.blur = tailBlur
 }
 
 let glowTex: THREE.DataTexture | null = null
@@ -1427,10 +1532,14 @@ function addHeloLights(frame: Frame) {
     frame.lamps.push(painted)
     return
   }
+  const cab = heloCabin(spec)
+  const navX = cab.x0 + 0.35
+  const navK = 0.05
+  const navZ = spec.rx * Math.sqrt(Math.max(0, 0.9 * 0.9 - navK * navK))
   const port = new THREE.Mesh(unitSphere())
   port.scale.setScalar(radius)
-  // Port (left) is -Z with the nose on +X. Lamps sit flush on the cabin flank.
-  port.position.set(spec.lengthM * 0.05, centerY, -spec.rx * 0.95)
+  // Port (left) is -Z with the nose on +X. Lamps sit flush on the aft cabin flank, not out over the boom.
+  port.position.set(navX, centerY + spec.ry * navK, -navZ)
   port.name = 'nav-port'
   port.userData.baseScale = radius
   const portPainted = addMesh(frame, port, 'navRed', 'light')
@@ -1451,7 +1560,10 @@ function addHeloLights(frame: Frame) {
   frame.lamps.push(tailPainted)
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
-  beacon.position.set(0, centerY + spec.ry * 0.97, 0)
+  // Anti-collision beacon on the fin tip.
+  const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number } | undefined
+  if (fin) beacon.position.set(fin.x - fin.chord * 0.25, fin.y + fin.h + radius * 0.4, 0)
+  else beacon.position.set(heloMastX(spec), skinAt(frame, heloMastX(spec)).top, 0)
   beacon.name = 'beacon'
   beacon.userData.baseScale = beacon.scale.x
   const paintedBeacon = addMesh(frame, beacon, 'beacon', 'beacon')
@@ -1459,7 +1571,8 @@ function addHeloLights(frame: Frame) {
   frame.beacons.push(paintedBeacon)
   frame.lamps.push(paintedBeacon)
   const strobe = port.clone()
-  strobe.position.set(spec.lengthM * 0.12, centerY + spec.ry * 0.4, 0)
+  // Lower anti-collision strobe on the belly under the gearbox.
+  strobe.position.set(heloMastX(spec), centerY - spec.ry * 0.97, 0)
   strobe.name = 'strobe'
   strobe.userData.baseScale = strobe.scale.x
   const paintedStrobe = addMesh(frame, strobe, 'navWhite', 'strobe')

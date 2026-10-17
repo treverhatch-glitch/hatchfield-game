@@ -9,6 +9,9 @@ import { createAircraft, setAircraftQuality, updateAircraft } from './factory'
 import { MOTION_IDLE } from './motion'
 import { installAircraftEnvironment } from './env'
 import { aircraftWear } from './airframeWear'
+import { installSoftShadows } from '../world/softShadows'
+
+installSoftShadows()
 
 /** Roster carrier type → size tier and persona for the wear preview. */
 const TYPE_TIER: Record<string, [number, string | undefined]> = { flag: [5, 'luxury'], charter: [3, undefined], regional: [2, undefined], cargo: [2, 'cargo_night'], heli: [2, undefined], budget: [0, 'budget'] }
@@ -63,7 +66,10 @@ function place(id: string, livery: Livery, x: number, z: number, label: string) 
   plane.rotation.y = Number(qs.get('rot') ?? 0.55)
   const open = Number(qs.get('doors') ?? 0)
   // Parked pose (engines off) unless ?spin=1 asks for running props/fans.
-  if (qs.get('spin') !== '1') updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open) })
+  // ?spool=0..1 sets prop / rotor speed (blur disc and its shadow follow it).
+  const spool = qs.get('spool')
+  if (spool !== null) updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open), spool: Number(spool) })
+  else if (qs.get('spin') !== '1') updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open) })
   plane.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true } })
   const hide = (qs.get('hide') ?? '').split(',').filter(Boolean)
   if (hide.length) plane.traverse((o) => { if (hide.includes(o.name)) o.visible = false })
@@ -122,6 +128,8 @@ const el = ((hour - 6) / 12) * Math.PI
 sun.position.set(Math.cos(el) * 300, Math.max(30, Math.sin(el) * 400), 180)
 Object.assign(sun.shadow.camera, { left: -extent * 1.4, right: extent * 1.4, top: extent * 1.4, bottom: -extent * 1.4, near: 1, far: 1500 })
 sun.shadow.camera.updateProjectionMatrix()
+// Same constant-width soft penumbra the game uses (≈ 0.2 m on the ground).
+sun.shadow.radius = Math.min(28, Math.max(4, 0.1 / ((extent * 2.8) / 4096)))
 const zoom = Number(qs.get('zoom') ?? 1)
 const aspect = innerWidth / innerHeight
 const hw = Math.max(halfW, halfH * aspect) / zoom

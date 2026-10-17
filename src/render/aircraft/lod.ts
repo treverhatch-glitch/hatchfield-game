@@ -79,6 +79,15 @@ export function aircraftLamp(): number {
   return lamp
 }
 
+/**
+ * Prop / rotor blur level for a drawn spool (0 shut down … 1 full power): exactly 0 at rest and
+ * while only windmilling, rising smoothly through taxi power to full at take-off power.
+ */
+export function spinBlurLevel(spool: number): number {
+  const t = Math.max(0, Math.min(1, (spool - 0.06) / 0.64))
+  return t * t * (3 - 2 * t)
+}
+
 export interface LodWeights {
   high: number
   mid: number
@@ -267,16 +276,21 @@ export class CrossfadeLOD extends THREE.LOD {
     // Shut-down engines still windmill a little.
     this.spinAngle += dt * (0.04 + this.motion.spool * 0.96)
     const a = this.spinAngle
+    // Spinning props and rotors: the blur disc fades in with speed and throws the soft disc
+    // shadow; the blades stop casting so the ground never shows frozen blades under a blur.
+    // Stopped (spool ≈ 0) the disc is fully hidden and the still blades cast their own shadow.
+    const blurK = spinBlurLevel(this.motion.spool)
     for (const spinner of buckets.spinners) {
-      if (spinner.name === 'prop') {
-        // Motion-blur disc fades in with prop speed; the blades stay underneath it.
-        const blur = spinner.getObjectByName('prop-blur') as THREE.Mesh | undefined
-        if (blur) {
-          const k = Math.max(0, (this.motion.spool - 0.3) / 0.7)
-          blur.visible = k > 0.01
-          ;(blur.material as THREE.MeshBasicMaterial).opacity = 0.22 * k
-        }
+      const blur = spinner.userData.blur as THREE.Mesh | undefined
+      if (blur) {
+        const max = (blur.userData.blurMax as number) ?? 0.35
+        blur.visible = blurK > 0.004
+        blur.castShadow = blurK > 0.004
+        ;(blur.material as THREE.MeshBasicMaterial).opacity = max * blurK
+        if (blur.customDepthMaterial) blur.customDepthMaterial.opacity = Math.min(0.85, 0.55 * blurK)
       }
+      const blades = spinner.userData.blades as THREE.Object3D[] | undefined
+      if (blades) for (const b of blades) b.castShadow = blurK < 0.5
     }
     for (const spinner of buckets.spinners) {
       if (spinner.name === 'rotor' || spinner.name === 'tail-rotor') {

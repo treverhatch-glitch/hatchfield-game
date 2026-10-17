@@ -75,10 +75,10 @@ export function unitPlane(): THREE.BufferGeometry {
 }
 
 /** Prop disc lies in YZ so it can spin on local X. Rotor disc lies in XZ. */
-export function unitDisc(kind: 'prop' | 'rotor' | 'prop-blur'): THREE.BufferGeometry {
+export function unitDisc(kind: 'prop' | 'rotor' | 'prop-blur' | 'rotor-blur'): THREE.BufferGeometry {
   return sharedGeo(`disc:${kind}`, () => {
-    const geo = new THREE.CircleGeometry(1, kind === 'rotor' ? 10 : kind === 'prop-blur' ? 40 : 7)
-    if (kind !== 'rotor') geo.rotateY(Math.PI / 2)
+    const geo = new THREE.CircleGeometry(1, kind === 'rotor' ? 10 : kind === 'prop-blur' ? 40 : kind === 'rotor-blur' ? 56 : 7)
+    if (kind !== 'rotor' && kind !== 'rotor-blur') geo.rotateY(Math.PI / 2)
     else geo.rotateX(-Math.PI / 2)
     return geo
   })
@@ -408,6 +408,12 @@ export function releaseAircraft(root: THREE.Object3D) {
       ;(obj as THREE.InstancedMesh).dispose()
     } else if (obj.userData.ownGeo && (obj as THREE.Mesh).isMesh) {
       ;(obj as THREE.Mesh).geometry.dispose()
+    }
+    // Per-aircraft blur discs own their material and shadow depth material.
+    if (obj.userData.ownMat && (obj as THREE.Mesh).isMesh) {
+      const mesh = obj as THREE.Mesh
+      ;(mesh.material as THREE.Material).dispose()
+      mesh.customDepthMaterial?.dispose()
     }
   })
   root.removeFromParent()

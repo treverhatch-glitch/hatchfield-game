@@ -233,6 +233,9 @@ export function bakeGroup(root: THREE.Object3D): THREE.BufferGeometry {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh
     if (!mesh.isMesh) return
+    // Hidden parts (prop / rotor blur discs, shut doorway cuts) are not part of the parked shell:
+    // baking them drew an opaque grey disc behind every parked prop in the batched copies.
+    if (!mesh.visible || mesh.userData.ownMat) return
     _rel.copy(root.matrixWorld).invert().multiply(mesh.matrixWorld)
     parts.push(...piecesOf(mesh, _rel))
   })

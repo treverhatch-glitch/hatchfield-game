@@ -418,6 +418,8 @@ function addLeafSet(frame: RigFrame, kind: RigKind, geo: THREE.BufferGeometry, p
   const painted = paintVertexMesh(mesh, 'mid', 'control', 'paint', frame.livery.airline, frame.livery.wear ?? 0, 'door')
   painted.userData.airline = frame.livery.airline
   painted.userData.rig = kind
+  // An open door stands off the skin in the sun: it throws its own shadow on the apron.
+  painted.castShadow = true
   frame.group.add(painted)
   frame.meshes.push(painted)
   frame.rigs.push(set)

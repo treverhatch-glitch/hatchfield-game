@@ -14,10 +14,12 @@ import {
   procLiveryTextures,
   rosterLivery,
   setProcLiveryCanvasFactory,
+  titleSpan,
 } from './procLivery'
 import { LIVERY_ART } from './liveryUv'
 import { slotColor } from './pool'
-import { MODEL_SPECS } from './specs'
+import { DERIVED_SPECS, MODEL_SPECS } from './specs'
+import { titleKeepoutsX } from './stands'
 
 /** A 2D context that records calls instead of drawing. */
 function recorder() {
@@ -187,5 +189,23 @@ describe('plate drawing', () => {
       }
       expect(tail.calls.length, motif).toBeGreaterThan(2)
     }
+  })
+})
+
+describe('fuselage titles clear nacelles and prop arcs', () => {
+  it('every high-wing / turboprop title span misses each nacelle and prop disc on both sides', () => {
+    const hits: string[] = []
+    for (const spec of [...Object.values(MODEL_SPECS), ...Object.values(DERIVED_SPECS)]) {
+      if (!spec.wingHigh || spec.family === 'helo') continue
+      const [a, b] = titleSpan(spec.id)
+      expect(b - a, spec.id).toBeGreaterThan(0.08)
+      const nose = spec.lengthM / 2
+      for (const [x0, x1] of titleKeepoutsX(spec)) {
+        const k0 = (nose - x1) / spec.lengthM
+        const k1 = (nose - x0) / spec.lengthM
+        for (const [s0, s1] of [[a, b], [1 - b, 1 - a]]) if (s1 > k0 && s0 < k1) hits.push(`${spec.id} [${s0.toFixed(3)},${s1.toFixed(3)}] x [${k0.toFixed(3)},${k1.toFixed(3)}]`)
+      }
+    }
+    expect(hits).toEqual([])
   })
 })
