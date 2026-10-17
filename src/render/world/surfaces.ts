@@ -23,6 +23,8 @@ export function surfaceOf(tile: Tile): SurfaceKind | null {
       return 'apron'
     case 'road':
     case 'guard':
+    // Tug pavement (stored as belt) is a service road, so it gets the road tarmac.
+    case 'belt':
       return 'road'
     case 'terminal':
       return null

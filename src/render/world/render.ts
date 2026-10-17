@@ -102,7 +102,7 @@ export interface WorldRenderStats {
 }
 
 /** Tiles this layer redraws; the legacy World should skip (or hide) its own meshes for these. */
-export const REPLACED_TILES = new Set(['grass', 'runway', 'taxi', 'stand', 'road', 'terminal'])
+export const REPLACED_TILES = new Set(['grass', 'runway', 'taxi', 'stand', 'road', 'belt', 'terminal'])
 
 const WHITE = new THREE.Color(1, 1, 1)
 
