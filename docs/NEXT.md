@@ -15,6 +15,7 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 - [x] **Slice 3:** cargo start focus + volume letters + warehouse HUD  
 - [ ] **Slice 4:** fuel bowser capacity / farm refill — **NEXT TO CODE**  
 - [ ] Coach / Economy discoverability — Starter kit harder to miss  
+- [ ] **Workflow upgrades (Can It Code?):** Blender headless pipeline · material bible · size/grid vitest · test rooms · screenshot reviewer — see section below
 
 ## Wave map (summary)
 
@@ -41,6 +42,24 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 3. Break belt / jam / thin claim → Standing or money hurts → fix → recover.  
 4. Cargo start can earn without a pax hall.  
 5. Still want the next Field Level unlock — not “I’m done.”  
+
+## Workflow upgrades from "AI Built This Space Game From Scratch" (Can It Code?, reviewed Oct 17 2026, approved by Trever to add)
+
+Lessons from the Can It Code? video (a one-week Godot space game). Their workflow matches ours (build → review → test with numbers and screenshots), but their game is a short story loop and Hatchfield is a full sim. Borrow these process upgrades; do not switch engines.
+
+1. **Blender headless asset pipeline.** Agents write `bpy` Python scripts, run `blender -b --python`, and export glTF/GLB into the repo (Blender 4.2 LTS is being installed at `/opt/blender` on the box; Blender is free/GPL, and its output belongs to us). Use it for things with no good free model: the jet bridge first, then terminal pieces and custom vehicles. Assets must cast and receive the sun-tracking shadows, and keep full-res originals in Drive. Every new model gets an in-game film before merge. glTF carries over to a future engine port.
+
+2. **Colour and material bible.** Write one locked palette and PBR material list in `docs/art/material-bible.md`, covering concrete, asphalt, glass, metal, liveries and signage. Every new model and texture must use it, and a test flags off-bible materials.
+
+3. **Size and grid contracts with automatic gates.** Terminal pieces, stands and buildings snap to the tile grid, and each model has a declared footprint and origin. Add a vitest that checks every placeable item's bounding box against its declared footprint and that no two placed items' footprints overlap. Link this to BUGLIST #2 (security overlaps the bathroom) and #3 (x-ray units clash).
+
+4. **Test rooms.** Small isolated scenes or URL modes, for example `?lab=docking`, `?lab=queue` and `?lab=vehicles`. Use them for plane taxi and docking, passenger queues, and service vehicles, so new animation and pathing can be tuned and filmed without the full sim.
+
+5. **Automated screenshot reviewer.** A headless script plays a seeded game, runs scripted actions (build, place, zoom, day/night), and saves screenshots plus numbers. A vision-capable agent then reviews the screenshots for visual bugs, and the findings feed `/workspace/playtest/BUGLIST.md`. This builds on the seeded RNG (`sys_16`) and the existing playtest commands.
+
+6. **Shadow cost lesson.** If lag ever shows up, the first move is to limit shadow casting to key lights, not to lower texture quality. This follows the max-graphics rule: optimize only when Trever's playtest shows real lag.
+
+7. **Warning.** Automated checks miss weird bugs; in the video, an enemy got stuck floating in the final playthrough. Real hands-on playtests stay mandatory.
 
 ## Post-playthrough systems (approved by Trever, Oct 17 2026)
 
@@ -132,6 +151,7 @@ Most items below wait until plane graphics and the current playthrough are done.
 - Trial only behind a test flag today — live game unchanged until adoption PRs.
 
 ### Gate
+- **Workflow (docs approved Oct 17):** Blender headless · material bible · size/grid contracts · test rooms · screenshot reviewer · shadow-cost lesson — implement after graphics + playtest bug list.
 - **May code now:** Seeded RNG (`sys_16`), time-slicing (`sys_17`), pathfinder + crowd path variation (`sys_18`) — Jules briefs queued 16:40 Asia/Bangkok Oct 17.
 - **Still docs-only until** plane graphics pass merged + current playthrough finished: fixed-tick clock, airline service ratings, breakdowns, patrol zones, airport rating↔levels, happiness easing, command/undo+hardcore, OD demand, buses, smaller items, Steam rename, CC0 adoption PRs.
 - Then pull remaining items into [BUILD.md](./BUILD.md) / [EXECUTION.md](./EXECUTION.md) in priority order.
