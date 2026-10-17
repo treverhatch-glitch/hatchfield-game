@@ -169,6 +169,7 @@ export function paintGeometry(list: readonly Paint[], y = 0.035, tile = GROUND_L
   const span = tile > 0 ? tile : 1
   list.forEach((p, i) => {
     c.setHex(PAINT_RGB[p.color], THREE.SRGBColorSpace)
+    c.multiplyScalar(1.15)
     const corners = [
       [p.x - p.w / 2, p.z - p.d / 2],
       [p.x + p.w / 2, p.z - p.d / 2],

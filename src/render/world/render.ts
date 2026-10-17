@@ -227,8 +227,21 @@ export class WorldRenderer {
       map: this.tex.markings ?? undefined,
       vertexColors: true,
       polygonOffset: true,
-      polygonOffsetFactor: -2,
+      polygonOffsetFactor: -4,
+      transparent: true,
+      alphaTest: 0.5,
     })
+    this.paintMat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <alphatest_fragment>',
+        `
+#ifdef ALPHATEST
+  float fw = fwidth(diffuseColor.a);
+  diffuseColor.a = smoothstep(ALPHATEST - fw, ALPHATEST + fw, diffuseColor.a);
+#endif
+        `
+      )
+    }
     this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
