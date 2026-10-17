@@ -389,7 +389,8 @@ describe('aircraft model factory', () => {
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
     // +~60 shared leg meshes: one per airframe type and leg kind, never per instance or livery.
     // Planes v2: curved door-leaf geometries, shared per airframe type and door cross-section.
-    expect(libraryStats().geometries).toBeLessThan(360)
+    // Livery edges: one small rudder box per airframe type carrying the fin's livery UVs (~25).
+    expect(libraryStats().geometries).toBeLessThan(390)
     expect(libraryStats().materials).toBeLessThan(64)
     for (const aircraft of made) releaseAircraft(aircraft)
   })

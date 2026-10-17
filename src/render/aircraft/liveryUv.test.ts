@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { createAircraft, disposeAircraftLibrary, releaseAircraft } from './factory'
-import { LIVERY_ART, engineUv, outwardUv, projectedUv } from './liveryUv'
+import { FIN_UV, LIVERY_ART, engineUv, finChordAt, outwardUv, projectedUv } from './liveryUv'
 import { bakeGeometry } from './merge'
 
 describe('airline livery UVs', () => {
@@ -83,6 +83,69 @@ describe('airline livery UVs', () => {
     const paint = shell.material as THREE.Material
     expect(paint.userData.liveryInstalled).toBeUndefined()
     releaseAircraft(aircraft)
+    disposeAircraftLibrary()
+  })
+})
+
+describe('livery edges', () => {
+  it('keeps procedural fins leading edge → trailing edge on both faces (mirror: false)', () => {
+    const box = { x0: 2, x1: -2, y0: 0, y1: 4, mirror: false }
+    const port = outwardUv(1.5, 2, -0.1, box)
+    const starboard = outwardUv(1.5, 2, 0.1, box)
+    expect(starboard[0]).toBeCloseTo(port[0])
+    // Default (photographed plates) still flips so lettering reads outward.
+    const flip = outwardUv(1.5, 2, 0.1, { x0: 2, x1: -2, y0: 0, y1: 4 })
+    expect(flip[0] + port[0]).toBeCloseTo(1)
+  })
+
+  it('publishes the real fin outline in tail-plate UV', async () => {
+    const { finGeometry } = await import('./geom')
+    const geo = finGeometry('#ffffff', '#000000')
+    const pos = geo.getAttribute('position')
+    const box = { x0: 0.42, x1: -0.5, y0: 0, y1: 1 }
+    let tipMin = 1
+    let tipMax = 0
+    for (let i = 0; i < pos.count; i++) {
+      const [u, v] = projectedUv(pos.getX(i), pos.getY(i), box)
+      if (v > 0.999) {
+        tipMin = Math.min(tipMin, u)
+        tipMax = Math.max(tipMax, u)
+      }
+      // Every fin vertex sits on or inside the published outline (no clamped, smeared texels).
+      const [le, te] = finChordAt(v)
+      expect(u).toBeGreaterThanOrEqual(le - 1e-6)
+      expect(u).toBeLessThanOrEqual(te + 1e-6)
+    }
+    expect(tipMin).toBeCloseTo(FIN_UV.tipLead)
+    expect(tipMax).toBeCloseTo(FIN_UV.tipTrail)
+  })
+
+  it('paints the rudder with the fin plate, aft on the trailing edge', () => {
+    const plane = createAircraft('a320neo', { body: '#ffffff', stripe: '#1b8480', tail: '#1b8480' })
+    const rudder = plane.getObjectByName('rudder') as THREE.Mesh
+    const fin = plane.getObjectByName('lod-mid')!
+    expect(rudder).toBeTruthy()
+    const slot = rudder.geometry.getAttribute('liverySlot')
+    const uv = rudder.geometry.getAttribute('liveryUv')
+    expect(slot && uv).toBeTruthy()
+    for (let i = 0; i < slot.count; i++) {
+      expect(slot.getX(i)).toBe(1)
+      expect(uv.getX(i)).toBeGreaterThanOrEqual(0)
+      expect(uv.getX(i)).toBeLessThanOrEqual(1)
+    }
+    // Rudder sits in the aft half of the fin chord (U > 0.5 on the port face).
+    const pos = rudder.geometry.getAttribute('position')
+    let mean = 0
+    let n = 0
+    for (let i = 0; i < uv.count; i++) {
+      if (pos.getZ(i) >= 0) continue
+      mean += uv.getX(i)
+      n += 1
+    }
+    expect(n).toBeGreaterThan(0)
+    expect(mean / n).toBeGreaterThan(0.5)
+    expect(fin).toBeTruthy()
+    releaseAircraft(plane)
     disposeAircraftLibrary()
   })
 })

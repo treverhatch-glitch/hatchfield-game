@@ -12,7 +12,7 @@
  */
 import * as THREE from 'three'
 import { rosterAirline, type RosterAirline, type TailMotif } from '../../airlines/roster'
-import { LIVERY_ART } from './liveryUv'
+import { FIN_UV, LIVERY_ART, finChordAt } from './liveryUv'
 import { DEFAULT_TEXTURE_QUALITY, type TextureQuality } from './liveryFiles'
 import type { AirlineLiveryTex } from './liveryTex'
 import { MODEL_SPECS, DERIVED_SPECS, type Livery } from './specs'
@@ -240,7 +240,10 @@ export function drawTailPlate(ctx: Ctx, w: number, h: number, p: ProcLivery, acc
   ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = secondary
   ctx.strokeStyle = secondary
-  const cx = w * 0.5
+  // Centre the mark on the fin's own mid-chord at mid-span (the swept outline, FIN_UV), not on
+  // the plate square, so the swept leading edge never clips it.
+  const [le, te] = finChordAt(0.5)
+  const cx = w * ((le + te) / 2)
   const cy = h * 0.5
   const r = Math.min(w, h) * 0.26
   switch (p.motif) {
@@ -323,9 +326,16 @@ export function drawTailPlate(ctx: Ctx, w: number, h: number, p: ProcLivery, acc
       ctx.fill()
       break
   }
-  // Accent edge along the trailing edge.
+  // Accent band along the swept trailing edge (root U 1 → tip U FIN_UV.tipTrail), carried past
+  // the edge to the plate border so filtering never pulls fin colour onto it.
   ctx.fillStyle = accent
-  ctx.fillRect(w * 0.94, 0, w * 0.06, h)
+  ctx.beginPath()
+  ctx.moveTo(w * 0.94, h)
+  ctx.lineTo(w, h)
+  ctx.lineTo(w, 0)
+  ctx.lineTo(w * (FIN_UV.tipTrail - 0.06), 0)
+  ctx.closePath()
+  ctx.fill()
 }
 
 /** Engine plate: U wraps the barrel, V intake (bottom) to exhaust (top). */

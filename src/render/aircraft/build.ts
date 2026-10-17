@@ -11,12 +11,13 @@ import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
 import { listedLivery } from './liveryFiles'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
-import { mergeStaticShell } from './merge'
+import { bakeGeometry, mergeStaticShell } from './merge'
 import { addRig, type RigSet } from './rig'
 import { bayDoorsGeometry, doorwayGeometry, legGeometry, wellGeometry, type LegKind } from './gear'
 import {
   paintMesh,
   paintVertexMesh,
+  sharedGeo,
   unitBox,
   unitCylinder,
   unitDisc,
@@ -281,17 +282,63 @@ function addWing(frame: Frame) {
   }
 }
 
+/**
+ * Fin side outline box for the tail plate. Photographed plates mirror on starboard so their
+ * lettering reads; procedural fins (`<roster>@<model>`) have none and keep leading edge → trailing
+ * edge on both faces, so their swept accent and fitted motif sit on the real edges both sides.
+ */
+function finLiveryBox(frame: Frame, pose: { finX: number; chord: number; rootY: number; finH: number }): LiveryBox {
+  const { finX, chord, rootY, finH } = pose
+  const procedural = (frame.livery.airline ?? '').includes('@')
+  return {
+    x0: finX + chord * 0.42,
+    x1: finX - chord * 0.5,
+    y0: rootY,
+    y1: rootY + finH,
+    ...(procedural ? { mirror: false } : {}),
+  }
+}
+
+/**
+ * Rudder carrying the fin's own livery texels (tail slot, fin box UVs baked at rest), so the
+ * plate art continues across it instead of a flat-coloured slab over the logo. Geometry is
+ * local to the hinge box, so the deflection in lod.ts still turns it about its centre.
+ */
+function addRudder(frame: Frame, size: [number, number, number], pos: [number, number, number], box: LiveryBox): PaintedMesh {
+  // One per airframe type, tail colour, mirror rule and side; never per instance.
+  const tailHex = slotColor('tail', frame.livery)
+  const key = `rudder:${frame.tier}:${frame.spec.id}:${tailHex}:${box.mirror === false ? 'm0' : 'm1'}:${Math.sign(pos[2])}`
+  const geo = sharedGeo(key, () => {
+    const m = new THREE.Matrix4().compose(
+      new THREE.Vector3(pos[0], pos[1], pos[2]),
+      new THREE.Quaternion(),
+      new THREE.Vector3(size[0], size[1], size[2]),
+    )
+    const baked = bakeGeometry(unitBox(), m, tailHex, { mode: 'tail', box })
+    baked.translate(-pos[0], -pos[1], -pos[2])
+    baked.computeBoundingBox()
+    baked.computeBoundingSphere()
+    return baked
+  })
+  const mesh = new THREE.Mesh(geo)
+  mesh.position.set(pos[0], pos[1], pos[2])
+  const painted = paintVertexMesh(mesh, 'mid', 'control', 'paint', frame.livery.airline, frame.livery.wear ?? 0)
+  painted.userData.airline = frame.livery.airline
+  painted.userData.paint = tailHex
+  painted.userData.slot = 'tail'
+  painted.castShadow = false
+  frame.group.add(painted)
+  frame.meshes.push(painted)
+  return painted
+}
+
 function addTail(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
   const { spec } = frame
-  const { chord, thick, finX, rootY: top, finH, stabX, stabY } = finPose(frame)
+  const pose = finPose(frame)
+  const { chord, thick, finX, rootY: top, finH, stabX, stabY } = pose
   const tailPaint = frame.livery.tail || frame.livery.stripe
-  const finBox: LiveryBox = {
-    x0: finX + chord * 0.42,
-    x1: finX - chord * 0.5,
-    y0: top,
-    y1: top + finH,
-  }
+  const finBox = finLiveryBox(frame, pose)
   const placeFin = (z: number, name: string) => {
     const mesh = new THREE.Mesh(finGeometry(tailPaint, frame.livery.stripe))
     mesh.scale.set(chord, finH, thick)
@@ -930,28 +977,24 @@ function addControls(frame: Frame) {
   elevator.name = 'elevator'
   elevator.userData.surface = 'elevator'
   elevator.userData.sign = 1
+  // Rudder on the fin's swept trailing edge (geom.ts finGeometry: TE runs -0.5 → -0.4 chord,
+  // root → tip): its aft face meets the TE at the rudder top and sits just inside it lower down,
+  // instead of a slab standing in the middle of the fin art.
+  const finBox = finLiveryBox(frame, pose)
+  const rudW = Math.max(0.22, chord * 0.22)
+  const rudTop = 0.62 + 0.55 / 2
+  const rudX = finX + chord * (-0.5 + 0.1 * rudTop) + rudW / 2
+  const rudY = pose.rootY + pose.finH * 0.62
   if (spec.tail === 'twin') {
     const spread = Math.max(0.7, spec.rx * 0.85)
     for (const sign of [1, -1] as const) {
-      const rudder = addBox(
-        frame,
-        [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.8],
-        [finX - chord * 0.2, pose.rootY + pose.finH * 0.62, sign * spread],
-        'tail',
-        'control',
-      )
+      const rudder = addRudder(frame, [rudW, pose.finH * 0.55, thick * 0.8], [rudX, rudY, sign * spread], finBox)
       rudder.name = 'rudder'
       rudder.userData.surface = 'rudder'
       rudder.userData.sign = sign
     }
   } else {
-    const rudder = addBox(
-      frame,
-      [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.9],
-      [finX - chord * 0.15, pose.rootY + pose.finH * 0.62, 0],
-      'tail',
-      'control',
-    )
+    const rudder = addRudder(frame, [rudW, pose.finH * 0.55, thick * 0.9], [rudX, rudY, 0], finBox)
     rudder.name = 'rudder'
     rudder.userData.surface = 'rudder'
     rudder.userData.sign = 1

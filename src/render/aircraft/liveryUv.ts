@@ -52,6 +52,26 @@ export interface LiveryBox {
   y0: number
   /** Group-space Y of V = 1 (crown, or fin tip). */
   y1: number
+  /**
+   * Starboard flips U so plate lettering reads outward (default). Procedural fins carry no
+   * lettering, so they keep U leading edge → trailing edge on both faces and the swept
+   * trailing-edge accent and fin-fitted motif land on the real edges on both sides.
+   */
+  mirror?: boolean
+}
+
+/**
+ * The fin side outline in tail-plate UV (port face, unflipped), from finGeometry in geom.ts:
+ * root runs U 0 → 1 at V 0; the swept tip runs U TIP_LEAD → TIP_TRAIL at V 1.
+ */
+export const FIN_UV = {
+  tipLead: (0.42 - -0.04) / 0.92,
+  tipTrail: (0.42 - -0.4) / 0.92,
+} as const
+
+/** Leading- and trailing-edge U of the fin outline at height V (0 root → 1 tip). */
+export function finChordAt(v: number): [number, number] {
+  return [FIN_UV.tipLead * v, 1 - (1 - FIN_UV.tipTrail) * v]
 }
 
 function clamp01(n: number): number {
@@ -73,7 +93,7 @@ export function projectedUv(x: number, y: number, box: LiveryBox): [number, numb
  */
 export function outwardUv(x: number, y: number, z: number, box: LiveryBox): [number, number] {
   const [u, v] = projectedUv(x, y, box)
-  return z > 0 ? [1 - u, v] : [u, v]
+  return z > 0 && box.mirror !== false ? [1 - u, v] : [u, v]
 }
 
 /**
