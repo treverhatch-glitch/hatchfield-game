@@ -119,56 +119,35 @@ function applyPavedSurface(mat: THREE.MeshLambertMaterial, isRunway: boolean) {
         vWorldXZ = (modelMatrix * vec4(position, 1.0)).xz;`
       )}
     `
+
+    let runwayFrag = "";
+    if (isRunway) {
+      runwayFrag = `
+    float streakX = sin(vWorldXZ.x * 0.5) * sin(vWorldXZ.y * 15.0);
+    float streakZ = sin(vWorldXZ.x * 15.0) * sin(vWorldXZ.y * 0.5);
+    float darkX = smoothstep(0.8, 1.0, abs(streakX));
+    float darkZ = smoothstep(0.8, 1.0, abs(streakZ));
+    float dark = max(darkX, darkZ);
+    diffuseColor.rgb *= mix(1.0, 0.88, dark);
+`;
+    }
+
     shader.fragmentShader = `
       varying vec2 vWorldXZ;
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-      }
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
-      float fbm(vec2 p) {
-        float v = 0.0;
-        float a = 0.5;
-        for (int i = 0; i < 3; i++) {
-          v += a * noise(p);
-          p *= 2.0;
-          a *= 0.5;
-        }
-        return v;
-      }
       ${shader.fragmentShader.replace(
         '#include <map_fragment>',
-        `#include <map_fragment>
-        #ifdef USE_MAP
-          vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-          vec4 macroColor = texture2D( map, vMapUv * 0.15 );
-          // Mix macro variation at reduced strength (approx 12-15%)
-          sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, macroColor.rgb, 0.12);
-          // Clamp brightness to prevent washing out to white
-          sampledDiffuseColor.rgb = min(sampledDiffuseColor.rgb, vec3(0.85));
-
-          #ifdef DECODE_VIDEO_TEXTURE
-            sampledDiffuseColor = sRGBTransferOETF( sampledDiffuseColor );
-          #endif
-          diffuseColor *= sampledDiffuseColor;
-
-          ${isRunway ? `
-            // Subtle tyre strips in touchdown zones
-            float streakX = fbm(vec2(vWorldXZ.x * 0.02, vWorldXZ.z * 1.5));
-            float streakZ = fbm(vec2(vWorldXZ.x * 1.5, vWorldXZ.z * 0.02));
-            // Threshold FBM so it only appears in faint streaks
-            float darkX = smoothstep(0.6, 0.9, streakX);
-            float darkZ = smoothstep(0.6, 0.9, streakZ);
-            float dark = max(darkX, darkZ);
-            diffuseColor.rgb *= mix(1.0, 0.88, dark);
-          ` : ``}
-        #endif
         `
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  vec4 macroColor = texture2D( map, vMapUv * 0.15 );
+  sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, macroColor.rgb, 0.12);
+  #ifdef DECODE_VIDEO_TEXTURE
+    sampledDiffuseColor = sRGBTransferOETF( sampledDiffuseColor );
+  #endif
+  diffuseColor *= sampledDiffuseColor;
+${runwayFrag}
+#endif
+`
       )}
     `
   }

@@ -508,6 +508,17 @@ describe('geometry builders', () => {
     expect(runwayMat).toBeDefined()
     expect(runwayMat.onBeforeCompile).toBeDefined()
     expect(runwayMat.customProgramCacheKey?.()).toBe('paved-surface-true')
+
+    const shader = { vertexShader: '#include <worldpos_vertex>', fragmentShader: '#include <map_fragment>' };
+    runwayMat.onBeforeCompile(shader, {} as any);
+
+    // Check that we only declared sampledDiffuseColor once
+    const matches = shader.fragmentShader.match(/vec4 sampledDiffuseColor/g);
+    expect(matches).toHaveLength(1);
+
+    // Check that vWorldXZ doesn't use .z
+    expect(shader.fragmentShader).not.toMatch(/vWorldXZ\.z/);
+
     expect(apronMat.onBeforeCompile).toBeDefined()
     expect(apronMat.customProgramCacheKey?.()).toBe('paved-surface-false')
 
