@@ -63,8 +63,10 @@ export function surfaceHeight(): { height: Float32Array; grime: Float32Array } {
       }
       height[y * N + x] = h
       // Grime: soft streaks running aft along the skin, gathered in the joints.
-      const streak = valueNoise(x / 96, y / 9) * 0.7 + valueNoise(x / 31, y / 31) * 0.3
-      grime[y * N + x] = Math.max(0, Math.min(1, (streak - 0.6) * 2.0)) * 0.5 + (h < -0.2 ? 0.4 : 0)
+      // Roughness only: a faint large-scale mottle plus slightly duller joints. Visible wear is
+      // localised per vertex (airframeWear mask), not a tiled streak pattern.
+      const mottle = valueNoise(x / 128, y / 128)
+      grime[y * N + x] = (mottle - 0.5) * 0.12 + (h < -0.2 ? 0.25 : 0)
     }
   }
   return { height, grime }
@@ -91,8 +93,8 @@ export function surfaceDetailMaps(): { normal: THREE.DataTexture; roughness: THR
       // R: grime occlusion (aoMap; strength per wear level is the material's aoMapIntensity).
       // G: roughness multiplier (roughnessMap): DETAIL_ROUGH_CLEAN on clean paint, rougher in grime.
       const g = grime[y * N + x]
-      rgh[i] = Math.round((1 - g * 0.75) * 255)
-      rgh[i + 1] = Math.min(255, Math.round((DETAIL_ROUGH_CLEAN + g * 0.3) * 255))
+      rgh[i] = 255
+      rgh[i + 1] = Math.max(0, Math.min(255, Math.round((DETAIL_ROUGH_CLEAN + g * 0.3) * 255)))
       rgh[i + 2] = 255
       rgh[i + 3] = 255
     }

@@ -620,3 +620,43 @@ export function airfoilGeometry(): THREE.BufferGeometry {
     return geo
   })
 }
+
+/**
+ * One twisted, wide-chord fan blade in hub space: radial along +Y from the hub (0.27) to the
+ * tip (1), axial +X, tangential +Z. Chord widens toward the tip and the pitch flattens, like a
+ * modern high-bypass fan. Thin, two-sided; scale uniformly by the fan radius.
+ */
+export function fanBladeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('fan-blade', () => {
+    const steps = 4
+    const half = 0.012
+    const rows: number[][][] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const r = 0.27 + 0.73 * t
+      const chord = 0.17 + 0.13 * t
+      const pitch = (58 - 36 * t) * (Math.PI / 180)
+      const ax = Math.sin(pitch) * chord * 0.5
+      const tz = Math.cos(pitch) * chord * 0.5
+      // Leading edge, trailing edge, each with a front/back face offset along the blade normal.
+      const nx = Math.cos(pitch) * half
+      const nz = -Math.sin(pitch) * half
+      rows.push([
+        [ax + nx, r, tz + nz],
+        [-ax + nx, r, -tz + nz],
+        [-ax - nx, r, -tz - nz],
+        [ax - nx, r, tz - nz],
+      ])
+    }
+    const pos: number[] = []
+    for (let i = 0; i < steps; i++) connectRings(pos, rows[i], rows[i + 1], false)
+    capRing(pos, rows[steps], false)
+    // Two-sided: the blade is thin enough that winding should never hide it.
+    const n = pos.length
+    for (let i = 0; i < n; i += 9) pos.push(pos[i], pos[i + 1], pos[i + 2], pos[i + 6], pos[i + 7], pos[i + 8], pos[i + 3], pos[i + 4], pos[i + 5])
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}

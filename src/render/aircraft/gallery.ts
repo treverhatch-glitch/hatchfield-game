@@ -5,7 +5,8 @@
  */
 import * as THREE from 'three'
 import { ROSTER } from '../../airlines/roster'
-import { createAircraft, setAircraftQuality } from './factory'
+import { createAircraft, setAircraftQuality, updateAircraft } from './factory'
+import { MOTION_IDLE } from './motion'
 import { installAircraftEnvironment } from './env'
 import { aircraftWear } from './airframeWear'
 
@@ -59,7 +60,9 @@ function liveryFor(id: string, n: number): Livery {
 function place(id: string, livery: Livery, x: number, z: number, label: string) {
   const plane = createAircraft(id, livery)
   plane.position.set(x, 0, z)
-  plane.rotation.y = 0.55
+  plane.rotation.y = Number(qs.get('rot') ?? 0.55)
+  const open = Number(qs.get('doors') ?? 0)
+  if (open > 0) updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open) })
   plane.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true } })
   const hide = (qs.get('hide') ?? '').split(',').filter(Boolean)
   if (hide.length) plane.traverse((o) => { if (hide.includes(o.name)) o.visible = false })
@@ -122,8 +125,12 @@ const zoom = Number(qs.get('zoom') ?? 1)
 const aspect = innerWidth / innerHeight
 const hw = Math.max(halfW, halfH * aspect) / zoom
 cam.left = -hw; cam.right = hw; cam.top = hw / aspect; cam.bottom = -hw / aspect
-cam.position.set(Number(qs.get('cx') ?? 0.12), Number(qs.get('cy') ?? 1), Number(qs.get('cz') ?? 0.85)).multiplyScalar(800)
-cam.lookAt(0, 0, 0)
+// Optional look-at point in airframe metres (tx, ty, tz), turned with the plane.
+const target = new THREE.Vector3(Number(qs.get('tx') ?? 0), Number(qs.get('ty') ?? 0), Number(qs.get('tz') ?? 0))
+  .multiplyScalar(wpm)
+  .applyAxisAngle(new THREE.Vector3(0, 1, 0), Number(qs.get('rot') ?? 0.55))
+cam.position.set(Number(qs.get('cx') ?? 0.12), Number(qs.get('cy') ?? 1), Number(qs.get('cz') ?? 0.85)).multiplyScalar(800).add(target)
+cam.lookAt(target)
 cam.updateProjectionMatrix()
 const lbl = document.getElementById('lbl')!
 function frame() {

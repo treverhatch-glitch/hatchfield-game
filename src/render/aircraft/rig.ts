@@ -1,10 +1,10 @@
 import * as THREE from 'three'
 import type { AircraftMotion } from './motion'
-import { paintMesh, unitBox, unitCylinder, unitSphere, type PaintedMesh, type PaintSlot } from './pool'
+import { paintMesh, paintVertexMesh, sharedGeo, unitCylinder, unitSphere, type PaintedMesh, type PaintSlot } from './pool'
 import type { ModelSpec, Livery } from './specs'
-import { doorBoxes } from './stands'
-import { airfoilGeometry, spinnerConeGeometry } from './geom'
-import { AIRCRAFT_LOOK } from '../look'
+import { renderDoorBoxes } from './stands'
+import { airfoilGeometry, loftFamily, loftStation, smoothSphere, spinnerConeGeometry } from './geom'
+import { doorLeafGeometry, fuselagePaint } from './doorLeaf'
 
 /**
  * Animated airframe parts. Each kind is one InstancedMesh per aircraft and LOD
@@ -25,6 +25,8 @@ export interface RigPart {
   side: number
   /** Local chord or length, meters, for travel distances. */
   reach: number
+  /** Plug doors: +1 swing forward along the skin, −1 aft. */
+  swing?: number
 }
 
 export interface RigSet {
@@ -33,6 +35,8 @@ export interface RigSet {
   parts: RigPart[]
   /** Last posed value, so a still aircraft does not rewrite its matrices. */
   posed: number
+  /** Doorway cut shown only while this leaf set is open. */
+  reveal?: THREE.Object3D
 }
 
 export interface RigFrame {
@@ -60,8 +64,10 @@ const _axis = new THREE.Vector3()
 const IDENT = new THREE.Quaternion()
 const CYL_X = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
 
-function hingeAt(x: number, y: number, z: number, yaw: number): THREE.Matrix4 {
+function hingeAt(x: number, y: number, z: number, yaw: number, roll = 0): THREE.Matrix4 {
   const m = new THREE.Matrix4().makeRotationY(yaw)
+  // Roll about the hinge's chord axis so a segment follows the wing's dihedral along its span.
+  if (roll) m.multiply(new THREE.Matrix4().makeRotationX(roll))
   m.setPosition(x, y, z)
   return m
 }
@@ -83,14 +89,29 @@ export function deployMatrix(kind: RigKind, part: RigPart, t: number, out: THREE
       return out.multiplyMatrices(_t, _r)
     case 'reverser':
       return out.makeTranslation(-0.24 * c * t, 0, 0)
-    case 'door':
-      // Plug doors pop out, then swing forward along the skin.
-      _t.makeTranslation(0, 0, part.side * 0.12 * t)
+    case 'door': {
+      // A320 / 737-style plug door on a parallel-arm hinge: it pops out of the frame, then the
+      // arm carries it outward and round to lie flat against the skin beside the doorway,
+      // outer (livery) face still outboard. The leaf keeps its orientation, with a slight yaw
+      // mid-swing, like the real linkage.
+      const sw = part.swing ?? 1
+      const pop = Math.min(1, t / 0.18)
+      const arc = Math.max(0, (t - 0.18) / 0.82)
+      const a = (arc * arc * (3 - 2 * arc)) * Math.PI
+      // Hinge-local: the closed leaf centre sits at x = -sw·c/2 and ends at +sw·(c/2 + 0.03).
+      const centre = -sw * (c / 2) * Math.cos(a) + sw * 0.03 * (1 - Math.cos(a))
+      const cz = part.side * (0.07 * pop + (c / 2) * 0.55 * Math.sin(a) + 0.12 * arc)
+      _t.makeTranslation(centre + sw * (c / 2), 0, cz)
       _axis.set(0, 1, 0)
-      _q.setFromAxisAngle(_axis, part.side * 1.75 * t)
+      _q.setFromAxisAngle(_axis, part.side * sw * 0.22 * Math.sin(a))
       _r.makeRotationFromQuaternion(_q)
       return out.multiplyMatrices(_t, _r)
+    }
     case 'cargo':
+      if (part.swing === -1) {
+        // Inward plug (under a rear nacelle): drops in, then slides up inside the skin.
+        return out.makeTranslation(0, c * 0.92 * Math.max(0, (t - 0.2) / 0.8), -part.side * 0.2 * Math.min(1, t * 5))
+      }
       // Top-hinged, swings up and out.
       _axis.set(1, 0, 0)
       _q.setFromAxisAngle(_axis, -part.side * 1.9 * t)
@@ -104,6 +125,10 @@ const _m = new THREE.Matrix4()
 export function poseRig(set: RigSet, t: number, force = false) {
   if (!force && Math.abs(set.posed - t) < 0.002) return
   set.posed = t
+  if (set.reveal) {
+    set.reveal.userData.shut = t <= 0.01
+    set.reveal.visible = t > 0.01
+  }
   set.parts.forEach((part, i) => {
     deployMatrix(set.kind, part, t, _d)
     _o.makeTranslation(part.offset.x, part.offset.y, part.offset.z)
@@ -178,7 +203,12 @@ function planform(frame: RigFrame) {
   const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi
   const teX = (f: number) => wingX + (-spec.rootChord / 2) * (1 - f) + (spec.rootChord / 2 - sweep - spec.tipChord) * f
   const leX = (f: number) => wingX + spec.rootChord / 2 - sweep * f
-  const y = (f: number) => wingY + lift * f + spec.thickness * 0.08
+  // Same blended dihedral as wingGeometry (flat out of the fairing, then the full angle), so
+  // stowed flaps and slats sit in the wing instead of poking above or below it near the root.
+  const y = (f: number) => {
+    const blend = Math.min(1, f / 0.14)
+    return wingY + (lift / semi) * Math.max(0, f * semi - 0.07 * semi * (1 - blend)) * blend
+  }
   const chord = (f: number) => spec.rootChord * (1 - f) + spec.tipChord * f
   // Edge yaw: z axis along the hinge, x forward.
   const teYaw = Math.atan2(spec.rootChord - sweep - spec.tipChord, semi)
@@ -199,14 +229,18 @@ function addFlapsAndSlats(frame: RigFrame) {
   const flapSegs = spec.spanM > 40 ? 3 : 2
   const flaps: RigPart[] = []
   const fairings: THREE.Matrix4[] = []
+  // One chord for every segment, so the hinge line runs straight and parallel to the trailing
+  // edge: varying chords per segment stepped the stowed flaps into a sawtooth.
+  const flapC = p.chord((root + flapEnd) / 2) * 0.24
   for (const side of [1, -1]) {
     for (let i = 0; i < flapSegs; i++) {
-      const f0 = root + ((flapEnd - root) * i) / flapSegs + 0.005
-      const f1 = root + ((flapEnd - root) * (i + 1)) / flapSegs - 0.005
+      const f0 = root + ((flapEnd - root) * i) / flapSegs + 0.002
+      const f1 = root + ((flapEnd - root) * (i + 1)) / flapSegs - 0.002
       const fm = (f0 + f1) / 2
-      const c = p.chord(fm) * 0.26
+      const c = flapC
       const spanLen = (f1 - f0) * p.semi / Math.cos(p.teYaw)
-      const hinge = hingeAt(p.teX(fm) + c, p.y(fm), side * fm * p.semi, side * p.teYaw)
+      const roll = -side * Math.atan2(p.y(f1) - p.y(f0), (f1 - f0) * p.semi)
+      const hinge = hingeAt(p.teX(fm) + c, p.y(fm), side * fm * p.semi, side * p.teYaw, roll)
       flaps.push({
         hinge,
         offset: new THREE.Vector3(-c / 2, 0, 0),
@@ -219,12 +253,13 @@ function addFlapsAndSlats(frame: RigFrame) {
       if (isJet(spec) && spec.spanM > 25) {
         const fx = p.teX(f1)
         const len = p.chord(f1) * 0.42
-        fairings.push(trs(fx + len * 0.1, p.y(f1) - spec.thickness * 0.35, side * f1 * p.semi, IDENT, len, spec.thickness * 0.45, 0.32))
+        fairings.push(trs(fx + len * 0.05, p.y(f1) - spec.thickness * 0.3, side * f1 * p.semi, IDENT, len * 0.55, spec.thickness * 0.26, 0.17))
       }
     }
   }
   addSet(frame, 'flap', airfoilGeometry(), flaps, 'wing')
-  addStatic(frame, unitBox(), fairings, 'wing', 'flap-fairings')
+  // Rounded canoe fairings (elongated spheroids), not boxes.
+  addStatic(frame, smoothSphere(), fairings, 'wing', 'flap-fairings')
 
   // Slats on swept-wing jets only. Turboprops and GA have fixed leading edges.
   if (!isJet(spec) || spec.spanM < 20) return
@@ -232,15 +267,16 @@ function addFlapsAndSlats(frame: RigFrame) {
   const slatSegs = spec.spanM > 50 ? 4 : 3
   const s0 = root + 0.08
   const s1 = 0.94
+  const slatC = p.chord((s0 + s1) / 2) * 0.11
   for (const side of [1, -1]) {
     for (let i = 0; i < slatSegs; i++) {
       const f0 = s0 + ((s1 - s0) * i) / slatSegs + 0.004
       const f1 = s0 + ((s1 - s0) * (i + 1)) / slatSegs - 0.004
       const fm = (f0 + f1) / 2
-      const c = p.chord(fm) * 0.12
+      const c = slatC
       const spanLen = (f1 - f0) * p.semi / Math.cos(p.leYaw)
       slats.push({
-        hinge: hingeAt(p.leX(fm) - c, p.y(fm) - spec.thickness * 0.05, side * fm * p.semi, side * p.leYaw),
+        hinge: hingeAt(p.leX(fm) - c, p.y(fm) - spec.thickness * 0.05, side * fm * p.semi, side * p.leYaw, -side * Math.atan2(p.y(f1) - p.y(f0), (f1 - f0) * p.semi)),
         offset: new THREE.Vector3(c / 2, 0, 0),
         base: IDENT,
         size: new THREE.Vector3(c, Math.max(0.04, spec.thickness * 0.18), spanLen),
@@ -311,39 +347,89 @@ function addLandingLights(frame: RigFrame) {
 }
 
 function addDoorLeaves(frame: RigFrame) {
-  const { spec } = frame
-  const pax: RigPart[] = []
-  const cargo: RigPart[] = []
-  for (const box of doorBoxes(spec)) {
+  const { spec, livery } = frame
+  const family = loftFamily(spec)
+  const paint = fuselagePaint(livery)
+  const du = frame.nose - frame.tailX
+  const y0 = frame.centerY - spec.ry
+  const dv = spec.ry * (spec.hump ? 2.45 : 2)
+  // Leaves that share a cross-section share one curved geometry and one instanced draw.
+  const sets = new Map<string, { geo: () => THREE.BufferGeometry; parts: RigPart[]; shift: number[]; kind: RigKind }>()
+  for (const box of renderDoorBoxes(spec)) {
     const side = box.door.side
     if (side === 0) continue
-    // Leaf sits proud of the doorway frame, with real thickness.
-    // Closed, the leaf sits almost flush so it reads as a door outline, not a slab.
-    const z = side * (box.z === 0 ? spec.rx : Math.abs(box.z)) + side * 0.035
-    if (box.door.kind === 'cargo') {
-      cargo.push({
+    const t = Math.max(0, Math.min(1, (frame.nose - box.x) / spec.lengthM))
+    const st = loftStation(family, t)
+    const mid = frame.centerY + spec.ry * st.dy
+    const yRel = box.y - mid
+    const k = yRel / spec.ry
+    const skin = spec.rx * Math.sqrt(Math.max(0.0004, st.r * st.r - k * k))
+    const cargo = box.door.kind === 'cargo'
+    const kind: RigKind = cargo ? 'cargo' : 'door'
+    const r = Math.round(st.r * 50) / 50
+    const yr = Math.round(yRel * 20) / 20
+    const key = `${kind}:${side}:${r}:${yr}:${box.w.toFixed(2)}:${box.h.toFixed(2)}`
+    let set = sets.get(key)
+    if (!set) {
+      const leaf = { w: box.w, h: box.h, side, kind: cargo ? 'cargo' as const : 'pax' as const, rx: spec.rx, ry: spec.ry, r, yRel: yr, paint, du, dv }
+      set = {
+        geo: () => sharedGeo(`door-leaf:${spec.id}:${key}:${paint.crown}:${paint.body}:${paint.belly}:${spec.hump ? 1 : 0}`, () => doorLeafGeometry(leaf)),
+        parts: [],
+        shift: [],
+        kind,
+      }
+      sets.set(key, set)
+    }
+    const z = side * skin
+    const sw = box.swing ?? 1
+    if (cargo) {
+      set.parts.push({
         hinge: new THREE.Matrix4().makeTranslation(box.x, box.y + box.h / 2, z),
         offset: new THREE.Vector3(0, -box.h / 2, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
+        size: new THREE.Vector3(1, 1, 1),
         side,
         reach: box.h,
+        swing: box.swing,
       })
     } else {
-      pax.push({
-        hinge: new THREE.Matrix4().makeTranslation(box.x + box.w / 2, box.y, z),
-        offset: new THREE.Vector3(-box.w / 2, 0, 0),
+      set.parts.push({
+        hinge: new THREE.Matrix4().makeTranslation(box.x + (sw * box.w) / 2, box.y, z),
+        offset: new THREE.Vector3((-sw * box.w) / 2, 0, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
+        size: new THREE.Vector3(1, 1, 1),
         side,
         reach: box.w,
+        swing: sw,
       })
     }
+    // Plate UV of this door's centre (outwardUv: +Z flips U).
+    const u = (frame.nose - box.x) / du
+    set.shift.push(side > 0 ? 1 - u : u, (box.y - y0) / dv)
   }
-  // Doors wear the fuselage side colour (white crown on two-tone schemes), not the airline primary.
-  const skin: Livery = { ...frame.livery, body: frame.livery.scheme === 'solid' ? frame.livery.body : (frame.livery.crown ?? AIRCRAFT_LOOK.crown) }
-  addSet(frame, 'door', unitBox(), pax, 'body', skin)
-  addSet(frame, 'cargo', unitBox(), cargo, 'body', skin)
+  for (const set of sets.values()) addLeafSet(frame, set.kind, set.geo(), set.parts, set.shift)
+}
+
+function addLeafSet(frame: RigFrame, kind: RigKind, geo: THREE.BufferGeometry, parts: RigPart[], shift: number[]) {
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial(), parts.length)
+  mesh.geometry = geo
+  mesh.name = `rig-${kind}`
+  // Per-instance plate offset; the geometry's own livery UVs are relative to the door centre.
+  const inst = geo.clone()
+  mesh.geometry = inst
+  inst.setAttribute('liveryShift', new THREE.InstancedBufferAttribute(new Float32Array(shift), 2))
+  mesh.userData.ownGeo = true
+  const set: RigSet = { kind, mesh, parts, posed: -1 }
+  poseRig(set, 0, true)
+  mesh.computeBoundingBox()
+  mesh.computeBoundingSphere()
+  if (mesh.boundingSphere) mesh.boundingSphere.radius *= 1.6
+  const painted = paintVertexMesh(mesh, 'mid', 'control', 'paint', frame.livery.airline, frame.livery.wear ?? 0, 'door')
+  painted.userData.airline = frame.livery.airline
+  painted.userData.rig = kind
+  frame.group.add(painted)
+  frame.meshes.push(painted)
+  frame.rigs.push(set)
 }
 
 /**

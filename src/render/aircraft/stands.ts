@@ -1,4 +1,5 @@
 import type { RealDoor } from './realworld'
+import { airframeStations, engineLayout } from './layout'
 import {
   AIRCRAFT_VISUAL_SCALE,
   BRIDGE_CAB_M,
@@ -128,10 +129,106 @@ export interface DoorBox {
   /** Floor of the doorway, meters above the wheels. */
   sillM: number
   upper: boolean
+  /** Plug-door swing direction when opened: +1 forward along the skin (default), −1 aft. */
+  swing?: 1 | -1
 }
 
 /** Same boxes the close LOD instances, so a bridge cab meets the doorway. */
 export function doorBoxes(spec: ModelSpec): DoorBox[] {
+  return rawDoorBoxes(spec)
+}
+
+/**
+ * Door boxes for drawing leaves and doorway cuts. Same as `doorBoxes` (which the sim's service
+ * sockets read, so it must not move) except where a nominal station lands a leaf on a wing-root
+ * fairing or a rear nacelle: then the drawn door slides a little clear, or is trimmed lower.
+ */
+export function renderDoorBoxes(spec: ModelSpec): DoorBox[] {
+  return clearDoors(spec, rawDoorBoxes(spec))
+}
+
+interface Keepout {
+  x0: number
+  x1: number
+  y0: number
+  y1: number
+  /** Side the obstacle sits on: +1 port, −1 starboard, 0 both. */
+  side: number
+  engine?: boolean
+}
+
+/** Wing-root fairings and fuselage-hugging nacelles a door leaf must not cut into. */
+function doorKeepouts(spec: ModelSpec): Keepout[] {
+  const out: Keepout[] = []
+  const st = airframeStations(spec)
+  if (spec.family !== 'helo' && spec.spanM > 0) {
+    out.push({
+      x0: st.wingX - spec.rootChord / 2 - 0.3,
+      x1: st.wingX + spec.rootChord / 2 + 0.3,
+      y0: st.wingY - spec.thickness / 2 - 0.3,
+      y1: st.wingY + spec.thickness / 2 + 0.3,
+      side: 0,
+    })
+  }
+  const eng = spec.engines
+  for (const p of engineLayout(spec)) {
+    const r = eng.radius * 1.15
+    if (Math.abs(p.z) - r > spec.rx + 0.35 || p.z === 0) continue
+    out.push({ x0: p.x - eng.length * 0.6, x1: p.x + eng.length * 0.6, y0: p.y - r, y1: p.y + r, side: Math.sign(p.z), engine: true })
+  }
+  return out
+}
+
+function overlaps(a0: number, a1: number, b0: number, b1: number) {
+  return a1 > b0 && a0 < b1
+}
+
+/**
+ * Real-world door stations are nominal; on our proportions some land on a wing-root fairing or a
+ * rear nacelle. Slide such a door clear (nearest side), and swing a plug door aft when the space
+ * ahead of it is taken. Render-only: bridges, trucks and leaves all read these boxes.
+ */
+/** Beyond this slide, a door under a nacelle is trimmed instead (the docked truck stays put). */
+const MAX_SLIDE_M = 1.6
+
+function clearDoors(spec: ModelSpec, boxes: DoorBox[]): DoorBox[] {
+  const keep = doorKeepouts(spec)
+  if (!keep.length) return boxes
+  const nose = spec.lengthM / 2
+  const hits = (b: DoorBox, x0: number, x1: number, y1 = b.y + b.h / 2) =>
+    keep.find((k) => (k.side === 0 || k.side === b.door.side) && overlaps(x0, x1, k.x0, k.x1) && overlaps(b.y - b.h / 2, y1, k.y0, k.y1))
+  return boxes.map((b) => {
+    if (b.door.side === 0 || b.door.kind === 'ramp') return b
+    let x = b.x
+    let h = b.h
+    let y = b.y
+    for (let pass = 0; pass < 3; pass++) {
+      const k = hits({ ...b, y, h }, x - b.w / 2, x + b.w / 2)
+      if (!k) break
+      const fwd = k.x1 + b.w / 2 + 0.12
+      const aft = k.x0 - b.w / 2 - 0.12
+      const shift = Math.abs(fwd - x) <= Math.abs(aft - x) && fwd + b.w / 2 < nose - spec.lengthM * 0.06 ? fwd : aft
+      // A small slide reads fine next to the docked truck; a big one would leave it at a blank wall,
+      // so lower doors under a nacelle are trimmed to stop short of it instead (sill unchanged).
+      const sill = y - h / 2
+      const trimmed = k.y0 - 0.12 - sill
+      if (Math.abs(shift - b.x) > MAX_SLIDE_M && k.engine && k.y0 > sill + 0.75) {
+        h = Math.min(h, trimmed)
+        y = sill + h / 2
+      } else x = shift
+    }
+    const moved = { ...b, x, y, h }
+    if (b.door.kind === 'cargo') {
+      // Top-hinged leaves swing up and out; one trimmed under a nacelle opens as an inward plug.
+      if (h < b.h - 0.01) moved.swing = -1
+      return moved
+    }
+    if (hits(moved, x + b.w / 2, x + b.w * 1.5 + 0.15)) moved.swing = -1
+    return moved
+  })
+}
+
+function rawDoorBoxes(spec: ModelSpec): DoorBox[] {
   const nose = spec.lengthM / 2
   const centerY = spec.gear + spec.ry
   return spec.doors.map((door) => {

@@ -92,6 +92,10 @@ export type PaintSlot =
   | 'belly'
   | 'metal'
   | 'dark'
+  | 'fan'
+  | 'duct'
+  | 'chrome'
+  | 'lip'
   | 'glass'
   | 'rubber'
   | 'navRed'
@@ -110,12 +114,23 @@ function shade(hex: string, factor: number): string {
   return `#${color.getHexString()}`
 }
 
+/**
+ * Real wings are painted grey or white. Keep a livery's wing colour only when it is
+ * already a neutral (grey, white, silver, dark grey); a saturated brand colour gets the default grey.
+ */
+export function neutralWing(hex: string): string {
+  const hsl = { h: 0, s: 0, l: 0 }
+  new THREE.Color(hex).getHSL(hsl)
+  return hsl.s > 0.18 ? AIRCRAFT_LOOK.wing : hex
+}
+
 export function slotColor(slot: PaintSlot, livery: Livery): string {
   switch (slot) {
     case 'body':
       return livery.body
     case 'wing':
-      return livery.wing ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.wing)
+      // Solid schemes (military, medevac, freighters) paint the wing with the body.
+      return livery.scheme === 'solid' ? livery.wing ?? livery.body : neutralWing(livery.wing ?? AIRCRAFT_LOOK.wing)
     case 'stripe':
       return livery.stripe
     case 'tail':
@@ -126,6 +141,15 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
       return AIRCRAFT_LOOK.metal
     case 'dark':
       return '#14181d'
+    case 'fan':
+      // Titanium fan blades: light enough that the intake reads as a fan, not a black hole.
+      return '#9ea4ac'
+    case 'duct':
+      return '#3f454d'
+    case 'chrome':
+      return '#d9dde2'
+    case 'lip':
+      return '#c8cdd3'
     case 'glass':
       // Dark smoked glazing: deep blue-grey so the sky probe reads as a glint, not a black hole.
       return '#1c2b3a'
@@ -153,6 +177,10 @@ const SLOT_PBR: Partial<Record<PaintSlot, [number, number]>> = {
   wing: [0.25, 0.5],
   metal: [0.45, 0.38],
   dark: [0.4, 0.55],
+  fan: [0.85, 0.32],
+  duct: [0.55, 0.5],
+  chrome: [0.95, 0.16],
+  lip: [0.8, 0.24],
   glass: [0.55, 0.06],
   rubber: [0, 0.92],
 }
@@ -229,13 +257,20 @@ export function vertexMaterials(
   finish: 'paint' | 'metal' = 'paint',
   airline?: string,
   wearIn = 0,
+  /** 'door': instanced door leaves that shift the fuselage plate UV per instance. */
+  variant: '' | 'door' = '',
 ): { opaque: THREE.Material; fade: THREE.Material } {
   const unlit = tier === 'low'
   const metal = !unlit && finish === 'metal'
   const wear = quantizeWear(wearIn)
   const base = unlit ? 'vc:basic' : metal ? 'vc:metal' : 'vc:standard'
-  const key = `${airline ? `${base}@${airline}` : base}${unlit ? '' : `#w${wear.toFixed(1)}`}`
+  const key = `${airline ? `${base}@${airline}` : base}${unlit ? '' : `#w${wear.toFixed(1)}`}${variant ? `:${variant}` : ''}`
   const make = () => {
+    const m = makeBase()
+    if (variant === 'door') m.defines = { ...(m.defines ?? {}), LIVERY_SHIFT: 1 }
+    return m
+  }
+  const makeBase = () => {
     if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
     const look = wearLook(wear)
     const detail = surfaceDetailMaps()
@@ -245,7 +280,6 @@ export function vertexMaterials(
       normalMap: detail.normal,
       normalScale: new THREE.Vector2(look.normalScale, look.normalScale),
       roughnessMap: detail.roughness,
-      aoMap: detail.roughness,
     }
     if (metal) {
       // Bare cowls and plugs: soot builds faster than on paint.
@@ -253,7 +287,6 @@ export function vertexMaterials(
         ...skin,
         metalness: 0.45,
         roughness: (0.38 + look.roughnessAdd * 0.6) / DETAIL_ROUGH_CLEAN,
-        aoMapIntensity: Math.min(1, 0.25 + look.grime),
       })
     }
     return clearcoatPaint({
@@ -262,12 +295,10 @@ export function vertexMaterials(
       roughness: (AIRCRAFT_LOOK.paint.roughness + look.roughnessAdd) / DETAIL_ROUGH_CLEAN,
       clearcoat: look.clearcoat,
       clearcoatRoughness: look.clearcoatRoughness,
-      aoMapIntensity: look.grime * 0.9,
-      // Chalky, sun-faded paint on tired airframes: a touch lighter and warmer-grey.
-      color: new THREE.Color(1, 1, 1).lerp(new THREE.Color('#f4efe6'), look.chalk * 5).multiplyScalar(1 + look.chalk * 0.4),
     })
   }
   const mat = sharedMat(key, make)
+  mat.userData.airframeWear = unlit ? 0 : wear
   if (!mat.userData.liveryHook) {
     hookLiveryMaterial(mat)
     mat.userData.liveryHook = true
@@ -278,6 +309,7 @@ export function vertexMaterials(
     copy.transparent = true
     copy.opacity = 1
     copy.depthWrite = true
+    copy.userData.airframeWear = unlit ? 0 : wear
     return copy
   })
   if (!fade.userData.liveryHook) {
@@ -333,8 +365,9 @@ export function paintVertexMesh(
   finish: 'paint' | 'metal' | 'gear' = 'paint',
   airline?: string,
   wear = 0,
+  variant: '' | 'door' = '',
 ): PaintedMesh {
-  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish, airline, wear)
+  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish, airline, wear, variant)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque

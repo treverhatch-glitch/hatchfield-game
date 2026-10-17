@@ -156,7 +156,8 @@ function applyMeshes(meshes: PaintedMesh[], weight: number, nearHigh: number) {
       mesh.visible = false
       continue
     }
-    mesh.visible = true
+    // Doorway cuts stay hidden while their leaves are shut (rig.ts poseRig).
+    mesh.visible = mesh.userData.shut !== true
     mesh.material = w >= 0.985 ? mesh.userData.opaqueMat : mesh.userData.fadeMat
   }
 }

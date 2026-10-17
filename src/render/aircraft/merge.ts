@@ -20,6 +20,8 @@ interface ShellSource {
   meshes: PaintedMesh[]
   gears: THREE.Object3D[]
   spinners: THREE.Object3D[]
+  /** Group-space wear mask 0–1 (soot, belly grime, door halos), baked per vertex. */
+  grime?: (x: number, y: number, z: number) => number
 }
 
 function under(mesh: THREE.Object3D, roots: THREE.Object3D[]): boolean {
@@ -89,7 +91,7 @@ export function bakeGeometry(
   const flat = geo.index ? geo.toNonIndexed() : geo
   if (flat !== geo) geo.dispose()
   for (const name of Object.keys(flat.attributes)) {
-    if (name !== 'position' && name !== 'normal' && name !== 'color' && name !== 'liveryUv' && name !== 'liverySlot') {
+    if (name !== 'position' && name !== 'normal' && name !== 'color' && name !== 'liveryUv' && name !== 'liverySlot' && name !== 'grime') {
       flat.deleteAttribute(name)
     }
   }
@@ -130,6 +132,7 @@ export function bakeGeometry(
     flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
   }
   if (!flat.getAttribute('liveryUv')) writeLivery(flat, 'none', undefined, false)
+  if (!flat.getAttribute('grime')) flat.setAttribute('grime', new THREE.BufferAttribute(new Float32Array(pos.count), 1))
   return flat
 }
 
@@ -180,7 +183,13 @@ function takeShell(
       mesh.updateMatrix()
       parts.push(...piecesOf(mesh, mesh.matrix))
     }
-    return mergeParts(parts)
+    const merged = mergeParts(parts)
+    if (frame.grime) {
+      const pos = merged.getAttribute('position')
+      const g = merged.getAttribute('grime') as THREE.BufferAttribute
+      for (let i = 0; i < pos.count; i++) g.setX(i, Math.max(0, Math.min(1, frame.grime(pos.getX(i), pos.getY(i), pos.getZ(i)))))
+    }
+    return merged
   })
   for (const mesh of meshes) {
     mesh.removeFromParent()

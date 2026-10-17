@@ -1,3 +1,4 @@
+import { AIRCRAFT_LOOK } from '../look'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ROSTER, rosterAirline } from '../../airlines/roster'
 import {
@@ -70,7 +71,8 @@ describe('procedural livery spec', () => {
     expect(puddle.motif).toBe('none')
     const paint = rosterLivery('air_regional_1', 'crj700')!
     expect(paint.wing).toBe('#2eb4b0')
-    expect(slotColor('wing', paint)).toBe('#2eb4b0')
+    // The concept palette keeps its brand wing, but the drawn wing is neutralised (no flat mint wings).
+    expect(slotColor('wing', paint)).toBe(AIRCRAFT_LOOK.wing)
     const cheap = procLiverySpec('air_lowcost_1', 'b738')!
     expect(cheap.tail).toBe('#f25c00')
     expect(cheap.crown).toBe('#f7f6f4')

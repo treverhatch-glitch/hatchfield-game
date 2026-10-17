@@ -383,10 +383,13 @@ describe('aircraft model factory', () => {
     // Pass 5: rounder cowls, intake lips, spinner cones and service points add ~1k.
     // Planes v2 (max graphics): 32-sided fuselage loft and 24-sided cylinders add ~4.5k.
     expect(midTris).toBeLessThan(28000)
-    expect(highTris).toBeLessThan(2500)
+    // Planes v2 doors: curved plug/cargo leaves with thickness, inner frame and a window (~1.9k).
+    // Plus a 22-blade twisted fan per engine (~3k), so the intake reads as a fan, not a black hole.
+    expect(highTris).toBeLessThan(6000)
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
     // +~60 shared leg meshes: one per airframe type and leg kind, never per instance or livery.
-    expect(libraryStats().geometries).toBeLessThan(230)
+    // Planes v2: curved door-leaf geometries, shared per airframe type and door cross-section.
+    expect(libraryStats().geometries).toBeLessThan(360)
     expect(libraryStats().materials).toBeLessThan(64)
     for (const aircraft of made) releaseAircraft(aircraft)
   })

@@ -1,11 +1,12 @@
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
-import { doorBoxes } from './stands'
-import { AIRCRAFT_LOOK } from '../look'
-import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { renderDoorBoxes, type DoorBox } from './stands'
+import { bladeGeometry, cylinderSides, fanBladeGeometry, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
 import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
+import { engineLayout } from './layout'
+import { fuselagePaint } from './doorLeaf'
 import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
 import { listedLivery } from './liveryFiles'
@@ -171,47 +172,7 @@ function compose(
 }
 
 function enginePoints(frame: Frame): THREE.Vector3[] {
-  const { spec, wingX, wingY, centerY, nose, tailX } = frame
-  const eng = spec.engines
-  if (eng.count === 0) return []
-  const pts: THREE.Vector3[] = []
-  if (eng.mount === 'nose') {
-    pts.push(new THREE.Vector3(nose - eng.length * 0.15, centerY, 0))
-    return pts
-  }
-  if (eng.mount === 'rear') {
-    // High on the rear fuselage, ahead of the tail cone: CRJ, E-Jet, Citation.
-    const x = tailX + spec.lengthM * 0.22
-    const y = centerY + spec.ry * 0.38
-    const z = spec.rx + eng.radius * 0.42
-    pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
-    return pts
-  }
-  if (eng.mount === 'tail') {
-    const x = tailX + eng.length * 0.35
-    const z = spec.rx * 0.42
-    pts.push(new THREE.Vector3(x, centerY, z), new THREE.Vector3(x, centerY, -z))
-    return pts
-  }
-  const semi = spec.spanM / 2
-  // Inboard pair for quads (747, A380, C-130). Narrowbody twins sit closer to the root than widebody twins.
-  const fracs = eng.count === 4 ? [0.25, 0.52] : [spec.spanM >= 55 ? 0.34 : 0.3]
-  const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
-  const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
-  const fan = eng.kind !== 'turboprop'
-  for (const frac of fracs) {
-    const z = semi * frac
-    // Follow the swept, dihedral leading edge so the pod hangs under the wing, not behind it.
-    const chordAt = spec.rootChord + (spec.tipChord - spec.rootChord) * frac
-    const le = wingX + spec.rootChord / 2 - tanSweep * z
-    const wy = wingY + tanDih * z
-    const x = fan ? le + eng.length * 0.12 : le - chordAt * 0.15 + eng.length * 0.2
-    const y = spec.wingHigh
-      ? (fan ? wy - eng.radius * 1.15 : wy - eng.radius * 0.2)
-      : (fan ? wy - eng.radius * 1.3 - spec.thickness * 0.2 : wy + eng.radius * 0.1)
-    pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
-  }
-  return pts
+  return engineLayout(frame.spec)
 }
 
 function addInstances(
@@ -256,15 +217,6 @@ function addFuselage(frame: Frame) {
   }
 }
 
-/** Crown, airline band and belly colours for the fuselage loft. */
-function fuselagePaint(livery: Livery): { crown: string; body: string; belly: string } {
-  // Solid schemes keep a darker shade of the body; two-tone jets get a polished light belly.
-  const belly = livery.scheme === 'solid'
-    ? `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
-    : `#${new THREE.Color(AIRCRAFT_LOOK.polishedBelly).lerp(new THREE.Color(livery.body), 0.1).getHexString()}`
-  const crown = livery.crown ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown)
-  return { crown, body: livery.body, belly }
-}
 
 function addWing(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
@@ -433,14 +385,15 @@ function addEngines(frame: Frame) {
         eng.radius * 0.8,
       ),
     )
-    addInstances(frame, unitCylinder(sides), discs, 'dark', 'mesh', 'fan-disc')
+    addInstances(frame, unitCylinder(sides), discs, fanPod ? 'duct' : 'dark', 'mesh', 'fan-disc')
     if (fanPod) {
       // Separate spinner cone on the fan face and a bright rolled intake lip.
-      const cones = pts.map((p) => compose(p.x + eng.length * 0.3, p.y, p.z, 0, 0, 0, eng.radius * 0.5, eng.radius * 0.3, eng.radius * 0.3))
-      const cone = addInstances(frame, spinnerConeGeometry(), cones, 'metal', 'mesh', 'spinner')
+      // Silver spinner seated on the fan hub, its tip still inside the intake lip.
+      const cones = pts.map((p) => compose(p.x + eng.length * 0.41, p.y, p.z, 0, 0, 0, Math.min(eng.radius * 0.42, eng.length * 0.08), eng.radius * 0.25, eng.radius * 0.25))
+      const cone = addInstances(frame, spinnerConeGeometry(), cones, 'chrome', 'mesh', 'spinner')
       if (cone) cone.name = 'spinner'
       const lips = pts.map((p) => compose(p.x + eng.length * 0.5, p.y, p.z, 0, 0, 0, eng.radius * 0.99, eng.radius * 0.99, eng.radius * 0.99))
-      const lip = addInstances(frame, intakeLipGeometry(), lips, 'metal', 'mesh', 'intake-lip')
+      const lip = addInstances(frame, intakeLipGeometry(), lips, 'lip', 'mesh', 'intake-lip')
       if (lip) lip.name = 'intake-lip'
     }
   }
@@ -465,9 +418,8 @@ function addPropBlades(
   eng: EngineSpec,
   name: 'prop' | 'fan',
 ) {
-  const blades = name === 'fan' ? 8 : Math.max(4, frame.spec.blades || 4)
+  const blades = name === 'fan' ? (eng.kind === 'turbojet' ? 18 : 22) : Math.max(4, frame.spec.blades || 4)
   const radius = name === 'fan' ? eng.radius * 0.78 : eng.radius * 3.05
-  const geo = unitBox()
   for (const p of pts) {
     const hub = new THREE.Group()
     hub.name = name
@@ -475,6 +427,12 @@ function addPropBlades(
     const matrices: THREE.Matrix4[] = []
     for (let i = 0; i < blades; i++) {
       const angle = (i / blades) * Math.PI * 2
+      if (name === 'fan') {
+        // Twisted wide-chord blades filling the duct (fan radius ≈ duct inner wall).
+        const R = eng.radius * 0.83
+        matrices.push(compose(0, 0, 0, angle, 0, 0, R, R, R))
+        continue
+      }
       matrices.push(
         compose(
           0,
@@ -483,16 +441,16 @@ function addPropBlades(
           angle,
           0,
           0,
-          name === 'fan' ? 0.06 : 0.1,
+          0.1,
           radius * 0.92,
-          name === 'fan' ? 0.14 : 0.22,
+          0.22,
         ),
       )
     }
-    const mesh = new THREE.InstancedMesh(name === 'prop' ? bladeGeometry() : geo, new THREE.MeshBasicMaterial(), blades)
+    const mesh = new THREE.InstancedMesh(name === 'prop' ? bladeGeometry() : fanBladeGeometry(), new THREE.MeshBasicMaterial(), blades)
     matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
     mesh.instanceMatrix.needsUpdate = true
-    const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', frame.tier)
+    const painted = paintMesh(mesh, name === 'fan' ? 'fan' : 'dark', frame.livery, 'mesh', frame.tier)
     hub.add(painted)
     frame.meshes.push(painted)
     frame.group.add(hub)
@@ -769,18 +727,34 @@ function addWindows(frame: Frame) {
 /** Pack door stations, one instanced mesh. Close LOD only. */
 function addRealDoors(frame: Frame) {
   if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
-  const boxes = doorBoxes(frame.spec)
+  const boxes = renderDoorBoxes(frame.spec)
   // Ramps and belly doors keep the plain dark cut; side doors get a framed doorway with
   // a cabin glimpse, seen when the leaf swings open.
   const plain = boxes.filter((b) => b.door.side === 0)
   if (plain.length) {
     addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
   }
+  for (const cargo of [false, true]) addDoorways(frame, boxes.filter((b) => b.door.side !== 0 && (b.door.kind === 'cargo') === cargo), cargo)
+}
+
+/** Side half-width of the real loft at (x, y): where a door leaf or doorway meets the skin. */
+function sideSkin(frame: Frame, x: number, y: number): number {
+  const { spec } = frame
+  const t = Math.max(0, Math.min(1, (frame.nose - x) / spec.lengthM))
+  const st = loftStation(loftFamily(spec), t)
+  const k = (y - (frame.centerY + spec.ry * st.dy)) / spec.ry
+  return spec.rx * Math.sqrt(Math.max(0.0004, st.r * st.r - k * k))
+}
+
+/**
+ * Framed doorway cut with a cabin glimpse, seated on the actual skin. Hidden while the leaf is
+ * shut (the leaf then reads flush with a thin seam); the rig shows it as soon as the door cracks.
+ */
+function addDoorways(frame: Frame, boxes: DoorBox[], cargo: boolean) {
   const parts = boxes
-    .filter((b) => b.door.side !== 0)
     .map((b) => {
       const g = doorwayGeometry(b.w, b.h)
-      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
+      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * (sideSkin(frame, b.x, b.y) - 0.012))
       if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
       g.applyMatrix4(m)
       if (b.door.side < 0) {
@@ -802,8 +776,9 @@ function addRealDoors(frame: Frame) {
     })
   if (parts.length) {
     const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
-    mesh.name = 'doorways'
+    mesh.name = cargo ? 'doorways-cargo' : 'doorways'
     mesh.userData.ownGeo = true
+    mesh.userData.reveal = cargo ? 'cargo' : 'door'
     parts.forEach((g) => g.dispose())
     frame.group.add(mesh)
     frame.meshes.push(mesh)
@@ -1461,6 +1436,56 @@ function addHeloLights(frame: Frame) {
   frame.lamps.push(paintedStrobe)
 }
 
+/**
+ * Where wear shows on this airframe, in group-space metres. Soft, low-contrast fields:
+ * soot running aft of each engine exhaust and the APU, grime along the lower fuselage and
+ * belly, and dirty halos round doors, hatches and the wing roots. The fin stays clean.
+ */
+function grimeMask(frame: Frame): ((x: number, y: number, z: number) => number) | undefined {
+  if (frame.tier === 'low') return undefined
+  const { spec, centerY, wingX, tailX } = frame
+  const engines = spec.engines.count ? enginePoints(frame) : []
+  const doors = renderDoorBoxes(spec).filter((b) => b.door.side !== 0)
+  const finRoot = frame.top
+  const smooth = (a: number, b: number, v: number) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
+  return (x, y, z) => {
+    if (y > finRoot + 0.2 && Math.abs(z) < spec.rx * 0.6 && x < tailX + spec.lengthM * 0.2) return 0
+    const onBody = Math.abs(z) <= spec.rx * 1.15
+    let g = 0
+    // Belly and lower fuselage staining.
+    if (onBody) g = Math.max(g, 0.55 * smooth(centerY - spec.ry * 0.15, centerY - spec.ry * 0.95, y))
+    // Wing-root halo.
+    const dxw = Math.abs(x - wingX) / Math.max(1, spec.rootChord * 0.7)
+    const dzw = Math.abs(Math.abs(z) - spec.rx) / 1.6
+    g = Math.max(g, 0.5 * Math.max(0, 1 - Math.hypot(dxw, dzw)))
+    // Door and hatch halos on the skin.
+    for (const b of doors) {
+      if (Math.sign(z) !== b.door.side) continue
+      const ex = Math.max(0, Math.abs(x - b.x) - b.w / 2)
+      const ey = Math.max(0, Math.abs(y - b.y) - b.h / 2)
+      const d = Math.hypot(ex, ey)
+      const k = b.door.kind === 'cargo' ? 0.75 : 0.55
+      g = Math.max(g, k * Math.max(0, 1 - d / 0.45) * (ex + ey > 0 ? 1 : 0.3))
+    }
+    // Exhaust soot wakes: aft of each engine, widening and fading over ~14 m.
+    for (const p of engines) {
+      const aft = p.x - spec.engines.length * 0.5 - x
+      if (aft < -0.3) continue
+      const along = Math.max(0, aft)
+      const width = spec.engines.radius * (1.1 + along * 0.06)
+      const dz = Math.abs(z - p.z) / width
+      const dy = Math.abs(y - p.y) / (width * 1.6)
+      g = Math.max(g, 0.85 * Math.max(0, 1 - Math.hypot(dz, dy)) * Math.max(0, 1 - along / 14))
+    }
+    // APU exhaust at the tail cone.
+    if (x < tailX + 3.5 && onBody) g = Math.max(g, 0.7 * smooth(tailX + 3.5, tailX, x))
+    return g
+  }
+}
+
 function paintForAirframe(paint: Livery, modelId: string): Livery {
   return selectLivery(paint, modelId)
 }
@@ -1490,10 +1515,18 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addRealDoors(frame)
     addServicePoints(frame)
     addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
+    for (const set of frame.rigs) {
+      set.reveal = frame.group.children.find((o) => o.userData.reveal === set.kind)
+      if (set.reveal) {
+        set.reveal.visible = false
+        set.reveal.userData.shut = true
+      }
+    }
     addLights(frame)
   }
   attachLandingGlow(frame)
   mergeStaticShell({
+    grime: grimeMask(frame),
     tier: frame.tier,
     specId: frame.spec.id,
     livery: frame.livery,
