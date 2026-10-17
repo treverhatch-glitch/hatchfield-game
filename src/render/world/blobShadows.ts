@@ -22,11 +22,13 @@ export interface BlobCaster {
 }
 
 export const BLOB_LOOK = {
-  day: 0.7,
-  night: 0.36,
+  day: 0.9,
+  night: 0.55,
   y: 0.05,
   /** Max ground offset as a multiple of caster height. */
   maxOffset: 2.2,
+  /** Minimum sun-side spill (× caster height) so a shadow still shows beside the body under a high sun. */
+  minSpill: 0.45,
 } as const
 
 let sharedTex: THREE.DataTexture | null = null
@@ -115,12 +117,24 @@ export class BlobShadows {
     for (let i = 0; i < n; i++) {
       const c = list[i]
       const lift = c.lift ?? 0
-      const k = Math.min(c.height * 0.55 + lift, BLOB_LOOK.maxOffset * Math.max(c.height, 0.01) + lift)
+      const k = Math.min(c.height * 0.9 + lift, BLOB_LOOK.maxOffset * Math.max(c.height, 0.01) + lift)
       // Shadow falls away from the sun; airborne casters shrink and fade with height.
       const shrink = 1 / (1 + lift * 0.12)
-      this.dummy.position.set(c.x + ox * k, c.y - lift + BLOB_LOOK.y, c.z + oz * k)
+      // Under a near-overhead sun the projected offset collapses and the blob hides under the body;
+      // keep a minimum spill along the sun's ground heading (or a fixed SE lean if it is straight up).
+      let gx = ox * k
+      let gz = oz * k
+      const g = Math.hypot(gx, gz)
+      const minG = BLOB_LOOK.minSpill * c.height * (1 / (1 + lift * 0.12))
+      if (g < minG) {
+        const hx = g > 1e-4 ? gx / g : 0.6
+        const hz = g > 1e-4 ? gz / g : 0.8
+        gx = hx * minG
+        gz = hz * minG
+      }
+      this.dummy.position.set(c.x + gx, c.y - lift + BLOB_LOOK.y, c.z + gz)
       this.dummy.rotation.set(0, c.yaw, 0)
-      this.dummy.scale.set((c.length * 1.2 + c.height * 0.5) * shrink, 1, (c.width * 1.45 + c.height * 0.3) * shrink)
+      this.dummy.scale.set((c.length * 1.25 + c.height * 0.7) * shrink, 1, (c.width * 1.6 + c.height * 0.55) * shrink)
       this.dummy.updateMatrix()
       this.mesh.setMatrixAt(i, this.dummy.matrix)
       this.fade.setX(i, (c.alpha ?? 1) * Math.min(1, shrink * shrink * 1.1))
