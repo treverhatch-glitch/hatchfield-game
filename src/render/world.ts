@@ -2145,6 +2145,20 @@ export class World {
       game.staffWalkers(),
       toWorld,
     )
+
+    for (const v of this.vehicleFrame) {
+      let op = baseOp
+      if (shadowMapActive) op *= 0.15
+      shadows.push({
+        x: v.x,
+        z: v.z,
+        sx: v.size[0] * v.scale,
+        sz: v.size[2] * v.scale,
+        r: v.yaw,
+        opacity: op
+      })
+    }
+    this.groundShadows.sync(shadows)
   }
 
   /** Ghost meshes are rebuilt per hover. Dispose every geometry and cloned material. */
