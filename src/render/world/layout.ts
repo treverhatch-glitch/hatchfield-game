@@ -969,6 +969,8 @@ const ROAD_LINES = (() => {
 
 export function roadPaint(view: WorldView): Paint[] {
   const out: Paint[] = []
+  const toWorld = CELL / LANDSIDE.cellM
+  const laybyW = LANDSIDE.laybyWidthM * toWorld
   for (let r = 0; r < view.tiles.length; r++) {
     for (let c = 0; c < view.tiles[r].length; c++) {
       if (view.tiles[r][c] !== 'road') continue
@@ -983,7 +985,8 @@ export function roadPaint(view: WorldView): Paint[] {
           const lines: { off: number; color: 'yellow' | 'white'; solid: boolean }[] = [
             { off: ROAD_LINES.median, color: 'yellow', solid: true },
             ...ROAD_LINES.dividers.map((off) => ({ off, color: 'white' as const, solid: false })),
-            { off: ROAD_LINES.edge, color: 'white', solid: true },
+            { off: ROAD_LINES.edge, color: 'white', solid: false },
+            { off: ROAD_LINES.edge + laybyW, color: 'white', solid: true },
           ]
           for (const line of lines) {
             const len = line.solid ? CELL * 0.5 : 1.15
