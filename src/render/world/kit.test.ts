@@ -20,6 +20,11 @@ describe('terminal prop kit', () => {
     expect(people.legL).not.toBe(people.legR)
     expect(people.torso).not.toBe(people.body)
     expect(people.head).not.toBe(people.torso)
+
+    // Assert increased geometric detail from head/neck/shoulders/hair cap
+    expect(people.torso.getAttribute('position').count).toBeGreaterThan(120)
+    expect(people.head.getAttribute('position').count).toBeGreaterThan(120)
+
     expect(walkSwing(0.4, 1)).toBeCloseTo(-walkSwing(0.4, 1 + Math.PI))
 
     for (const geo of [people.body, people.torso, people.legL, people.legR, people.head, people.bag]) geo.dispose()

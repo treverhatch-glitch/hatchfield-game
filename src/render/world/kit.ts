@@ -169,19 +169,26 @@ export const FIGURE_HIP_Y = 0.3
 
 /** ~0.9 tall standing figure; seated figures reuse it with a squashed y scale. */
 export function peopleGeo(): PeopleGeo {
-  const torso = box(0.32, 0.34, 0.18, 0, 0.52, 0)
+  const torso = cyl(0.16, 0.12, 0.34, 8, 0, 0.52, 0)
+  const shoulders = box(0.36, 0.1, 0.16, 0, 0.64, 0)
+  const neck = cyl(0.04, 0.04, 0.1, 6, 0, 0.72, 0)
   const pelvis = box(0.28, 0.1, 0.16, 0, 0.32, 0)
-  const leg = box(0.1, 0.28, 0.11, 0, -0.14, 0)
+  const leg = cyl(0.05, 0.04, 0.28, 6, 0, -0.14, 0)
   const legL = leg
   const legR = leg.clone()
   const body = merge([
     torso.clone(),
     pelvis.clone(),
+    shoulders.clone(),
+    neck.clone(),
     leg.clone().translate(-FIGURE_HIP_X, FIGURE_HIP_Y, 0),
     leg.clone().translate(FIGURE_HIP_X, FIGURE_HIP_Y, 0),
   ])
-  const upper = merge([torso, pelvis])
-  const head = new THREE.SphereGeometry(0.105, 8, 6)
+  const upper = merge([torso, pelvis, shoulders, neck])
+  const skull = new THREE.SphereGeometry(0.105, 8, 6)
+  const hair = new THREE.SphereGeometry(0.11, 7, 4, 0, Math.PI * 2, 0, Math.PI * 0.5)
+  hair.translate(0, 0.04, -0.01)
+  const head = merge([skull, hair])
   head.translate(0, 0.77, 0)
   // Roller case tipped onto its wheels, handle leaning toward the walker (+z).
   const bag = merge([
@@ -347,7 +354,7 @@ export function propParts(): Record<string, PropPart[]> {
   }
 }
 
-export const PAX_COLORS = [0xc0392b, 0x2e86c1, 0x27ae60, 0xd4ac0d, 0x8e44ad, 0xe67e22, 0x5d6d7e, 0xecf0f1]
+export const PAX_COLORS = [0xc0392b, 0x2e86c1, 0x27ae60, 0xd4ac0d, 0x8e44ad, 0xe67e22, 0x5d6d7e, 0xecf0f1, 0x3498db, 0x1abc9c, 0x9b59b6]
 export const TROUSER_COLORS = [0x243044, 0x3a332c, 0x2c3a32, 0x1c2838, 0x4a3a32]
 export const SKIN_COLORS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac]
 export const STAFF_COLOR = 0x1f3a5f
