@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
+import { screensDir } from '../test/screens.ts'
 
 const CHROME_PATHS = [
   process.env.PLAYWRIGHT_CHROME,
@@ -110,8 +112,8 @@ describe('alert stack', () => {
           expect(await phone.innerText()).not.toMatch(/Fuel farm is empty|VIP visit|emergency/i)
         }
 
-        mkdirSync('docs/screens/ui-audit', { recursive: true })
-        await page.screenshot({ path: 'docs/screens/ui-audit/alerts-bottom-right.png' })
+        const shots = screensDir('ui-audit')
+        await page.screenshot({ path: join(shots, 'alerts-bottom-right.png') })
       } finally {
         await browser.close()
       }

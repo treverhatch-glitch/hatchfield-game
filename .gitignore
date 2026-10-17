@@ -26,3 +26,6 @@ dist-ssr
 # unpacked at build time by scripts/unpack-art.mjs
 public/art/textures/buildings/*.jpg
 public/art/refs/airlines/*.jpg
+
+# Vitest e2e screenshots (set UPDATE_SCREENS=1 to refresh the tracked docs/screens copies)
+test-output/

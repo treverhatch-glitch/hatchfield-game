@@ -1,7 +1,9 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
+import { screensDir } from '../test/screens.ts'
 
 const CHROME_PATHS = [process.env.PLAYWRIGHT_CHROME, '/usr/bin/google-chrome', '/usr/local/bin/google-chrome'].filter(
   (path): path is string => Boolean(path),
@@ -93,8 +95,8 @@ describe('hall restock screens', () => {
         expect(aimed.carts).toBe(0)
         expect(aimed.dist).toBe(9)
         await page.waitForTimeout(250)
-        mkdirSync('docs/screens/g1', { recursive: true })
-        await page.screenshot({ path: 'docs/screens/g1/cart-docked.png' })
+        const shots = screensDir('g1')
+        await page.screenshot({ path: join(shots, 'cart-docked.png') })
 
         await page.evaluate(() => {
           const game = (window as unknown as { __hatch: Hatch }).__hatch
@@ -104,7 +106,7 @@ describe('hall restock screens', () => {
         })
         await page.getByTestId('info-view-panel').waitFor({ state: 'visible' })
         expect(await page.getByTestId('info-view-panel').innerText()).toMatch(/Out of stock, restock run \d+ s away/)
-        await page.screenshot({ path: 'docs/screens/g1/out-of-stock.png' })
+        await page.screenshot({ path: join(shots, 'out-of-stock.png') })
       } finally {
         await browser.close()
       }
