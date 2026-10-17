@@ -22,6 +22,7 @@ import type { MenuSection } from './ui/menu/sections'
 import type { StartFocus } from './game/types'
 import { applyStoredAudio, bindUiClicks, installGestureUnlock, preloadAudioClips, watchAudioSettings } from './audio'
 import { tickLiveFeedback } from './feedback/live.ts'
+import { scheduler } from './core/schedule.ts'
 import { FeedbackChrome } from './feedback/ui/FeedbackChrome.tsx'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -381,6 +382,7 @@ export default function App() {
         try {
           game.tick(dt)
           tickLiveFeedback(game)
+          scheduler.drain(3)
         } catch (err) {
           console.error('tick failed', err)
         }
