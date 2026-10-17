@@ -8,25 +8,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
+import { withSeed } from '../test/withSeed.ts'
 
 const SEED = 1
 const DAY_SEC = 180
 /** Stop here if the hall has not choked. Past this, the starter never bites. */
 const HORIZON_DAYS = 16
-
-function withSeed<T>(seed: number, run: () => T): T {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    return run()
-  } finally {
-    Math.random = orig
-  }
-}
 
 function facilityChoke(game: Game): { kind: string; count: number; waitSec: number } | null {
   for (const row of game.hallNav.loads()) {

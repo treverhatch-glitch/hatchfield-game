@@ -4,6 +4,7 @@ import { FIRST_LETTER_COOL, FIRST_SLOT_GAP } from './openingData.ts'
 import { runwayExitCells } from './tips.ts'
 import { Game } from './sim.ts'
 import type { Phase } from './types.ts'
+import { withSeed } from '../test/withSeed.ts'
 
 /**
  * Real seconds at 1×. The first contract flight has to be on the ground
@@ -23,20 +24,6 @@ const LANDED: ReadonlySet<Phase> = new Set([
   'takeoff',
   'gone',
 ])
-
-function withSeed(seed: number, run: () => void) {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    run()
-  } finally {
-    Math.random = orig
-  }
-}
 
 /** Eager new game: stamp the chosen kit, sign the first letter, run at 1×. */
 function firstLandingSec(seed: number, focus: 'pax' | 'cargo'): number | null {

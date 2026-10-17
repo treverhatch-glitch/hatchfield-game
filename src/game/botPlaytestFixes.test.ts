@@ -4,20 +4,7 @@ import { Game } from './sim.ts'
 import { itemDef } from './terminal.ts'
 import { arrivalKeys, createPhoneShell, flashPreview, letterOnStack, phoneSync } from '../phone/logic.ts'
 import { readPhoneCards } from '../phone/readGame.ts'
-
-function withSeed(seed: number, run: () => void) {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    run()
-  } finally {
-    Math.random = orig
-  }
-}
+import { withSeed } from '../test/withSeed.ts'
 
 function passengerField(): Game {
   const game = new Game()
