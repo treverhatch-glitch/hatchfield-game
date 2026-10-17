@@ -165,14 +165,18 @@ function decalMaterial(map: THREE.Texture | null): THREE.Material {
 
 /** Earth ring around one tank. The first segment carries the name. */
 function earthBerm(g: THREE.Group, x: number, z: number, radius: number, mat: THREE.Material, name?: string) {
-  const n = 8
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2
-    const wall = based(0.62, 0.55, radius * 0.72, mat, x + Math.cos(a) * radius, 0.04, z + Math.sin(a) * radius)
-    wall.rotation.y = -a
-    if (i === 0 && name) wall.name = name
-    g.add(wall)
-  }
+  const pts = [
+    new THREE.Vector2(radius, 0),
+    new THREE.Vector2(radius - 0.2, 0.55),
+    new THREE.Vector2(radius - 0.35, 0.55),
+    new THREE.Vector2(radius - 0.6, 0),
+  ]
+  const wall = new THREE.Mesh(metreUv(new THREE.LatheGeometry(pts, 18), 4, WORLD_PER_METER), mat)
+  wall.position.set(x, 0.04, z)
+  wall.receiveShadow = true
+  wall.castShadow = true
+  if (name) wall.name = name
+  g.add(wall)
 }
 
 /**
@@ -215,45 +219,123 @@ export function addFuelFarm(g: THREE.Group) {
   ]
   for (const [x, z, r, h, name] of tanks) {
     earthBerm(g, x, z, r + 0.42, earth, name ? 'fuel-berm' : undefined)
-    const body = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(r, r, h, 18), SKIN_TILE_M.tank, WORLD_PER_METER), shell)
+    const body = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(r, r, h, 32), SKIN_TILE_M.tank, WORLD_PER_METER), shell)
     body.position.set(x, 0.3 + h / 2, z)
     body.castShadow = true
     if (name) body.name = name
     const phi = Math.PI * 0.16
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, name ? 32 : 16, name ? 8 : 5, 0, Math.PI * 2, 0, phi), shell)
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 8, 0, Math.PI * 2, 0, phi), shell)
     dome.position.set(x, 0.3 + h - r * Math.cos(phi), z)
     dome.castShadow = true
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.12, 18), bandMat)
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.12, 32), bandMat)
     band.position.set(x, 0.3 + h * 0.8, z)
-    const rail = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, 0.03, 4, 18), dark)
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, 0.03, 4, 32), dark)
     rail.rotation.x = Math.PI / 2
     rail.position.set(x, 0.3 + h + 0.18, z)
-    g.add(body, dome, band, rail)
+    const hatch = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.15, r * 0.15, 0.05, 12), dark)
+    hatch.position.set(x, 0.3 + h + 0.08, z)
+    const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.2, 8), dark)
+    vent.position.set(x + r * 0.4, 0.3 + h + 0.1, z)
+    const roofHandrail = new THREE.Mesh(new THREE.TorusGeometry(r * 0.9, 0.02, 4, 32), dark)
+    roofHandrail.rotation.x = Math.PI / 2
+    roofHandrail.position.set(x, 0.3 + h + 0.2, z)
+    g.add(body, dome, band, rail, hatch, vent, roofHandrail)
     if (name) {
-      for (let i = 0; i < 6; i++) {
-        const a = 0.4 + i * 0.45
-        const px = x + Math.cos(a) * (r + 0.12)
-        const py = 0.3 + (h / 6) * i
-        const pz = z + Math.sin(a) * (r + 0.12)
-        const step = based(0.32, 0.05, 0.2, dark, px, py, pz)
-        step.rotation.y = -a
-        g.add(step)
-        if (i > 1) {
-          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 5, 12, Math.PI), dark)
+      const roofRim = 0.3 + h
+      const treads = 8
+      const aStart = 0.4
+      const aStep = 0.45
+      const stepH = h / treads
+      const tr = r + 0.16
+      for (let i = 0; i <= treads; i++) {
+        const a = aStart + i * aStep
+        const py = 0.3 + stepH * i
+        const bx = x + Math.cos(a) * (r + 0.08)
+        const bz = z + Math.sin(a) * (r + 0.08)
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.04), dark)
+        bracket.position.set(bx, py, bz)
+        bracket.rotation.y = -a
+        g.add(bracket)
+
+        const px = x + Math.cos(a) * tr
+        const pz = z + Math.sin(a) * tr
+        if (i < treads) {
+          const step = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.16), dark)
+          step.position.set(px, py, pz)
+          step.rotation.y = -a
+          g.add(step)
+
+          const aNext = aStart + (i + 1) * aStep
+          const nx = x + Math.cos(aNext) * (tr + 0.14)
+          const ny = py + stepH
+          const nz = z + Math.sin(aNext) * (tr + 0.14)
+          const ox = x + Math.cos(a) * (tr + 0.14)
+          const oz = z + Math.sin(a) * (tr + 0.14)
+
+          const dist = Math.hypot(nx - ox, ny - py, nz - oz)
+          const midX = (nx + ox) / 2
+          const midY = (ny + py) / 2
+          const midZ = (nz + oz) / 2
+          const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.04, dist, 0.04), dark)
+          stringer.position.set(midX, midY, midZ)
+          stringer.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(nx - ox, ny - py, nz - oz).normalize()
+          )
+          stringer.name = 'fuel-cage-rail'
+          g.add(stringer)
+
+          let hrBottom = py + 0.9
+          let hrTop = ny + 0.9
+          if (hrBottom > roofRim) hrBottom = roofRim
+          if (hrTop > roofRim) hrTop = roofRim
+          const hrDist = Math.hypot(nx - ox, hrTop - hrBottom, nz - oz)
+          if (hrDist > 0.01) {
+            const handrail = new THREE.Mesh(new THREE.BoxGeometry(0.04, hrDist, 0.04), dark)
+            handrail.position.set(midX, (hrTop + hrBottom) / 2, midZ)
+            handrail.quaternion.setFromUnitVectors(
+              new THREE.Vector3(0, 1, 0),
+              new THREE.Vector3(nx - ox, hrTop - hrBottom, nz - oz).normalize()
+            )
+            handrail.name = 'fuel-cage-rail'
+            g.add(handrail)
+          }
+
+          const postH = hrBottom - py
+          if (postH > 0) {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, postH, 0.04), dark)
+            post.position.set(ox, py + postH / 2, oz)
+            post.name = 'fuel-cage-rail'
+            g.add(post)
+          }
+        } else {
+          const landing = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.3), dark)
+          landing.position.set(px, py, pz)
+          landing.rotation.y = -a
+          g.add(landing)
+
+          const hr = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.04), dark)
+          const hx = x + Math.cos(a) * (tr + 0.13)
+          const hz = z + Math.sin(a) * (tr + 0.13)
+          hr.position.set(hx, py + 0.2, hz)
+          hr.rotation.y = -a
+          hr.name = 'fuel-cage-rail'
+          g.add(hr)
+        }
+
+        if (i >= 2 && i % 2 === 0 && i < treads) {
+          const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.03, 4, 12, Math.PI), dark)
           hoop.rotation.order = 'YXZ'
           hoop.rotation.y = -a - Math.PI / 2
           hoop.rotation.x = Math.PI / 2
-          hoop.position.set(px, py, pz)
+          const hx = x + Math.cos(a) * (tr + 0.05)
+          const hz = z + Math.sin(a) * (tr + 0.05)
+          let hoopY = py + 0.9
+          if (hoopY > roofRim) hoopY = roofRim
+          hoop.position.set(hx, hoopY, hz)
+          hoop.name = 'fuel-cage-hoop'
           g.add(hoop)
         }
-      }
-      for (const da of [-0.4, 0, 0.4]) {
-        const railA = 0.4 + 3.5 * 0.45 + da
-        const railX = x + Math.cos(railA) * (r + 0.4)
-        const railZ = z + Math.sin(railA) * (r + 0.4)
-        const rail = based(0.04, (h / 6) * 4, 0.04, dark, railX, 0.3 + (h / 6) * 3.5, railZ)
-        rail.rotation.y = -railA
-        g.add(rail)
       }
     }
   }
