@@ -335,8 +335,8 @@ export function wingGeometry(
 
 export function cylinderSides(tier: 'low' | 'mid' | 'high'): number {
   if (tier === 'low') return 8
-  if (tier === 'mid') return 12
-  return 18
+  if (tier === 'mid') return 24
+  return 32
 }
 
 export function fuselageSides(tier: 'low' | 'mid'): number {
@@ -418,13 +418,15 @@ export function nacelleGeometry(sides: number): THREE.BufferGeometry {
     const pts = prof.map(([r, y]) => new THREE.Vector2(r, y))
     const geo = new THREE.LatheGeometry(pts, Math.max(32, sides * 3))
     geo.computeVertexNormals()
+    // Livery bake keeps the lip, fan face and plug in bare metal (merge.ts).
+    geo.userData.nacelle = true
     return geo
   })
 }
 
 /** Oval cabin window decal facing +Z, 10 triangles. Scale is (width, height, 1). */
 export function windowGeometry(): THREE.BufferGeometry {
-  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 10))
+  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 18))
 }
 
 /**

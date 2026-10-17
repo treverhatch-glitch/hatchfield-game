@@ -125,7 +125,8 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     case 'dark':
       return '#14181d'
     case 'glass':
-      return '#0c141c'
+      // Dark smoked glazing: deep blue-grey so the sky probe reads as a glint, not a black hole.
+      return '#1c2b3a'
     case 'rubber':
       return '#1a1c1e'
     case 'navRed':
@@ -150,8 +151,20 @@ const SLOT_PBR: Partial<Record<PaintSlot, [number, number]>> = {
   wing: [0.25, 0.5],
   metal: [0.45, 0.38],
   dark: [0.4, 0.55],
-  glass: [0.2, 0.08],
+  glass: [0.55, 0.06],
   rubber: [0, 0.92],
+}
+
+/** Painted skin slots that get the clear-coat sheen. */
+const CLEARCOAT_SLOTS = new Set<PaintSlot>(['body', 'stripe', 'tail', 'glass'])
+
+/** Gloss airline paint: PBR base plus a thin clear coat that catches the sun and sky probe. */
+export function clearcoatPaint(params: THREE.MeshPhysicalMaterialParameters): THREE.MeshPhysicalMaterial {
+  return new THREE.MeshPhysicalMaterial({
+    clearcoat: AIRCRAFT_LOOK.clearcoat.amount,
+    clearcoatRoughness: AIRCRAFT_LOOK.clearcoat.roughness,
+    ...params,
+  })
 }
 
 function isLamp(slot: PaintSlot): boolean {
@@ -203,36 +216,47 @@ export function gearMaterials(tier: 'low' | 'mid'): { opaque: THREE.Material; fa
   return { opaque, fade }
 }
 
+/**
+ * Baked-shell materials. Livery plates are bound as uniforms in onBeforeRender, and
+ * three only re-uploads material uniforms when the material changes between draws, so
+ * two airlines sharing one material could draw each other's plates (or a blank engine
+ * plate). Each airline therefore gets its own material; the program stays shared.
+ */
 export function vertexMaterials(
   tier: 'low' | 'mid',
   finish: 'paint' | 'metal' = 'paint',
+  airline?: string,
 ): { opaque: THREE.Material; fade: THREE.Material } {
   const unlit = tier === 'low'
   const metal = !unlit && finish === 'metal'
-  const key = unlit ? 'vc:basic' : metal ? 'vc:metal' : 'vc:standard'
-  const mat = sharedMat(key, () => {
+  const base = unlit ? 'vc:basic' : metal ? 'vc:metal' : 'vc:standard'
+  const key = airline ? `${base}@${airline}` : base
+  const make = () => {
     if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
-    // Nacelles stay Lambert so the close view compiles one physical shader, on the painted shell.
     if (metal) return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 })
-    return new THREE.MeshStandardMaterial({
+    return clearcoatPaint({
       vertexColors: true,
       metalness: AIRCRAFT_LOOK.paint.metalness,
       roughness: AIRCRAFT_LOOK.paint.roughness,
     })
-  })
+  }
+  const mat = sharedMat(key, make)
   if (!mat.userData.liveryHook) {
     hookLiveryMaterial(mat)
     mat.userData.liveryHook = true
   }
   const fade = sharedMat(`fade:${key}`, () => {
-    const copy = mat.clone()
+    // Built fresh, not cloned: a clone would copy the livery flags but not the shader hook.
+    const copy = make()
     copy.transparent = true
     copy.opacity = 1
     copy.depthWrite = true
-    hookLiveryMaterial(copy)
-    copy.userData.liveryHook = true
     return copy
   })
+  if (!fade.userData.liveryHook) {
+    hookLiveryMaterial(fade)
+    fade.userData.liveryHook = true
+  }
   return { opaque: mat, fade }
 }
 
@@ -249,6 +273,7 @@ export function paintMesh(
   const mat = sharedMat(key, () => {
     if (unlit) return new THREE.MeshBasicMaterial({ color })
     const [metalness, roughness] = SLOT_PBR[slot] ?? [0.08, 0.4]
+    if (CLEARCOAT_SLOTS.has(slot)) return clearcoatPaint({ color, metalness, roughness })
     return new THREE.MeshStandardMaterial({ color, metalness, roughness })
   })
   mesh.userData.paint = color
@@ -279,8 +304,9 @@ export function paintVertexMesh(
   tier: 'low' | 'mid',
   kind: string,
   finish: 'paint' | 'metal' | 'gear' = 'paint',
+  airline?: string,
 ): PaintedMesh {
-  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish)
+  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish, airline)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque

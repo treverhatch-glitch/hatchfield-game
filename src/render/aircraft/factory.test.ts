@@ -381,7 +381,8 @@ describe('aircraft model factory', () => {
     // Pass 3: lathe tyres with tread, hubs with brake stacks, braces, hoses and curved doors
     // (~10k of this is gear). Far aircraft drop to the low LOD.
     // Pass 5: rounder cowls, intake lips, spinner cones and service points add ~1k.
-    expect(midTris).toBeLessThan(21000)
+    // Planes v2 (max graphics): 32-sided fuselage loft and 24-sided cylinders add ~4.5k.
+    expect(midTris).toBeLessThan(28000)
     expect(highTris).toBeLessThan(2500)
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
     // +~60 shared leg meshes: one per airframe type and leg kind, never per instance or livery.

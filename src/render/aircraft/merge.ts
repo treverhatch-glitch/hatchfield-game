@@ -50,6 +50,7 @@ function writeLivery(
   const uv = new Float32Array(pos.count * 2)
   const slot = new Float32Array(pos.count)
   const id = mode === 'fuselage' ? 0 : mode === 'tail' ? 1 : mode === 'engine' ? 2 : 3
+  const bareMetal = geo.userData.nacelle === true
   for (let i = 0; i < pos.count; i++) {
     slot[i] = id
     const x = pos.getX(i)
@@ -59,6 +60,9 @@ function writeLivery(
     let v = 0
     if (mode === 'engine' && local) {
       ;[u, v] = engineUv(x, y, z)
+      // Cowl only: the polished intake lip, fan face, core nozzle and exhaust plug stay bare metal.
+      const r = Math.hypot(x, z)
+      if (bareMetal && (y > 0.26 || y < -0.46 || (y < -0.29 && r < 0.86))) slot[i] = 3
     } else if ((mode === 'fuselage' || mode === 'tail') && box && !local) {
       ;[u, v] = outwardUv(x, y, z, box)
     }
@@ -168,7 +172,7 @@ function takeShell(
   }
   const shell = new THREE.Mesh(geometry)
   shell.name = name
-  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish)
+  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish, frame.livery.airline)
   painted.userData.airline = frame.livery.airline
   painted.castShadow = frame.tier === 'mid'
   frame.group.add(painted)

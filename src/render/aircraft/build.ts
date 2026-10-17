@@ -258,7 +258,10 @@ function addFuselage(frame: Frame) {
 
 /** Crown, airline band and belly colours for the fuselage loft. */
 function fuselagePaint(livery: Livery): { crown: string; body: string; belly: string } {
-  const belly = `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
+  // Solid schemes keep a darker shade of the body; two-tone jets get a polished light belly.
+  const belly = livery.scheme === 'solid'
+    ? `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
+    : `#${new THREE.Color(AIRCRAFT_LOOK.polishedBelly).lerp(new THREE.Color(livery.body), 0.1).getHexString()}`
   const crown = livery.crown ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown)
   return { crown, body: livery.body, belly }
 }
@@ -328,10 +331,8 @@ function addWing(frame: Frame) {
 
 function addTail(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
-  const { spec, tailX, top, finH, centerY } = frame
-  const chord = Math.max(1.1, spec.lengthM * 0.11)
-  const thick = Math.max(0.08, spec.rx * 0.08)
-  const finX = tailX + chord * 0.55
+  const { spec } = frame
+  const { chord, thick, finX, rootY: top, finH, stabX, stabY } = finPose(frame)
   const tailPaint = frame.livery.tail || frame.livery.stripe
   const finBox: LiveryBox = {
     x0: finX + chord * 0.42,
@@ -354,13 +355,13 @@ function addTail(frame: Frame) {
   } else {
     placeFin(0, 'tail')
   }
-  const stabY = spec.tail === 't' ? frame.spec.heightM - 0.12 : centerY + spec.ry * 0.2
   const stabChord = Math.max(0.8, spec.rootChord * 0.42)
   const stab = new THREE.Mesh(stabGeometry())
   stab.scale.set(stabChord, Math.max(0.08, spec.thickness * 0.22), spec.tailSpan)
-  stab.position.set(finX - chord * 0.15, stabY, 0)
+  stab.position.set(stabX, stabY, 0)
   stab.name = 'stab'
-  addMesh(frame, stab, 'tail', 'mesh')
+  // Tailplanes wear the wing grey, as on real liveries; the fin carries the airline colour.
+  addMesh(frame, stab, 'wing', 'mesh')
 }
 
 function addEngines(frame: Frame) {
@@ -374,7 +375,7 @@ function addEngines(frame: Frame) {
     compose(p.x, p.y, p.z, 0, 0, Math.PI / 2, eng.radius, eng.length, eng.radius),
   )
   const fanPod = eng.kind === 'turbofan' || eng.kind === 'turbojet'
-  const mesh = addInstances(frame, fanPod && tier === 'mid' ? nacelleGeometry(sides) : unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
+  const mesh = addInstances(frame, fanPod && tier !== 'low' ? nacelleGeometry(sides) : unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
   if (mesh) {
     mesh.name = 'engines'
     markLivery(mesh, 'engine')
@@ -809,14 +810,40 @@ function addRealDoors(frame: Frame) {
   }
 }
 
+/** Crown height and centreline of the real loft at group-space x (the tail cone sweeps up and narrows). */
+function skinAt(frame: Pick<Frame, 'spec' | 'nose' | 'centerY'>, x: number): { top: number; mid: number; r: number } {
+  const { spec } = frame
+  const t = Math.max(0, Math.min(1, (frame.nose - x) / spec.lengthM))
+  const st = loftStation(loftFamily(spec), t)
+  return {
+    top: frame.centerY + spec.ry * (st.dy + st.r),
+    mid: frame.centerY + spec.ry * st.dy,
+    r: st.r,
+  }
+}
+
+/**
+ * Fin, rudder, stabiliser and tail-logo stations. The fin root follows the actual
+ * tail-cone crown (sunk slightly into the skin) so it never floats above a narrowing
+ * cone, and the tip keeps the published height. The stabiliser sits on the cone centreline.
+ */
 function finPose(frame: Frame) {
   const chord = Math.max(1.1, frame.spec.lengthM * 0.11)
   const thick = Math.max(0.08, frame.spec.rx * 0.08)
+  const finX = frame.tailX + chord * 0.55
+  const twin = frame.spec.tail === 'twin'
+  const rootY = twin ? frame.top : Math.min(frame.top, skinAt(frame, finX).top - frame.spec.ry * 0.06)
+  const finH = frame.top + frame.finH - rootY
+  const stabX = finX - chord * 0.15
+  const cone = skinAt(frame, stabX)
   return {
-    finX: frame.tailX + chord * 0.55,
+    finX,
     chord,
     thick,
-    stabY: frame.spec.tail === 't' ? frame.spec.heightM - 0.12 : frame.centerY + frame.spec.ry * 0.2,
+    rootY,
+    finH,
+    stabX,
+    stabY: frame.spec.tail === 't' ? frame.spec.heightM - 0.12 : cone.mid + frame.spec.ry * cone.r * 0.2,
   }
 }
 
@@ -846,12 +873,13 @@ function addControls(frame: Frame) {
     mesh.userData.surface = 'aileron'
     mesh.userData.sign = sign
   }
-  const { finX, chord, stabY, thick } = finPose(frame)
+  const pose = finPose(frame)
+  const { finX, chord, stabY, thick } = pose
   const elevator = addBox(
     frame,
     [Math.max(0.28, chord * 0.28), Math.max(0.05, spec.thickness * 0.16), spec.tailSpan * 0.72],
     [finX - chord * 0.42, stabY, 0],
-    'tail',
+    'wing',
     'control',
   )
   elevator.name = 'elevator'
@@ -862,8 +890,8 @@ function addControls(frame: Frame) {
     for (const sign of [1, -1] as const) {
       const rudder = addBox(
         frame,
-        [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.8],
-        [finX - chord * 0.2, frame.top + frame.finH * 0.62, sign * spread],
+        [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.8],
+        [finX - chord * 0.2, pose.rootY + pose.finH * 0.62, sign * spread],
         'tail',
         'control',
       )
@@ -874,8 +902,8 @@ function addControls(frame: Frame) {
   } else {
     const rudder = addBox(
       frame,
-      [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.9],
-      [finX - chord * 0.15, frame.top + frame.finH * 0.62, 0],
+      [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.9],
+      [finX - chord * 0.15, pose.rootY + pose.finH * 0.62, 0],
       'tail',
       'control',
     )
@@ -942,9 +970,9 @@ function addLogo(frame: Frame) {
     place(frame.tailX + frame.spec.lengthM * 0.08, frame.centerY + frame.spec.ry * 0.15, frame.spec.rx + 0.04, 0.7)
     return
   }
-  const { finX, thick } = finPose(frame)
-  const size = Math.max(0.55, Math.min(frame.finH * 0.38, frame.spec.rx * 0.85))
-  const y = frame.top + frame.finH * 0.55
+  const { finX, thick, rootY, finH } = finPose(frame)
+  const size = Math.max(0.55, Math.min(finH * 0.38, frame.spec.rx * 0.85))
+  const y = rootY + finH * 0.55
   if (frame.spec.tail === 'twin') {
     const spread = Math.max(0.7, frame.spec.rx * 0.85)
     place(finX, y, spread + thick * 0.6, size * 0.7)
@@ -1056,17 +1084,22 @@ function addFeatures(frame: Frame) {
     ).name = 'hull'
   }
   if (frame.tier === 'mid') {
-    // Cheatline as paint on each flank, not a box around the tube.
+    // Cheatline as paint on each flank, not a box around the tube. Only for paint without an
+    // airline plate: over a plate the flat strip sat proud of the curved skin and doubled the titles.
     const lineY = 0.42
-    const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.02
-    for (const sign of [1, -1]) {
-      addBox(
+    const plated = Boolean(frame.livery.airline)
+    const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.008
+    for (const sign of plated ? [] : [1, -1]) {
+      const line = addBox(
         frame,
-        [spec.lengthM * 0.56, spec.ry * 0.11, 0.04],
+        [spec.lengthM * 0.56, spec.ry * 0.11, 0.012],
         [-spec.lengthM * 0.02, centerY + spec.ry * lineY, sign * lineZ],
         'stripe',
         'mesh',
-      ).name = 'cheatline'
+      )
+      line.name = 'cheatline'
+      // Under an airline plate the strip takes the plate's own texels, so it never cuts across the titles.
+      markLivery(line, 'fuselage', fuselageBox(frame))
     }
     if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) addBellyFairing(frame)
     if (spec.family === 'point') {
@@ -1088,7 +1121,7 @@ function addBellyFairing(frame: Frame) {
   mesh.scale.set(spec.rootChord * 0.95, spec.ry * 0.42, spec.rx * 0.93)
   mesh.position.set(wingX - spec.rootChord * 0.05, centerY - spec.ry * 0.7, 0)
   mesh.name = 'wing-body-fairing'
-  addMesh(frame, mesh, 'belly', 'mesh')
+  markLivery(addMesh(frame, mesh, 'belly', 'mesh'), 'fuselage', fuselageBox(frame))
 }
 
 /**
@@ -1313,13 +1346,9 @@ function addServicePoints(frame: Frame) {
   const { spec, tier, nose, centerY } = frame
   if (tier !== 'mid' || spec.family === 'helo' || spec.lengthM < 20) return
   const sideZ = spec.rx * 0.97
-  // Forward hold door, starboard, swung up on its top hinge (belt loader side).
-  const doorX = nose - spec.lengthM * 0.24
-  const dw = Math.min(1.8, spec.lengthM * 0.045)
-  const dh = Math.min(1.7, spec.ry * 0.7)
-  const sill = centerY - spec.ry * 0.25
-  addBox(frame, [dw, dh, 0.06], [doorX, sill - dh / 2, sideZ + 0.01], 'dark', 'mesh').name = 'hold-opening'
-  addBox(frame, [dw, dh, 0.06], [doorX, sill + 0.05, sideZ + dh * 0.45], 'body', 'mesh', [-1.25, 0, 0]).name = 'hold-door-open'
+  // No static open hold door: it hung a black box and a primary-colour flap on every jet, even in
+  // flight. The animated cargo leaves in rig.ts open the real hold doors while the aircraft is serviced.
+  void sideZ
   // Single-point fuel panel under each wing, at the span the fuel hose aims for.
   const panelZ = Math.min(9, Math.max(3.6, spec.spanM * 0.18))
   if (panelZ < spec.spanM / 2 - 0.5) {

@@ -4,6 +4,7 @@ import { paintMesh, unitBox, unitCylinder, unitSphere, type PaintedMesh, type Pa
 import type { ModelSpec, Livery } from './specs'
 import { doorBoxes } from './stands'
 import { airfoilGeometry, spinnerConeGeometry } from './geom'
+import { AIRCRAFT_LOOK } from '../look'
 
 /**
  * Animated airframe parts. Each kind is one InstancedMesh per aircraft and LOD
@@ -129,7 +130,7 @@ export function rigValue(kind: RigKind, motion: AircraftMotion): number {
   }
 }
 
-function addSet(frame: RigFrame, kind: RigKind, geo: THREE.BufferGeometry, parts: RigPart[], slot: PaintSlot) {
+function addSet(frame: RigFrame, kind: RigKind, geo: THREE.BufferGeometry, parts: RigPart[], slot: PaintSlot, livery: Livery = frame.livery) {
   if (!parts.length) return
   const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial(), parts.length)
   mesh.name = `rig-${kind}`
@@ -139,7 +140,7 @@ function addSet(frame: RigFrame, kind: RigKind, geo: THREE.BufferGeometry, parts
   mesh.computeBoundingSphere()
   // Deployed parts swing out past the stowed bounds.
   if (mesh.boundingSphere) mesh.boundingSphere.radius *= 1.6
-  const painted = paintMesh(mesh, slot, frame.livery, 'control', frame.tier)
+  const painted = paintMesh(mesh, slot, livery, 'control', frame.tier)
   painted.userData.rig = kind
   frame.group.add(painted)
   frame.meshes.push(painted)
@@ -317,13 +318,14 @@ function addDoorLeaves(frame: RigFrame) {
     const side = box.door.side
     if (side === 0) continue
     // Leaf sits proud of the doorway frame, with real thickness.
-    const z = side * (box.z === 0 ? spec.rx : Math.abs(box.z)) + side * 0.1
+    // Closed, the leaf sits almost flush so it reads as a door outline, not a slab.
+    const z = side * (box.z === 0 ? spec.rx : Math.abs(box.z)) + side * 0.035
     if (box.door.kind === 'cargo') {
       cargo.push({
         hinge: new THREE.Matrix4().makeTranslation(box.x, box.y + box.h / 2, z),
         offset: new THREE.Vector3(0, -box.h / 2, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.12),
+        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
         side,
         reach: box.h,
       })
@@ -332,14 +334,16 @@ function addDoorLeaves(frame: RigFrame) {
         hinge: new THREE.Matrix4().makeTranslation(box.x + box.w / 2, box.y, z),
         offset: new THREE.Vector3(-box.w / 2, 0, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.12),
+        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
         side,
         reach: box.w,
       })
     }
   }
-  addSet(frame, 'door', unitBox(), pax, 'body')
-  addSet(frame, 'cargo', unitBox(), cargo, 'body')
+  // Doors wear the fuselage side colour (white crown on two-tone schemes), not the airline primary.
+  const skin: Livery = { ...frame.livery, body: frame.livery.scheme === 'solid' ? frame.livery.body : (frame.livery.crown ?? AIRCRAFT_LOOK.crown) }
+  addSet(frame, 'door', unitBox(), pax, 'body', skin)
+  addSet(frame, 'cargo', unitBox(), cargo, 'body', skin)
 }
 
 /**

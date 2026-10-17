@@ -24,6 +24,7 @@ export const PLATE_SCALE: Record<TextureQuality, number> = { low: 0.5, med: 1, h
 
 const WHITE = '#f2f4f6'
 const BELLY_SHADE = 0.58
+const POLISHED_BELLY = '#d3d8de'
 const NACELLE_RING = 0.08
 
 export interface ProcLivery {
@@ -46,6 +47,12 @@ export interface ProcLivery {
 function shade(hex: string, factor: number): string {
   const c = new THREE.Color(hex)
   c.multiplyScalar(factor)
+  return `#${c.getHexString()}`
+}
+
+/** Polished alloy-grey belly, tinted 10% toward the airline colour. */
+export function polishedBelly(primary: string): string {
+  const c = new THREE.Color(POLISHED_BELLY).lerp(new THREE.Color(primary), 0.1)
   return `#${c.getHexString()}`
 }
 
@@ -87,7 +94,8 @@ export function procLiverySpec(airlineId: string, modelId: string): ProcLivery |
     airlineId,
     modelId,
     fuselage,
-    belly: airline.belly ?? shade(airline.primary, BELLY_SHADE),
+    // Passenger jets: polished light-grey belly with a hint of the brand. Solid schemes keep the darker primary.
+    belly: airline.belly ?? (scheme === 'solid' ? shade(airline.primary, BELLY_SHADE) : polishedBelly(airline.primary)),
     cheatline:
       airline.cheatline ??
       (scheme === 'solid' ? airline.secondary : lightPrimary ? airline.accent : airline.secondary),

@@ -19,7 +19,8 @@ describe('lazy reflection maps', () => {
     expect(buildingReflectionsFor('med')).toBe(false)
     expect(buildingReflectionsFor('high')).toBe(true)
     expect(buildingReflectionsFor('ultra')).toBe(true)
-    expect(aircraftReflectionsFor('low')).toBe(false)
+    // Max graphics: airframes are full-detail PBR on every preset, so the probe is always built.
+    expect(aircraftReflectionsFor('low')).toBe(true)
     expect(aircraftReflectionsFor('med')).toBe(true)
     expect(aircraftReflectionsFor('high')).toBe(true)
     expect(aircraftReflectionsFor('ultra')).toBe(true)

@@ -61,7 +61,6 @@ import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {
-  baseLevel,
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
@@ -120,6 +119,8 @@ export { CELL }
 
 /** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
+/** Aircraft never step down with the graphics preset (Trever: max graphics, no auto step-down). */
+const AIRCRAFT_DETAIL = 'high' as const
 const MAX_DIST = APRON_MAX_DIST
 const MIN_PITCH = 0.28
 const MAX_PITCH = 1.35
@@ -444,7 +445,8 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
-    setAircraftQuality(baseLevel(quality))
+    // Max graphics: aircraft always draw full detail, whatever the world preset.
+    setAircraftQuality(AIRCRAFT_DETAIL)
     markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
@@ -761,7 +763,7 @@ export class World {
     // Building photo maps follow the preset; rebuild the tile meshes with the new skin.
     setBuildingSkinQuality(level, QUALITY[level].anisotropy)
     this.tileHash = ''
-    setAircraftQuality(baseLevel(level))
+    setAircraftQuality(AIRCRAFT_DETAIL)
   }
 
   /**
