@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { BLOB_LOOK, BlobShadows } from './blobShadows'
+import { sunDirection } from '../../core/sunPath'
 
 const at = (b: BlobShadows, i = 0) => {
   const m = new THREE.Matrix4()
@@ -47,5 +48,24 @@ describe('BlobShadows', () => {
     expect(air.s.x).toBeLessThan(g.s.x)
     expect(Math.abs(air.p.x)).toBeGreaterThan(Math.abs(g.p.x))
     expect(air.p.y).toBeCloseTo(BLOB_LOOK.y, 5)
+  })
+})
+
+describe('BlobShadows time of day', () => {
+  const truck = { x: 0, y: 0, z: 0, yaw: 0.4, length: 4, width: 1.2, height: 1.5 }
+  const reach = (hour: number) => {
+    const d = sunDirection(hour)
+    const b = new BlobShadows('t', 2)
+    b.sync([truck], new THREE.Vector3(d.x, d.y, d.z), 1)
+    return at(b).p
+  }
+  it('throws a longer shadow at dawn and dusk than at noon, on opposite sides', () => {
+    const dawn = reach(6.5)
+    const noon = reach(13)
+    const dusk = reach(19.5)
+    expect(Math.hypot(dawn.x, dawn.z)).toBeGreaterThan(Math.hypot(noon.x, noon.z) * 2)
+    expect(Math.hypot(dusk.x, dusk.z)).toBeGreaterThan(Math.hypot(noon.x, noon.z) * 2)
+    expect(dawn.x).toBeLessThan(0)
+    expect(dusk.x).toBeGreaterThan(0)
   })
 })

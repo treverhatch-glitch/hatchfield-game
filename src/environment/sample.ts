@@ -17,6 +17,7 @@ import {
   simClockToHour,
   skyState,
   smoothstep,
+  sunDirection,
   type SkyState,
 } from '../render/world/daylight.ts'
 import {
@@ -267,7 +268,9 @@ export function snowCover(day: number, quality: GfxQuality): number {
  */
 export function paintSky(hour: number, weather: Weather, day: number, quality: GfxQuality): SkyState {
   const sky = skyState(hour, weather)
-  const { palette } = seasonAtDay(day)
+  const { palette, id: seasonId } = seasonAtDay(day)
+  // The sun arc follows the season too: higher summer noon, lower winter noon, longer winter shadows.
+  sky.sunDir = sunDirection(hour, seasonId)
   // Season colour is a daytime mix. Night keeps the dark sky; snow carries winter on the ground.
   const k = palette.amount * (0.22 + 0.78 * daylightFactor(hour))
   sky.skyTop = lerpHex(sky.skyTop, palette.skyTop, k)
