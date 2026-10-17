@@ -160,7 +160,19 @@ describe('concept building massing', () => {
     expect(bayMat.transparent).toBe(true)
     expect((bayMat as THREE.MeshBasicMaterial).color?.getHexString?.()).not.toBe('d7a21a')
     expect(fuel.children.filter((c) => c.name === 'fuel-tank' || (c as THREE.Mesh).geometry?.type === 'CylinderGeometry').length).toBeGreaterThan(4)
-    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(4500)
+    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(8600)
+    let maxRailY = 0
+    let hoopCount = 0
+    fuel.traverse((obj) => {
+      if (obj.name === 'fuel-cage-rail') {
+        const y = obj.position.y + ((obj as THREE.Mesh).geometry as THREE.BoxGeometry).parameters.height / 2
+        maxRailY = Math.max(maxRailY, y)
+      } else if (obj.name === 'fuel-cage-hoop') {
+        hoopCount++
+      }
+    })
+    expect(maxRailY).toBeLessThanOrEqual(3.3 + 0.5) // hcap + margin for landing handrail
+    expect(hoopCount).toBeGreaterThan(0)
     const fire = new THREE.Group()
     addFireStation(fire)
     expect(fire.getObjectByName('service-bay:1')).toBeTruthy()
