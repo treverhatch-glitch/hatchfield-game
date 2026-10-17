@@ -633,6 +633,8 @@ function addGear(frame: Frame) {
     const leg = new THREE.Group()
     leg.name = `gear-${role}`
     leg.position.set(x, legH - spec.gear, z)
+    // Oleo length the touchdown squash shortens (metres, frame units).
+    leg.userData.legH = legH
     if (z < 0) leg.scale.z = -1
     // Nose swings forward about Z; mains fold inboard about X.
     leg.userData.retract = role === 'nose'

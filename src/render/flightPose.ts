@@ -50,6 +50,11 @@ export interface ArrivalInput {
 
 export interface ArrivalPose extends AirPose {
   initialBefore: number
+  /**
+   * Cells rolled since the mains touched (render dressing only: tyre smoke, oleo squash).
+   * Undefined while airborne or once the rollout hands back to the sim path.
+   */
+  touchdown?: number
 }
 
 /**
@@ -220,6 +225,7 @@ export function arrivalPose(input: ArrivalInput): ArrivalPose {
       s: 0,
       retire: false,
       initialBefore: initial,
+      touchdown: d,
     }
   }
 
