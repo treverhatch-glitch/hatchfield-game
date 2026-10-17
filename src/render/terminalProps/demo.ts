@@ -3,9 +3,11 @@
  * Not part of the game bundle; used for screenshots and art review.
  */
 import * as THREE from 'three'
+import { preloadCc0 } from '../cc0/library'
 import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, setupTerminalEnvironment, TERMINAL_PROP_TYPES, terminalProp, type PropPlacement } from './index'
 
 const qs = new URLSearchParams(location.search)
+await preloadCc0()
 const view = qs.get('view') ?? 'interior'
 const quality = (qs.get('q') ?? 'high') as 'low' | 'high'
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
@@ -127,8 +129,18 @@ if (view === 'lineup') {
     cam.updateProjectionMatrix()
   }
 }
+const camQ = qs.get('cam')?.split(',').map(Number)
+if (camQ?.length === 6) {
+  cam.position.set(camQ[0], camQ[1], camQ[2])
+  cam.lookAt(camQ[3], camQ[4], camQ[5])
+}
 renderer.render(scene, cam)
-setTimeout(() => {
+// Keep drawing while photo textures stream in, then flag ready for screenshots.
+let frames = 0
+const tick = setInterval(() => {
   renderer.render(scene, cam)
-  ;(window as unknown as { __ready: boolean }).__ready = true
-}, 1500)
+  if (++frames === Number(qs.get('settle') ?? 12)) {
+    clearInterval(tick)
+    ;(window as unknown as { __ready: boolean }).__ready = true
+  }
+}, 500)

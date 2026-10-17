@@ -15,6 +15,7 @@ import { mountSockets } from '../socketMount'
 import { footprint, type Part, type Prim } from './parts'
 import { material } from './materials'
 import { readAnimSec } from '../interior/animClock'
+import { CC0_KITS, cc0Kit, kitInstances, type Cc0KitId } from '../cc0/library'
 import { MOVING_TRAYS, PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType, type TrayTrack } from './props'
 
 export { TERMINAL_PROP_TYPES, MOVING_TRAYS, type TerminalPropType, type TrayTrack } from './props'
@@ -143,10 +144,23 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
   const local = new THREE.Matrix4()
   const q = new THREE.Quaternion()
   const e = new THREE.Euler()
+  const kitBuckets = new Map<Cc0KitId, THREE.Matrix4[]>()
+  const kitOn = (id: string) => id in CC0_KITS && !!cc0Kit(id as Cc0KitId)
   for (const pl of placements) {
     item.makeRotationY(pl.yaw ?? 0).setPosition(pl.x, pl.y ?? 0, pl.z)
     if (pl.scale && pl.scale !== 1) item.multiply(new THREE.Matrix4().makeScale(pl.scale, pl.scale, pl.scale))
     for (const part of terminalProp(pl.type).parts) {
+      if (part.cc0) {
+        if (!kitOn(part.cc0)) continue
+        e.set(...(part.rot ?? [0, 0, 0]))
+        q.setFromEuler(e)
+        local.compose(new THREE.Vector3(...part.pos), q, new THREE.Vector3(...part.size))
+        const list = kitBuckets.get(part.cc0 as Cc0KitId) ?? []
+        list.push(item.clone().multiply(local))
+        kitBuckets.set(part.cc0 as Cc0KitId, list)
+        continue
+      }
+      if (part.cc0Hide && kitOn(part.cc0Hide)) continue
       e.set(...(part.rot ?? [0, 0, 0]))
       q.setFromEuler(e)
       local.compose(new THREE.Vector3(...part.pos), q, new THREE.Vector3(...part.size))
@@ -168,6 +182,10 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
     rig.rotation.y = pl.yaw ?? 0
     if (pl.scale && pl.scale !== 1) rig.scale.setScalar(pl.scale)
     group.add(rig)
+  }
+  for (const [id, mats] of kitBuckets) {
+    const kit = cc0Kit(id)
+    if (kit) group.add(kitInstances(kit, mats, { castShadow: true, receiveShadow: true, name: `cc0|${id}` }))
   }
   const moving = buildMovingTrays(placements, !!opts.shadows)
   if (moving) group.add(moving)

@@ -10,6 +10,7 @@ import { loadNoonHint } from './noonHint'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
 import { CELL, tileAt, worldToCell, type WorldView } from './view'
+import { cc0Kit, kitInstances, type Cc0Kit, type Cc0KitId } from '../cc0/library'
 
 export const PLOT_HALF = (SIZE * CELL) / 2
 
@@ -257,6 +258,59 @@ function addSprites(
   group.add(folder)
 }
 
+/** CC0 tree species and their share of the landscape (light-canopy Innerscene trees carry the bulk). */
+const CC0_TREE_MIX: readonly (readonly [Cc0KitId, number])[] = [
+  ['tree_oak', 0.27],
+  ['tree_maple', 0.25],
+  ['tree_linden', 0.25],
+  ['tree_oak_round', 0.15],
+  ['tree_palm', 0.08],
+]
+const CC0_SECTORS = 8
+
+/**
+ * Real 3D trees (or shrubs) from the CC0 kits, scattered like the sprite cards they
+ * replace. Instanced per species and per compass sector so off-screen sectors cull in
+ * both the view and the shadow pass. Returns false when the kits have not loaded.
+ */
+function addCc0Foliage(group: THREE.Group, count: number, height: number, seed: number, bushes: boolean): boolean {
+  const mix: readonly (readonly [Cc0KitId, number])[] = bushes ? [['shrub', 1]] : CC0_TREE_MIX
+  const kits = mix.map(([id]) => cc0Kit(id))
+  if (kits.some((k) => !k)) return false
+  const folder = new THREE.Group()
+  folder.name = bushes ? 'world-bushes' : 'world-trees'
+  const buckets: THREE.Matrix4[][][] = kits.map(() => Array.from({ length: CC0_SECTORS }, () => []))
+  const rand = rng(seed)
+  let guard = 0
+  let n = 0
+  while (n < count && guard++ < count * 20) {
+    const a = rand() * Math.PI * 2
+    const r = PLOT_HALF + 8 + Math.pow(rand(), 0.65) * 220
+    const x = Math.cos(a) * r
+    const z = Math.sin(a) * r
+    if (Math.abs(x) < PLOT_HALF + 6 && Math.abs(z) < PLOT_HALF + 6) continue
+    const s = height * (0.75 + rand() * 0.55)
+    const yaw = rand() * Math.PI * 2
+    let pick = rand()
+    let k = 0
+    while (k < mix.length - 1 && pick > mix[k][1]) pick -= mix[k++][1]
+    const kit = kits[k] as Cc0Kit
+    // Sprite cards were the full image height; the canopy filled ~85% of it (bushes ~60%).
+    const scale = (s * (bushes ? 0.6 : 0.85)) / kit.size.y
+    const sector = Math.min(CC0_SECTORS - 1, Math.floor(((a % (Math.PI * 2)) / (Math.PI * 2)) * CC0_SECTORS))
+    buckets[k][sector].push(trs(x, 0, z, yaw, scale, scale * (0.92 + rand() * 0.16), scale))
+    n++
+  }
+  kits.forEach((kit, k) => {
+    buckets[k].forEach((mats, sector) => {
+      if (!mats.length) return
+      folder.add(kitInstances(kit as Cc0Kit, mats, { castShadow: true, receiveShadow: true, name: `${folder.name}:${kit!.id}:${sector}` }))
+    })
+  })
+  group.add(folder)
+  return true
+}
+
 export interface LandscapeArt {
   farmland?: THREE.Texture | null
   water?: THREE.Texture | null
@@ -353,15 +407,17 @@ export function buildLandscape(
     tm.push(trs(x, 0, z, rand() * 6.28, s, s * (0.9 + rand() * 0.4), s))
     tc.push(greens[Math.floor(rand() * greens.length)])
   }
-  if (tm.length && !art?.trees) {
+  const cc0Trees = addCc0Foliage(group, trees, 6.5, 99, false)
+  const cc0Bushes = addCc0Foliage(group, Math.max(8, Math.round(trees * 0.45)), 2.4, 41, true)
+  if (tm.length && !art?.trees && !cc0Trees) {
     const tr = instanced(trunk, trunkM, tm)
     const cr = instanced(crown, crownM, tm, tc)
     tr.castShadow = true
     cr.castShadow = true
     group.add(tr, cr)
   }
-  if (art?.trees) addSprites(group, geos, mats, art.trees, trees, 6.5, 99)
-  if (art?.bushes) addSprites(group, geos, mats, art.bushes, Math.max(8, Math.round(trees * 0.45)), 2.4, 41)
+  if (art?.trees && !cc0Trees) addSprites(group, geos, mats, art.trees, trees, 6.5, 99)
+  if (art?.bushes && !cc0Bushes) addSprites(group, geos, mats, art.bushes, Math.max(8, Math.round(trees * 0.45)), 2.4, 41)
   if (art?.water) {
     const riverGeo = new THREE.PlaneGeometry(240, 18, 1, 1)
     riverGeo.rotateX(-Math.PI / 2)

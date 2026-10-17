@@ -11,6 +11,7 @@ import { ANIM_PARTS, newPartPose, partMatrix, partPose, poseInput } from './vehi
 import { vehicleSocketTable } from './socketLayout'
 import { mountSockets } from './socketMount'
 import { applyVehicleSurface } from './vehicleSurface'
+import { cc0Kit, fitMatrix, KitFleet, type Cc0KitId } from './cc0/library'
 
 export { ANIM_PARTS, deployOf, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy, type PoseInput } from './vehicleAnim'
 export { setVehicleSurfaceTime, setVehicleWear } from './vehicleSurface'
@@ -264,6 +265,21 @@ export interface VehicleInstance {
   carts?: number
 }
 
+/**
+ * Models drawn with a CC0 glTF kit instead of the procedural shell, once the kit has loaded.
+ * Size is the drawn length x height x width in metres (kept close to the kit's own proportions
+ * so wheels stay round; the sim footprint is unchanged).
+ */
+const CC0_VEHICLES: Partial<Record<VehicleModel, { kit: Cc0KitId; size: readonly [number, number, number] }>> = {
+  apron_bus: { kit: 'apron_bus', size: [12.7, 3.22, 3.0] },
+  arff: { kit: 'fire_engine', size: [10.95, 3.5, 3.1] },
+}
+
+const _q = new THREE.Quaternion()
+const _p = new THREE.Vector3()
+const _s = new THREE.Vector3()
+const UP = new THREE.Vector3(0, 1, 0)
+
 export class VehicleFleet {
   readonly root = new THREE.Group()
   private bodies = new Map<string, THREE.InstancedMesh>()
@@ -275,8 +291,38 @@ export class VehicleFleet {
   private pose = newPartPose()
   private local = new THREE.Matrix4()
   private input = poseInput()
+  private cc0 = new Map<VehicleModel, { fleet: KitFleet; fit: THREE.Matrix4 }>()
 
-  sync(list: readonly VehicleInstance[], camera?: { x: number; y: number; z: number }) {
+  /** Pull out the vehicles a CC0 kit draws; returns the rest for the procedural path. */
+  private syncCc0(list: readonly VehicleInstance[]): readonly VehicleInstance[] {
+    const rest: VehicleInstance[] = []
+    const frames = new Map<VehicleModel, THREE.Matrix4[]>()
+    for (const item of list) {
+      const model = vehicleModel(item.kind)
+      const spec = CC0_VEHICLES[model]
+      const kit = spec ? cc0Kit(spec.kit) : null
+      if (!spec || !kit) {
+        rest.push(item)
+        continue
+      }
+      let slot = this.cc0.get(model)
+      if (!slot) {
+        slot = { fleet: new KitFleet(kit), fit: fitMatrix(kit, ...spec.size) }
+        slot.fleet.group.name = `cc0-vehicles:${model}`
+        this.root.add(slot.fleet.group)
+        this.cc0.set(model, slot)
+      }
+      const arr = frames.get(model) ?? []
+      _q.setFromAxisAngle(UP, item.yaw)
+      arr.push(new THREE.Matrix4().compose(_p.set(item.x, item.y, item.z), _q, _s.setScalar(item.scale)))
+      frames.set(model, arr)
+    }
+    for (const [model, slot] of this.cc0) slot.fleet.sync(frames.get(model) ?? [], slot.fit)
+    return rest
+  }
+
+  sync(all: readonly VehicleInstance[], camera?: { x: number; y: number; z: number }) {
+    const list = this.syncCc0(all)
     const near: VehicleInstance[] = []
     const far: VehicleInstance[] = []
     for (const item of list) {
@@ -423,6 +469,8 @@ export class VehicleFleet {
     for (const mesh of this.lights.values()) mesh.dispose()
     for (const mesh of this.parts.values()) mesh.dispose()
     for (const mesh of this.farBodies.values()) mesh.dispose()
+    for (const slot of this.cc0.values()) slot.fleet.dispose()
+    this.cc0.clear()
     this.parts.clear()
     this.farBodies.clear()
     this.lights.clear()

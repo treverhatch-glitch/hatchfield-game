@@ -23,6 +23,7 @@ import { setWindowGlow } from './nightArt'
 import type { ShellWeights } from '../viewCue'
 import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
+import { cc0Generation } from '../cc0/library'
 import {
   apronMasts,
   jetBridges,
@@ -534,7 +535,7 @@ export class WorldRenderer {
     // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
     const step = Math.min(0.25, Math.max(0, dt))
     this.time += step
-    const builtKey = `${view.mapRev}|${apronPrefabTier(view.fits)}`
+    const builtKey = `${view.mapRev}|${apronPrefabTier(view.fits)}|${cc0Generation()}`
     if (builtKey !== this.builtKey) {
       this.builtKey = builtKey
       this.rebuild(view)
@@ -792,7 +793,7 @@ export class WorldRenderer {
 
   /** Swap the outer farmland when a map brings its own ground colours. */
   private syncTerrain(tint: LandscapeTint | null) {
-    const key = tint ? `${tint.ground}|${tint.fields.join(',')}|${tint.trees.join(',')}` : ''
+    const key = (tint ? `${tint.ground}|${tint.fields.join(',')}|${tint.trees.join(',')}` : '') + (cc0Generation() ? '#cc0' : '')
     if (key === this.terrainKey || !this.tex) return
     this.terrainKey = key
     this.landscape?.dispose()

@@ -58,6 +58,8 @@ const PROP_COLORS: Record<string, number> = {
 }
 const UNLIT = new Set(['screen', 'lamp'])
 import { pickLod, stepFade } from './lod'
+import { cc0Kit, kitInstances, type Cc0KitId } from '../cc0/library'
+import { CC0_FRONT_YAW } from '../terminalProps/props'
 import { SHELL_SECTIONS, type ShellWeights } from '../viewCue'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { roomAt, type RoomKind, type RoomPlan } from './rooms'
@@ -921,8 +923,29 @@ export class TerminalBuilding {
     const logoSlots: THREE.Matrix4[] = []
     const headerSlots: { matrix: THREE.Matrix4; room: number }[] = []
     const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
+    // CC0 swaps for the cutaway props: queue posts + belts for stanchion rails, a tandem unit for benches.
+    const kitMats = new Map<Cc0KitId, THREE.Matrix4[]>()
+    const addKit = (id: Cc0KitId, m: THREE.Matrix4) => {
+      const list = kitMats.get(id) ?? []
+      list.push(m)
+      kitMats.set(id, list)
+    }
+    const queueKits = !!cc0Kit('queue_post') && !!cc0Kit('queue_belt')
+    const seatKit = cc0Kit('tandem_seats')
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
+      if (p.kind === 'stanchion' && queueKits) {
+        // Same 0.9 m two-post rail; the posts and belt are scaled like the rest of this cutaway kit (0.5 m tall rail).
+        const k = 0.52
+        for (const x of [-0.45, 0.45]) addKit('queue_post', matrix.clone().multiply(trs(x, 0, 0, 0, k, k, k)))
+        addKit('queue_belt', matrix.clone().multiply(trs(0, 0, 0, 0, 0.82, k, k)))
+        continue
+      }
+      if (p.kind === 'bench' && seatKit) {
+        const k = 1.3 / seatKit.size.x
+        addKit('tandem_seats', matrix.clone().multiply(trs(0, 0, 0, CC0_FRONT_YAW.tandem_seats, k, k, k)))
+        continue
+      }
       const room = roomAt(this.plan.rooms, p.x, p.z)?.id ?? -1
       if (DESK_KINDS.has(p.kind)) {
         for (const part of this.shared.parts[p.kind] ?? []) {
@@ -1087,6 +1110,10 @@ export class TerminalBuilding {
       const m = instanced(board.geo, own(this.shared.palette.board.clone()), boards)
       m.name = 'props-boards'
       this.props.add(m)
+    }
+    for (const [id, mats] of kitMats) {
+      const kit = cc0Kit(id)
+      if (kit) this.props.add(kitInstances(kit, mats, { castShadow: true, receiveShadow: true, name: `props-cc0-${id}` }))
     }
     for (const batch of detail.values()) {
       const mesh = instanced(batch.geo, batch.mat, batch.matrices, batch.colors)

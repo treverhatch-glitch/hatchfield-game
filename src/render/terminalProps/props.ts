@@ -4,7 +4,12 @@
  * Dimensions follow real kit: 1.0 m check-in desks, 0.9 m x-ray tunnels,
  * 0.76 m bench seats, 2.1 m arches, 0.75 m tables.
  */
-import { box, cyl, markNear, part, place, rb, type Part } from './parts'
+import { box, cc0Anchor, cc0Hides, cyl, markNear, part, place, rb, type Part } from './parts'
+
+/** Yaw that turns each CC0 kit's front onto our +Z front (checked against captures). */
+export const CC0_FRONT_YAW = { tandem_seats: 0, checkin_kiosk: 0, e_gate: 0 }
+/** Width of one CC0 three-seat tandem unit, metres. */
+const TANDEM_W = 1.98
 
 const H = Math.PI / 2
 
@@ -26,16 +31,24 @@ function bagFlat(mat: string, l = 0.66, w = 0.44): Part[] {
 }
 function stanchionPost(): Part[] {
   return [
-    cyl([0.36, 0.03, 0.36], [0, 0.015, 0], 'chrome'),
-    cyl([0.06, 0.95, 0.06], [0, 0.5, 0], 'chrome'),
-    cyl([0.08, 0.06, 0.08], [0, 0.98, 0], 'chrome'),
+    ...cc0Hides('queue_post', [
+      cyl([0.36, 0.03, 0.36], [0, 0.015, 0], 'chrome'),
+      cyl([0.06, 0.95, 0.06], [0, 0.5, 0], 'chrome'),
+      cyl([0.08, 0.06, 0.08], [0, 0.98, 0], 'chrome'),
+    ]),
+    cc0Anchor('queue_post', [0, 0, 0]),
   ]
 }
 /** Retractable belt between two posts at (x0,z0) and (x1,z1). */
-function strap(x0: number, z0: number, x1: number, z1: number): Part {
+function strap(x0: number, z0: number, x1: number, z1: number): Part[] {
   const dx = x1 - x0, dz = z1 - z0
   const len = Math.hypot(dx, dz)
-  return box([len, 0.05, 0.01], [(x0 + x1) / 2, 0.93, (z0 + z1) / 2], 'hatchBlue', [0, -Math.atan2(dz, dx), 0])
+  const yaw = -Math.atan2(dz, dx)
+  // CC0 belt is 1 m long in its kit; stretch it post to post (minus the two post radii).
+  return [
+    { ...box([len, 0.05, 0.01], [(x0 + x1) / 2, 0.93, (z0 + z1) / 2], 'hatchBlue', [0, yaw, 0]), cc0Hide: 'queue_belt' },
+    cc0Anchor('queue_belt', [(x0 + x1) / 2, 0, (z0 + z1) / 2], yaw, [Math.max(0.1, len - 0.08), 1, 1]),
+  ]
 }
 function monitor(w = 0.5, h = 0.32): Part[] {
   return [
@@ -122,12 +135,15 @@ function person(look: Look, opts: { arms?: 'side' | 'forward'; seated?: boolean 
 /** Retractable-belt stanchion with the belt cassette head and a ribbed base. */
 function beltPost(): Part[] {
   return [
-    cyl([0.36, 0.03, 0.36], [0, 0.015, 0], 'chrome'),
-    cyl([0.3, 0.02, 0.3], [0, 0.035, 0], 'rubber'),
-    cyl([0.06, 0.88, 0.06], [0, 0.48, 0], 'chrome'),
-    cyl([0.1, 0.1, 0.1], [0, 0.96, 0], 'chrome'),
-    cyl([0.11, 0.02, 0.11], [0, 0.92, 0], 'hatchBlue'),
-    part('sphere', [0.08, 0.04, 0.08], [0, 1.02, 0], 'chrome'),
+    ...cc0Hides('queue_post', [
+      cyl([0.36, 0.03, 0.36], [0, 0.015, 0], 'chrome'),
+      cyl([0.3, 0.02, 0.3], [0, 0.035, 0], 'rubber'),
+      cyl([0.06, 0.88, 0.06], [0, 0.48, 0], 'chrome'),
+      cyl([0.1, 0.1, 0.1], [0, 0.96, 0], 'chrome'),
+      cyl([0.11, 0.02, 0.11], [0, 0.92, 0], 'hatchBlue'),
+      part('sphere', [0.08, 0.04, 0.08], [0, 1.02, 0], 'chrome'),
+    ]),
+    cc0Anchor('queue_post', [0, 0, 0]),
   ]
 }
 
@@ -231,7 +247,7 @@ function queue(w: number, lanes: number, gap: number, z0: number, post: () => Pa
       if (i > 0) {
         // leave alternate end gaps to make a snake
         const open = (l % 2 === 0 && i === nx - 1) || (l % 2 === 1 && i === 1)
-        if (!open || l === 0 || l === lanes) out.push(strap(x - pitch, z, x, z))
+        if (!open || l === 0 || l === lanes) out.push(...strap(x - pitch, z, x, z))
       }
     }
   }
@@ -523,7 +539,7 @@ function foodCourt(): Part[] {
 }
 
 // ---------- gates ----------
-function seatBeam(n = 5, upholstery = 'seatBlue'): Part[] {
+function seatBeam(n = 5, upholstery = 'seatBlue', cc0Units = Math.ceil(n / 3)): Part[] {
   const pitch = 0.62
   const len = n * pitch
   const out: Part[] = [box([len + 0.1, 0.08, 0.1], [0, 0.32, 0], 'brushed')]
@@ -544,7 +560,14 @@ function seatBeam(n = 5, upholstery = 'seatBlue'): Part[] {
     out.push(box([0.07, 0.07, 0.46], [x, 0.56, 0.02], 'leather'), box([0.045, 0.16, 0.045], [x, 0.48, 0.18], 'chrome'))
     if (i % 2 === 0) out.push(...markNear([box([0.05, 0.016, 0.07], [x, 0.605, 0.1], 'lampCool')]))
   }
-  return out
+  // CC0 tandem seating: whole three-seat units centred on the beam, squeezed to its length if needed.
+  const sx = Math.min(1, (len + 0.1) / (cc0Units * TANDEM_W))
+  const kit = upholstery === 'seatGrey' ? 'tandem_seats_grey' : 'tandem_seats'
+  const anchors: Part[] = []
+  for (let u = 0; u < cc0Units; u++) {
+    anchors.push(cc0Anchor(kit, [(u - (cc0Units - 1) / 2) * TANDEM_W * sx, 0, 0], CC0_FRONT_YAW.tandem_seats, [sx, 1, 1]))
+  }
+  return [...cc0Hides(kit, out), ...anchors]
 }
 function chargingPost(): Part[] {
   return [
@@ -746,6 +769,8 @@ function stanchionQueue(): Part[] {
 /** Self-service check-in kiosk with portrait screen, card reader and tag printer. */
 function selfKiosk(): Part[] {
   return [
+    cc0Anchor('checkin_kiosk', [0, 0, 0], CC0_FRONT_YAW.checkin_kiosk),
+    ...cc0Hides('checkin_kiosk', [
     box([0.62, 0.04, 0.5], [0, 0.02, 0], 'stainless'),
     box([0.5, 1.0, 0.36], [0, 0.52, -0.02], 'lacquerWhite'),
     box([0.52, 0.06, 0.4], [0, 1.03, 0], 'lacquerBlue'),
@@ -755,6 +780,7 @@ function selfKiosk(): Part[] {
     box([0.14, 0.02, 0.01], [0.12, 0.9, 0.17], 'black'),
     box([0.08, 0.04, 0.005], [-0.12, 1.12, 0.19], 'screenGreen'),
     box([0.46, 0.02, 0.02], [0, 1.86, -0.15], 'ledBlue'),
+    ]),
   ]
 }
 function kioskBank(): Part[] {
@@ -763,6 +789,24 @@ function kioskBank(): Part[] {
   out.push(...place(person(AGENT[1]), 2.1, 0.5, -0.6))
   out.push(box([3.6, 0.5, 0.06], [0, 2.4, -0.2], 'sgnCheckin'), cyl([0.04, 0.6, 0.04], [-1.6, 2.85, -0.2], 'chrome'), cyl([0.04, 0.6, 0.04], [1.6, 2.85, -0.2], 'chrome'))
   return out
+}
+
+/**
+ * Boarding-pass e-gate in front of a security lane (fitting 'bp_podium', 1.0 x 2.0 m).
+ * Procedural stand-in: two cabinets and a glass flap; the CC0 ticket gate replaces it once loaded.
+ */
+function bpEgate(): Part[] {
+  return [
+    cc0Anchor('e_gate', [0, 0, 0], CC0_FRONT_YAW.e_gate),
+    ...cc0Hides('e_gate', [
+      box([0.22, 1.0, 1.3], [-0.42, 0.5, 0], 'stainless'),
+      box([0.22, 1.0, 1.3], [0.42, 0.5, 0], 'stainless'),
+      box([0.24, 0.03, 1.32], [-0.42, 1.01, 0], 'black'),
+      box([0.24, 0.03, 1.32], [0.42, 1.01, 0], 'black'),
+      box([0.18, 0.12, 0.01], [0.42, 1.06, 0.4], 'screenGreen', [-0.5, 0, 0]),
+      box([0.6, 0.7, 0.02], [0, 0.6, 0], 'glass'),
+    ]),
+  ]
 }
 
 /** Departures wall: three 86" panels in a lit frame on a lacquered pylon. */
@@ -1234,6 +1278,7 @@ export const TERMINAL_PROP_TYPES = [
   'arrivals_sign',
   'bag_drop_kiosk',
   'passport_booth',
+  'bp_podium',
 ] as const
 export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
@@ -1252,7 +1297,8 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   food_court: foodCourt,
   cafe_table: () => cafeTable(4),
   gate_seating: gateSeating,
-  seat_row: () => seatBeam(5),
+  /** One CC0 tandem unit (three seats, 1.98 m) matches the seat-row fitting's 1.95 m footprint. */
+  seat_row: () => seatBeam(5, 'seatBlue', 1),
   charging_post: chargingPost,
   gate_podium: gatePodium,
   restroom_block: restroom,
@@ -1288,6 +1334,7 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   arrivals_sign: arrivalsSign,
   bag_drop_kiosk: bagDropKiosk,
   passport_booth: passportBooth,
+  bp_podium: bpEgate,
 }
 
 /**
