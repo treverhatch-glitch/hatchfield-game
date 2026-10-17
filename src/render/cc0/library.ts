@@ -45,9 +45,9 @@ export interface KitSpec {
 }
 
 export const CC0_KITS = {
-  city_bus: { file: 'city-bus', recolor: { '^paint$': '#1f6b4a' }, glow: { lens: 0.45 } },
-  apron_bus: { file: 'city-bus', recolor: { '^paint$': '#e9ecea' }, glow: { lens: 0.45 } },
-  fire_engine: { file: 'fire-engine', glow: { 'blue optical|red optical|amber optical': 0.55, 'clear optical': 0.35 } },
+  city_bus: { file: 'city-bus', recolor: { '^paint$': '#1f6b4a' }, glow: { lens: 0.9 } },
+  apron_bus: { file: 'city-bus', recolor: { '^paint$': '#e9ecea' }, glow: { lens: 0.9 } },
+  fire_engine: { file: 'fire-engine', glow: { 'blue optical|red optical|amber optical': 1.6, 'clear optical': 0.8 } },
   tree_oak: { file: 'tree-oak', vertexColor: true },
   tree_maple: { file: 'tree-maple', vertexColor: true },
   tree_linden: { file: 'tree-linden', vertexColor: true },
