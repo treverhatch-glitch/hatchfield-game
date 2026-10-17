@@ -142,13 +142,13 @@ export class ParkedFleet {
       const airline = sample.livery.airline
       const mid = makeInstances(
         shellGeometry(sample.airframeId, sample.livery, 'mid'),
-        vertexMaterials('mid').opaque,
+        vertexMaterials('mid', 'paint', airline, sample.livery.wear ?? 0).opaque,
         capacity,
         airline,
       )
       const low = makeInstances(
         shellGeometry(sample.airframeId, sample.livery, 'low'),
-        vertexMaterials('low').opaque,
+        vertexMaterials('low', 'paint', airline).opaque,
         capacity,
         airline,
       )
@@ -156,7 +156,7 @@ export class ParkedFleet {
       const windowsGeo = windowGeometry(sample.airframeId, sample.livery)
       const windows =
         windowsGeo && windowsGeo.getAttribute('position')
-          ? makeInstances(windowsGeo, vertexMaterials('mid').opaque, capacity, airline)
+          ? makeInstances(windowsGeo, vertexMaterials('mid', 'paint', airline, 0).opaque, capacity, airline)
           : null
       this.root.add(mid, low)
       if (windows) this.root.add(windows)

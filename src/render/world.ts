@@ -59,9 +59,9 @@ import { VehicleHeadlights } from './vehicleLights.ts'
 import { BlobShadows, type BlobCaster } from './world/blobShadows.ts'
 import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
+import { aircraftWear, daysSince } from './aircraft/airframeWear'
 import { pathHeading } from '../ramp/present.ts'
 import {
-  baseLevel,
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
@@ -120,6 +120,8 @@ export { CELL }
 
 /** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
+/** Aircraft never step down with the graphics preset (Trever: max graphics, no auto step-down). */
+const AIRCRAFT_DETAIL = 'high' as const
 const MAX_DIST = APRON_MAX_DIST
 const MIN_PITCH = 0.28
 const MAX_PITCH = 1.35
@@ -444,7 +446,8 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
-    setAircraftQuality(baseLevel(quality))
+    // Max graphics: aircraft always draw full detail, whatever the world preset.
+    setAircraftQuality(AIRCRAFT_DETAIL)
     markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
@@ -761,7 +764,7 @@ export class World {
     // Building photo maps follow the preset; rebuild the tile meshes with the new skin.
     setBuildingSkinQuality(level, QUALITY[level].anisotropy)
     this.tileHash = ''
-    setAircraftQuality(baseLevel(level))
+    setAircraftQuality(AIRCRAFT_DETAIL)
   }
 
   /**
@@ -1711,7 +1714,8 @@ export class World {
       seen.add(f.id)
       let mesh = this.jets.get(f.id)
       const paint = flightLivery(game, f)
-      const paintKey = liveryKey(paint)
+      // Wear steps (service resets, slow creep) rebuild with the next shared material bucket.
+      const paintKey = `${liveryKey(paint)}|w${paint.wear ?? 0}`
       if (mesh && mesh.userData.paintKey !== paintKey) {
         // Roster preview (or any repaint) changed the livery: rebuild this airframe.
         this.entGroup.remove(mesh)
@@ -2603,6 +2607,32 @@ const _doorPos = new THREE.Vector3()
 const SOLID_PAINT = new Set<string>(['military', 'air_ambulance', 'helo_med', 'freighter', 'helo_exec'])
 
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
+  const paint = flightPaint(game, f)
+  return { ...paint, wear: flightWear(game, f) }
+}
+
+/**
+ * Render-only airframe wear (airframeWear.ts): carrier size tier and persona set the
+ * baseline, the flight id adds a small deterministic per-tail spread, and a service stamp
+ * resets it to factory fresh, creeping back over WEAR_RECOVER_DAYS of flying.
+ * TODO(maintenance/repaint): no per-aircraft maintenance or repaint event exists yet. When one
+ * lands, stamp `flight.lastServicedClock = game.clock` and this picks it up; nothing else changes.
+ */
+function flightWear(game: Game, f: Game['flights'][number]): number {
+  if (SOLID_PAINT.has(f.kind) && f.kind !== 'freighter') return aircraftWear({ tier: 2, seed: f.id })
+  let tier: number | undefined
+  let persona: string | undefined
+  try {
+    const a = game.airline(f.airline)
+    tier = a.tier
+    persona = a.persona
+  } catch {
+    tier = undefined
+  }
+  return aircraftWear({ tier, persona, seed: f.id, daysSinceService: daysSince(game.clock, f.lastServicedClock) })
+}
+
+function flightPaint(game: Game, f: Game['flights'][number]): Livery {
   const preview = rosterPreviewLivery(f.airframeId)
   if (preview && !SOLID_PAINT.has(f.kind)) return preview
   const a = game.airline(f.airline)

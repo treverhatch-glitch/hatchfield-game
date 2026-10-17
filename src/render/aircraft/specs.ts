@@ -164,6 +164,11 @@ export interface Livery {
    * Missing art keeps the procedural colours.
    */
   airline?: string
+  /**
+   * Render-only wear 0 (factory fresh) … 1 (tired). From airframeWear.ts; picks a shared
+   * material bucket, never the geometry, so it is not part of liveryKey.
+   */
+  wear?: number
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>
@@ -734,7 +739,8 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     windows: false,
     rotor: 6.9,
     blades: 5,
-    fenestron: true,
+    // Real AW139: four-blade conventional tail rotor on the port side of the fin.
+    fenestron: false,
   }),
   s76: spec({
     id: 's76',
@@ -836,6 +842,51 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
 
 const FALLBACK = 'b738'
 
+/**
+ * Stretch or shrink a catalog airframe to a sibling type's real dimensions.
+ * Chords, tailplane, engines and wheelbase follow the length and span ratios so
+ * the proportions stay those of the family. Door stations are fractions, so they carry over.
+ */
+function derive(
+  baseId: string,
+  id: string,
+  dims: { lengthM: number; spanM: number; heightM: number },
+  extra: Partial<ModelSpec> = {},
+): ModelSpec {
+  const base = MODEL_SPECS[baseId]
+  const kl = dims.lengthM / base.lengthM
+  const ks = dims.spanM / base.spanM
+  const ke = Math.sqrt(kl * ks)
+  return {
+    ...base,
+    id,
+    ...dims,
+    rootChord: base.rootChord * ks,
+    tipChord: base.tipChord * ks,
+    tailSpan: base.tailSpan * ks,
+    wheelbaseM: base.wheelbaseM * kl,
+    engines: { ...base.engines, radius: base.engines.radius * Math.min(1.15, ke), length: base.engines.length * Math.min(1.15, ke) },
+    ...extra,
+  }
+}
+
+/**
+ * Render specs for the expansion pack (src/content/airframes_extra.ts), derived from
+ * the closest catalog type instead of falling back to a 737.
+ */
+export const DERIVED_SPECS: Record<string, ModelSpec> = {
+  q400: derive('atr72', 'q400', { lengthM: 32.8, spanM: 28.4, heightM: 8.3 }, { tail: 't' }),
+  atr42: derive('atr72', 'atr42', { lengthM: 22.7, spanM: 24.6, heightM: 7.6 }),
+  crj900: derive('crj700', 'crj900', { lengthM: 36.2, spanM: 24.9, heightM: 7.5 }),
+  b78x: derive('b789', 'b78x', { lengthM: 68.3, spanM: 60.1, heightM: 17 }),
+  a339: derive('a359', 'a339', { lengthM: 63.7, spanM: 64, heightM: 16.8 }, { winglet: 'blended' }),
+  b779: derive('b77w', 'b779', { lengthM: 76.7, spanM: 71.8, heightM: 19.5 }),
+  a35k: derive('a359', 'a35k', { lengthM: 73.8, spanM: 64.75, heightM: 17.1 }),
+  b77f: derive('b77w', 'b77f', { lengthM: 63.7, spanM: 64.8, heightM: 18.6 }, { windows: false, cargoDoor: true }),
+  a350f: derive('a359', 'a350f', { lengthM: 70.8, spanM: 64.75, heightM: 17.1 }, { windows: false, cargoDoor: true }),
+  b763bcf: derive('b763f', 'b763bcf', { lengthM: 54.9, spanM: 47.6, heightM: 15.9 }),
+}
+
 export function getAircraftSpec(airframeId: string): ModelSpec {
-  return MODEL_SPECS[airframeId] ?? MODEL_SPECS[FALLBACK]
+  return MODEL_SPECS[airframeId] ?? DERIVED_SPECS[airframeId] ?? MODEL_SPECS[FALLBACK]
 }

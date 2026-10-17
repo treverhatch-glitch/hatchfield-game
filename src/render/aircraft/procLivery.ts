@@ -15,7 +15,8 @@ import { rosterAirline, type RosterAirline, type TailMotif } from '../../airline
 import { LIVERY_ART } from './liveryUv'
 import { DEFAULT_TEXTURE_QUALITY, type TextureQuality } from './liveryFiles'
 import type { AirlineLiveryTex } from './liveryTex'
-import { MODEL_SPECS, type Livery } from './specs'
+import { MODEL_SPECS, DERIVED_SPECS, type Livery } from './specs'
+import { titleKeepoutsX } from './stands'
 
 export const LIVERY_KEY_SEP = '@'
 
@@ -24,6 +25,7 @@ export const PLATE_SCALE: Record<TextureQuality, number> = { low: 0.5, med: 1, h
 
 const WHITE = '#f2f4f6'
 const BELLY_SHADE = 0.58
+const POLISHED_BELLY = '#d3d8de'
 const NACELLE_RING = 0.08
 
 export interface ProcLivery {
@@ -46,6 +48,12 @@ export interface ProcLivery {
 function shade(hex: string, factor: number): string {
   const c = new THREE.Color(hex)
   c.multiplyScalar(factor)
+  return `#${c.getHexString()}`
+}
+
+/** Polished alloy-grey belly, tinted 10% toward the airline colour. */
+export function polishedBelly(primary: string): string {
+  const c = new THREE.Color(POLISHED_BELLY).lerp(new THREE.Color(primary), 0.1)
   return `#${c.getHexString()}`
 }
 
@@ -87,7 +95,8 @@ export function procLiverySpec(airlineId: string, modelId: string): ProcLivery |
     airlineId,
     modelId,
     fuselage,
-    belly: airline.belly ?? shade(airline.primary, BELLY_SHADE),
+    // Passenger jets: polished light-grey belly with a hint of the brand. Solid schemes keep the darker primary.
+    belly: airline.belly ?? (scheme === 'solid' ? shade(airline.primary, BELLY_SHADE) : polishedBelly(airline.primary)),
     cheatline:
       airline.cheatline ??
       (scheme === 'solid' ? airline.secondary : lightPrimary ? airline.accent : airline.secondary),
@@ -123,7 +132,9 @@ export function rosterLivery(airlineId: string, modelId: string): Livery | undef
 /** Swap a catalog-style Livery for the roster's when its airline is on the roster. */
 export function applyRosterLivery(livery: Livery, modelId: string): Livery {
   if (!livery.airline || livery.airline.includes(LIVERY_KEY_SEP)) return livery
-  return rosterLivery(livery.airline, modelId) ?? livery
+  const roster = rosterLivery(livery.airline, modelId)
+  // Wear is per aircraft, not per livery: carry it across.
+  return roster ? (livery.wear === undefined ? roster : { ...roster, wear: livery.wear }) : livery
 }
 
 /** Dev preview: every live aircraft wears this roster airline. `null` leaves flights alone. */
@@ -173,13 +184,54 @@ export function drawFuselagePlate(ctx: Ctx, w: number, h: number, p: ProcLivery)
 function drawWordmark(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   const lengthM = MODEL_SPECS[p.modelId]?.lengthM ?? 40
   // Longer airframes carry a smaller share of the strip per letter.
-  const size = Math.round(h * (p.helicopter ? 0.16 : lengthM > 60 ? 0.2 : 0.24))
+  const high = !p.helicopter && (MODEL_SPECS[p.modelId] ?? DERIVED_SPECS[p.modelId])?.wingHigh === true
+  // High-wing types carry their titles above the window line, clear of the wing and windows.
+  let size = Math.round(h * (p.helicopter ? 0.16 : high ? 0.17 : lengthM > 60 ? 0.2 : 0.24))
   ctx.font = `bold ${size}px sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
   ctx.fillStyle = luma(p.fuselage) < 0.55 ? WHITE : p.scheme === 'solid' ? WHITE : p.tail
-  const maxWidth = w * (p.helicopter ? 0.5 : 0.42)
-  ctx.fillText(p.wordmark, w * 0.2, h * 0.33, maxWidth)
+  const [u0, u1] = titleSpan(p.modelId, p.helicopter)
+  const span = w * (u1 - u0)
+  // A short clear band shrinks the lettering evenly instead of squashing it sideways.
+  const natural = ctx.measureText?.(p.wordmark)?.width ?? 0
+  if (natural > span && natural > 0) {
+    size = Math.max(Math.round(h * 0.1), Math.floor(size * (span / natural)))
+    ctx.font = `bold ${size}px sans-serif`
+  }
+  ctx.fillText(p.wordmark, w * u0, h * (high ? 0.19 : 0.33), span)
+}
+
+/**
+ * Plate U span for the fuselage titles. Port reads the plate nose→tail and starboard tail→nose
+ * (outwardUv), so on high-wing types the span must miss the wing chord on BOTH sides: it goes
+ * in the clear band beyond the wing and its mirror, forward of the wing on one side and aft of
+ * it on the other, never under it. Turboprops also keep the lettering clear of the nacelles and
+ * the propeller arc (stands.titleKeepoutsX), so a blade or cowling never cuts across the name.
+ */
+export function titleSpan(modelId: string, helicopter = false): [number, number] {
+  if (helicopter) return [0.2, 0.7]
+  const spec = MODEL_SPECS[modelId] ?? DERIVED_SPECS[modelId]
+  if (!spec || !spec.wingHigh) return [0.2, 0.62]
+  const half = spec.rootChord / 2 / spec.lengthM
+  let le = Math.max(0, spec.wingAt - half - 0.07)
+  let te = Math.min(1, spec.wingAt + half + 0.07)
+  // Grow the blocked band over any nacelle or prop arc that touches it (fractions from the nose).
+  const nose = spec.lengthM / 2
+  for (const [x0, x1] of titleKeepoutsX(spec)) {
+    const a = (nose - x1) / spec.lengthM
+    const b = (nose - x0) / spec.lengthM
+    if (b >= le - 0.02 && a <= te + 0.02) {
+      le = Math.max(0, Math.min(le, a - 0.01))
+      te = Math.min(1, Math.max(te, b + 0.01))
+    }
+  }
+  // Exclude [le, te] and its mirror [1 - te, 1 - le].
+  const lo = Math.min(le, 1 - te)
+  const hi = Math.max(te, 1 - le)
+  const front: [number, number] = [0.14, lo]
+  const back: [number, number] = [hi, 0.9]
+  return front[1] - front[0] >= back[1] - back[0] ? front : back
 }
 
 /** Tail plate: U leading edge to trailing edge, V root (bottom) to tip (top). */

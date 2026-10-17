@@ -17,13 +17,17 @@ export const AIRCRAFT_LOOK = {
   bellyLine: -0.72,
   /** Belly shade, as a multiple of the airline colour. */
   bellyShade: 0.78,
+  /** Polished alloy belly on two-tone liveries. */
+  polishedBelly: '#d3d8de',
   /** Fuselage sides per LOD. Smooth normals hide the facets, so mid can stay modest. */
-  fuselageSides: { low: 5, mid: 16 },
+  fuselageSides: { low: 5, mid: 32 },
   /** Window panes along one side at mid LOD, before the deck multiplier. */
   windowCount: 12,
   /** Painted shell material. */
   /** Glossy clear-coated livery: low roughness picks up the sky and sun from the env map. */
   paint: { metalness: 0.1, roughness: 0.24 },
+  /** Thin clear coat over the paint: sheen without turning the airframe into chrome. */
+  clearcoat: { amount: 0.55, roughness: 0.14 },
 } as const
 
 /** Ground service vehicles. Lengths come from `vehicleMeters` in world.ts. */

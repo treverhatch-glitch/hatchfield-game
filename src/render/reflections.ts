@@ -19,8 +19,9 @@ export function buildingReflectionsFor(level: QualityLevel): boolean {
 }
 
 /** Low aircraft shells are MeshBasicMaterial, so the sky probe would be unused. */
-export function aircraftReflectionsFor(level: QualityLevel): boolean {
-  return level !== 'low'
+export function aircraftReflectionsFor(_level: QualityLevel): boolean {
+  // Airframes are full-detail PBR on every preset, so the sky probe is always used.
+  return true
 }
 
 type BuildEnv = (renderer: THREE.WebGLRenderer) => THREE.Texture | null

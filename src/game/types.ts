@@ -559,6 +559,12 @@ export type AircraftKind =
 
 export interface Flight {
   id: string
+  /**
+   * Render-only: sim clock (seconds) of this airframe's last maintenance or repaint here.
+   * Resets the drawn wear to factory fresh (render/aircraft/airframeWear.ts). Not read by the sim.
+   * TODO(maintenance/repaint): set when such an event exists; unset means "at tier baseline".
+   */
+  lastServicedClock?: number
   airline: AirlineId
   flightNo: string
   /** Real airframe id from airframes catalog (e.g. b738). */

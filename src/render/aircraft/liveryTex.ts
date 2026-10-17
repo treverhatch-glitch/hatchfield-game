@@ -269,14 +269,23 @@ function installLiveryShader(material: THREE.Material) {
         `#include <common>
 attribute vec2 liveryUv;
 attribute float liverySlot;
+attribute float grime;
+#ifdef LIVERY_SHIFT
+attribute vec2 liveryShift;
+#endif
 varying vec2 vLiveryUv;
-varying float vLiverySlot;`,
+varying float vLiverySlot;
+varying float vGrime;`,
       )
       .replace(
         '#include <uv_vertex>',
         `#include <uv_vertex>
 vLiveryUv = liveryUv;
-vLiverySlot = liverySlot;`,
+#ifdef LIVERY_SHIFT
+vLiveryUv += liveryShift;
+#endif
+vLiverySlot = liverySlot;
+vGrime = grime;`,
       )
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -285,8 +294,10 @@ vLiverySlot = liverySlot;`,
 uniform sampler2D liveryFuselage;
 uniform sampler2D liveryTail;
 uniform sampler2D liveryEngine;
+uniform float airframeWear;
 varying vec2 vLiveryUv;
-varying float vLiverySlot;`,
+varying float vLiverySlot;
+varying float vGrime;`,
       )
       .replace(
         '#include <color_fragment>',
@@ -299,11 +310,24 @@ varying float vLiverySlot;`,
   else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv, -2.5);
   vec3 liveryLinear = sRGBTransferEOTF(vec4(liveryTex.rgb, 1.0)).rgb;
   diffuseColor.rgb = mix(diffuseColor.rgb, liveryLinear, liveryTex.a);
+  // Airframe wear (airframeWear.ts). Whole skin: chalky, slightly faded paint. Localised: soft
+  // grime and soot from the baked per-vertex mask (exhaust and APU wakes, belly, door, hatch
+  // and wing-root halos). Factory-fresh jets (wear 0) are untouched.
+  float lumW = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * 1.03 + 0.015, airframeWear * 0.24);
+  float grimeW = clamp(vGrime, 0.0, 1.0) * airframeWear;
+  diffuseColor.rgb *= mix(vec3(1.0), vec3(0.46, 0.43, 0.40), grimeW);
 }`,
       )
+    shader.uniforms.airframeWear = { value: (material.userData.airframeWear as number | undefined) ?? 0 }
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <roughnessmap_fragment>',
+      `#include <roughnessmap_fragment>
+roughnessFactor = min(1.0, roughnessFactor + airframeWear * 0.07 + clamp(vGrime, 0.0, 1.0) * airframeWear * 0.3);`,
+    )
     material.userData.liveryShader = shader
   }
-  material.customProgramCacheKey = () => 'livery-maps-v2'
+  material.customProgramCacheKey = () => 'livery-maps-v6'
   material.needsUpdate = true
 }
 

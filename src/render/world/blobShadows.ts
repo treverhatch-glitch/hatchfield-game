@@ -39,8 +39,10 @@ export function blobTexture(size = 64): THREE.DataTexture {
     for (let x = 0; x < size; x++) {
       const u = ((x + 0.5) / size) * 2 - 1
       const v = ((y + 0.5) / size) * 2 - 1
-      const d = Math.pow(Math.pow(Math.abs(u), 4) + Math.pow(Math.abs(v), 4), 0.25)
-      const a = Math.max(0, Math.min(1, (1 - d) / 0.45))
+      // Softer superellipse corners and a wider feather, so the ends (wingtips, tail, long dawn
+      // throws) fade out instead of stopping on a crisp edge.
+      const d = Math.pow(Math.pow(Math.abs(u), 3) + Math.pow(Math.abs(v), 3), 1 / 3)
+      const a = Math.max(0, Math.min(1, (1 - d) / 0.62))
       const s = a * a * (3 - 2 * a)
       const i = (y * size + x) * 4
       const g = Math.round(s * 255)

@@ -65,6 +65,22 @@ const PROFILES: Record<string, { t: number; r: number; dy?: number }[]> = {
     { t: 0.95, r: 0.14, dy: 0.16 },
     { t: 1, r: 0.03, dy: 0.18 },
   ],
+  // Wing-mounted turboprop airliner (ATR, Dash 8, Twin Otter, C-130): blunt rounded radome
+  // straight into a deep cockpit, constant cabin, long upswept tail cone.
+  turboprop: [
+    { t: 0, r: 0.08, dy: -0.12 },
+    { t: 0.008, r: 0.36, dy: -0.11 },
+    { t: 0.022, r: 0.58, dy: -0.08 },
+    { t: 0.045, r: 0.78, dy: -0.04 },
+    { t: 0.08, r: 0.92, dy: -0.01 },
+    { t: 0.13, r: 0.99 },
+    { t: 0.17, r: 1 },
+    { t: 0.66, r: 1 },
+    { t: 0.76, r: 0.82, dy: 0.06 },
+    { t: 0.86, r: 0.52, dy: 0.17 },
+    { t: 0.94, r: 0.25, dy: 0.25 },
+    { t: 1, r: 0.07, dy: 0.29 },
+  ],
   // Helicopter: blunt cabin, then a long thin tail boom.
   helo: [
     { t: 0, r: 0.2, dy: -0.02 },
@@ -335,8 +351,8 @@ export function wingGeometry(
 
 export function cylinderSides(tier: 'low' | 'mid' | 'high'): number {
   if (tier === 'low') return 8
-  if (tier === 'mid') return 12
-  return 18
+  if (tier === 'mid') return 24
+  return 32
 }
 
 export function fuselageSides(tier: 'low' | 'mid'): number {
@@ -418,21 +434,25 @@ export function nacelleGeometry(sides: number): THREE.BufferGeometry {
     const pts = prof.map(([r, y]) => new THREE.Vector2(r, y))
     const geo = new THREE.LatheGeometry(pts, Math.max(32, sides * 3))
     geo.computeVertexNormals()
+    // Livery bake keeps the lip, fan face and plug in bare metal (merge.ts).
+    geo.userData.nacelle = true
     return geo
   })
 }
 
 /** Oval cabin window decal facing +Z, 10 triangles. Scale is (width, height, 1). */
 export function windowGeometry(): THREE.BufferGeometry {
-  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 10))
+  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 18))
 }
 
 /**
  * Which loft to draw. A full-length double deck uses the deck stations.
  * The 747 forehead stays a separate hump on the tube, so its livery box is unchanged.
  */
-export function loftFamily(spec: { family: string; decks?: number; hump?: boolean }): string {
+export function loftFamily(spec: { family: string; decks?: number; hump?: boolean; engines?: { mount: string; count: number } }): string {
   if (spec.decks === 2 && !spec.hump) return 'deck'
+  // Wing-mounted turboprops get the blunt radome; nose-engine singles keep the cowl point.
+  if (spec.family === 'prop' && spec.engines?.mount === 'wing' && spec.engines.count >= 2) return 'turboprop'
   return spec.family
 }
 
@@ -617,4 +637,174 @@ export function airfoilGeometry(): THREE.BufferGeometry {
     geo.computeVertexNormals()
     return geo
   })
+}
+
+/**
+ * One twisted, wide-chord fan blade in hub space: radial along +Y from the hub (0.27) to the
+ * tip (1), axial +X, tangential +Z. Chord widens toward the tip and the pitch flattens, like a
+ * modern high-bypass fan. Thin, two-sided; scale uniformly by the fan radius.
+ */
+export function fanBladeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('fan-blade', () => {
+    const steps = 4
+    const half = 0.012
+    const rows: number[][][] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const r = 0.27 + 0.73 * t
+      const chord = 0.17 + 0.13 * t
+      const pitch = (58 - 36 * t) * (Math.PI / 180)
+      const ax = Math.sin(pitch) * chord * 0.5
+      const tz = Math.cos(pitch) * chord * 0.5
+      // Leading edge, trailing edge, each with a front/back face offset along the blade normal.
+      const nx = Math.cos(pitch) * half
+      const nz = -Math.sin(pitch) * half
+      rows.push([
+        [ax + nx, r, tz + nz],
+        [-ax + nx, r, -tz + nz],
+        [-ax - nx, r, -tz - nz],
+        [ax - nx, r, tz - nz],
+      ])
+    }
+    const pos: number[] = []
+    for (let i = 0; i < steps; i++) connectRings(pos, rows[i], rows[i + 1], false)
+    capRing(pos, rows[steps], false)
+    // Two-sided: the blade is thin enough that winding should never hide it.
+    const n = pos.length
+    for (let i = 0; i < n; i += 9) pos.push(pos[i], pos[i + 1], pos[i + 2], pos[i + 6], pos[i + 7], pos[i + 8], pos[i + 3], pos[i + 4], pos[i + 5])
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Tapered, twisted propeller blade in hub space: radial +Y from the root (0.14) to the tip (1),
+ * axial +X, tangential +Z. Narrow root shank, widest near 40% span, tapered rounded tip, with
+ * the pitch flattening outboard. Two-sided; scale uniformly by the prop radius.
+ */
+export function propBladeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('prop-blade-twist', () => {
+    const steps = 6
+    const rows: number[][][] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const r = 0.14 + 0.86 * t
+      const chord = t < 0.4 ? 0.07 + 0.08 * (t / 0.4) : 0.15 - 0.09 * ((t - 0.4) / 0.6) ** 1.4
+      const half = 0.014 * (1 - 0.6 * t)
+      const pitch = (62 - 44 * t) * (Math.PI / 180)
+      const ax = Math.sin(pitch) * chord * 0.5
+      const tz = Math.cos(pitch) * chord * 0.5
+      const nx = Math.cos(pitch) * half
+      const nz = -Math.sin(pitch) * half
+      rows.push([
+        [ax + nx, r, tz + nz],
+        [-ax + nx, r, -tz + nz],
+        [-ax - nx, r, -tz - nz],
+        [ax - nx, r, tz - nz],
+      ])
+    }
+    const pos: number[] = []
+    for (let i = 0; i < steps; i++) connectRings(pos, rows[i], rows[i + 1], false)
+    capRing(pos, rows[steps], false)
+    const n = pos.length
+    for (let i = 0; i < n; i += 9) pos.push(pos[i], pos[i + 1], pos[i + 2], pos[i + 6], pos[i + 7], pos[i + 8], pos[i + 3], pos[i + 4], pos[i + 5])
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Helicopter main / tail rotor blade, in metres: span along +X from the grip (`root`) to the
+ * tip (`radius`), chord along Z (leading edge −Z, the advancing side for a CCW-from-above rotor),
+ * thickness on Y. Constant-chord inboard, tapered and slightly swept back over the outer 12 %,
+ * about 9° of linear washout, a cambered 10 %-thick section and a hint of static droop.
+ */
+export function rotorBladeGeometry(radius: number, chord: number, root: number, droop = 0.012): THREE.BufferGeometry {
+  const key = `rotor-blade:${radius.toFixed(2)}:${chord.toFixed(3)}:${root.toFixed(2)}:${droop}`
+  return sharedGeo(key, () => {
+    // Section, unit chord, LE at u = 0 → TE at u = 1 (upper surface then lower), y up.
+    const sec: [number, number][] = [
+      [0, 0], [0.04, 0.042], [0.18, 0.062], [0.45, 0.05], [0.75, 0.026], [1, 0.004],
+      [1, -0.004], [0.75, -0.012], [0.45, -0.022], [0.18, -0.03], [0.04, -0.024],
+    ]
+    const steps = 14
+    const rows: THREE.Vector3[][] = []
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps
+      const r = root + (radius - root) * f
+      const tipF = Math.max(0, (f - 0.88) / 0.12)
+      const c = chord * (1 - 0.55 * tipF * tipF) * (f < 0.04 ? 0.72 + 7 * f : 1)
+      const sweep = chord * 0.45 * tipF * tipF
+      const twist = ((7 - 9 * f) * Math.PI) / 180
+      const sag = -droop * radius * f * f
+      const ct = Math.cos(twist)
+      const st = Math.sin(twist)
+      rows.push(sec.map(([u, v]) => {
+        // Chord line about the quarter-chord, pitched nose-up by `twist`.
+        const zc = (u - 0.25) * c
+        const yc = v * c
+        return new THREE.Vector3(r, sag + yc * ct - zc * st, zc * ct + yc * st + sweep)
+      }))
+    }
+    const pos: number[] = []
+    const n = sec.length
+    const tri = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z)
+    for (let i = 0; i < steps; i++) {
+      for (let k = 0; k < n; k++) {
+        const k2 = (k + 1) % n
+        const a = rows[i][k], b = rows[i][k2], c = rows[i + 1][k2], d = rows[i + 1][k]
+        tri(a, c, b)
+        tri(a, d, c)
+      }
+    }
+    // Tip and root caps (fans).
+    for (const [ring, flip] of [[rows[steps], false], [rows[0], true]] as const) {
+      for (let k = 1; k < n - 1; k++) flip ? tri(ring[0], ring[k], ring[k + 1]) : tri(ring[0], ring[k + 1], ring[k])
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    const merged = mergeVertices(geo, 1e-5)
+    merged.computeVertexNormals()
+    return merged
+  })
+}
+
+/**
+ * Soft radial alpha for a spinning prop or rotor disc (green channel, alphaMap):
+ * clear over the hub, a faint body, a denser tip track, then a feathered rim.
+ */
+const blurTex: Record<string, THREE.DataTexture> = {}
+export function spinBlurTexture(kind: 'prop' | 'rotor'): THREE.DataTexture {
+  if (blurTex[kind]) return blurTex[kind]
+  const size = 128
+  const data = new Uint8Array(size * size * 4)
+  const hub = kind === 'prop' ? 0.17 : 0.07
+  const smooth = (a: number, b: number, x: number) => {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = ((x + 0.5) / size) * 2 - 1
+      const v = ((y + 0.5) / size) * 2 - 1
+      const r = Math.hypot(u, v)
+      const body = smooth(hub, hub + 0.12, r) * (0.55 + 0.45 * smooth(0.55, 0.9, r))
+      const rim = 1 - smooth(0.9, 1, r)
+      const a = Math.round(255 * Math.max(0, Math.min(1, body * rim)))
+      const i = (y * size + x) * 4
+      data[i] = data[i + 1] = data[i + 2] = a
+      data[i + 3] = 255
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.generateMipmaps = true
+  tex.needsUpdate = true
+  blurTex[kind] = tex
+  return tex
 }

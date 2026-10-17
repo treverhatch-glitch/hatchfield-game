@@ -66,7 +66,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     level: 'low',
     shadowMapSize: 1024,
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 2,
+    shadowRadius: 3,  // light penumbra: PCF Vogel-disk spread, in shadow-map texels
     // Every tier draws the full art set. Shadow size still steps up so a
     // software-GL machine can open the view; it does not drop textures, trees, or props.
     pixelRatioCap: 1,
@@ -95,7 +95,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     level: 'med',
     shadowMapSize: 2048,
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 3,
+    shadowRadius: 4.5,  // light penumbra: PCF Vogel-disk spread, in shadow-map texels
     pixelRatioCap: 1.5,
     msaa: true,
     shadowEvery: 1,
@@ -123,7 +123,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 4096,
     // PCFSoftShadowMap was removed in three r18x; PCF + a blur radius is the soft option.
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 4,
+    shadowRadius: 6,  // light penumbra: PCF Vogel-disk spread, in shadow-map texels
     pixelRatioCap: 2,
     msaa: true,
     shadowEvery: 1,
@@ -151,7 +151,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     level: 'ultra',
     shadowMapSize: 8192,
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 5,
+    shadowRadius: 7.5,  // light penumbra: PCF Vogel-disk spread, in shadow-map texels
     pixelRatioCap: 2,
     msaa: true,
     shadowEvery: 1,

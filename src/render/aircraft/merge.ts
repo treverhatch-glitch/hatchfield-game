@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { engineUv, outwardUv, type LiveryBox, type LiveryMapKind } from './liveryUv'
 import { liveryKey, paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
+import { PANEL_U_M, PANEL_V_M } from './surfaceDetail'
 import type { Livery } from './specs'
 
 type Tier = 'low' | 'mid' | 'high'
@@ -19,6 +20,8 @@ interface ShellSource {
   meshes: PaintedMesh[]
   gears: THREE.Object3D[]
   spinners: THREE.Object3D[]
+  /** Group-space wear mask 0–1 (soot, belly grime, door halos), baked per vertex. */
+  grime?: (x: number, y: number, z: number) => number
 }
 
 function under(mesh: THREE.Object3D, roots: THREE.Object3D[]): boolean {
@@ -50,6 +53,7 @@ function writeLivery(
   const uv = new Float32Array(pos.count * 2)
   const slot = new Float32Array(pos.count)
   const id = mode === 'fuselage' ? 0 : mode === 'tail' ? 1 : mode === 'engine' ? 2 : 3
+  const bareMetal = geo.userData.nacelle === true
   for (let i = 0; i < pos.count; i++) {
     slot[i] = id
     const x = pos.getX(i)
@@ -59,6 +63,9 @@ function writeLivery(
     let v = 0
     if (mode === 'engine' && local) {
       ;[u, v] = engineUv(x, y, z)
+      // Cowl only: the polished intake lip, fan face, core nozzle and exhaust plug stay bare metal.
+      const r = Math.hypot(x, z)
+      if (bareMetal && (y > 0.26 || y < -0.46 || (y < -0.29 && r < 0.86))) slot[i] = 3
     } else if ((mode === 'fuselage' || mode === 'tail') && box && !local) {
       ;[u, v] = outwardUv(x, y, z, box)
     }
@@ -84,7 +91,7 @@ export function bakeGeometry(
   const flat = geo.index ? geo.toNonIndexed() : geo
   if (flat !== geo) geo.dispose()
   for (const name of Object.keys(flat.attributes)) {
-    if (name !== 'position' && name !== 'normal' && name !== 'color' && name !== 'liveryUv' && name !== 'liverySlot') {
+    if (name !== 'position' && name !== 'normal' && name !== 'color' && name !== 'liveryUv' && name !== 'liverySlot' && name !== 'grime') {
       flat.deleteAttribute(name)
     }
   }
@@ -100,15 +107,32 @@ export function bakeGeometry(
     }
     flat.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   }
-  if (!flat.getAttribute('uv')) {
+  if (!flat.getAttribute('uv') || livery?.mode === 'fuselage' || livery?.mode === 'tail') {
+    // Surface-detail UVs in skin metres (surfaceDetail.ts): fuselage unrolled around the
+    // tube so panel joints ring it and run along it; fin flat; everything else planar.
     const uv = new Float32Array(pos.count * 2)
+    const box = livery?.box
+    const cy = box ? (box.y0 + box.y1) / 2 : 0
+    const rad = box ? Math.max(0.5, (box.y1 - box.y0) / 2) : 1
     for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = pos.getX(i) * 0.18
-      uv[i * 2 + 1] = pos.getZ(i) * 0.12 + pos.getY(i) * 0.04
+      const x = pos.getX(i)
+      const y = pos.getY(i)
+      const z = pos.getZ(i)
+      if (livery?.mode === 'fuselage') {
+        uv[i * 2] = x / PANEL_U_M
+        uv[i * 2 + 1] = (Math.atan2(y - cy, Math.abs(z)) * rad) / PANEL_V_M
+      } else if (livery?.mode === 'tail') {
+        uv[i * 2] = x / PANEL_U_M
+        uv[i * 2 + 1] = y / PANEL_V_M
+      } else {
+        uv[i * 2] = x * 0.18
+        uv[i * 2 + 1] = z * 0.12 + y * 0.04
+      }
     }
     flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
   }
   if (!flat.getAttribute('liveryUv')) writeLivery(flat, 'none', undefined, false)
+  if (!flat.getAttribute('grime')) flat.setAttribute('grime', new THREE.BufferAttribute(new Float32Array(pos.count), 1))
   return flat
 }
 
@@ -159,7 +183,13 @@ function takeShell(
       mesh.updateMatrix()
       parts.push(...piecesOf(mesh, mesh.matrix))
     }
-    return mergeParts(parts)
+    const merged = mergeParts(parts)
+    if (frame.grime) {
+      const pos = merged.getAttribute('position')
+      const g = merged.getAttribute('grime') as THREE.BufferAttribute
+      for (let i = 0; i < pos.count; i++) g.setX(i, Math.max(0, Math.min(1, frame.grime(pos.getX(i), pos.getY(i), pos.getZ(i)))))
+    }
+    return merged
   })
   for (const mesh of meshes) {
     mesh.removeFromParent()
@@ -168,7 +198,7 @@ function takeShell(
   }
   const shell = new THREE.Mesh(geometry)
   shell.name = name
-  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish)
+  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish, frame.livery.airline, frame.livery.wear ?? 0)
   painted.userData.airline = frame.livery.airline
   painted.castShadow = frame.tier === 'mid'
   frame.group.add(painted)
@@ -203,6 +233,9 @@ export function bakeGroup(root: THREE.Object3D): THREE.BufferGeometry {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh
     if (!mesh.isMesh) return
+    // Hidden parts (prop / rotor blur discs, shut doorway cuts) are not part of the parked shell:
+    // baking them drew an opaque grey disc behind every parked prop in the batched copies.
+    if (!mesh.visible || mesh.userData.ownMat) return
     _rel.copy(root.matrixWorld).invert().multiply(mesh.matrixWorld)
     parts.push(...piecesOf(mesh, _rel))
   })

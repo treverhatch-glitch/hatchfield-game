@@ -1,11 +1,12 @@
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
-import { doorBoxes } from './stands'
-import { AIRCRAFT_LOOK } from '../look'
-import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { heloCabin, renderDoorBoxes, type DoorBox } from './stands'
+import { cylinderSides, fanBladeGeometry, propBladeGeometry, rotorBladeGeometry, spinBlurTexture, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
 import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
+import { engineLayout, propRadius } from './layout'
+import { fuselagePaint } from './doorLeaf'
 import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
 import { listedLivery } from './liveryFiles'
@@ -171,47 +172,7 @@ function compose(
 }
 
 function enginePoints(frame: Frame): THREE.Vector3[] {
-  const { spec, wingX, wingY, centerY, nose, tailX } = frame
-  const eng = spec.engines
-  if (eng.count === 0) return []
-  const pts: THREE.Vector3[] = []
-  if (eng.mount === 'nose') {
-    pts.push(new THREE.Vector3(nose - eng.length * 0.15, centerY, 0))
-    return pts
-  }
-  if (eng.mount === 'rear') {
-    // High on the rear fuselage, ahead of the tail cone: CRJ, E-Jet, Citation.
-    const x = tailX + spec.lengthM * 0.22
-    const y = centerY + spec.ry * 0.38
-    const z = spec.rx + eng.radius * 0.42
-    pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
-    return pts
-  }
-  if (eng.mount === 'tail') {
-    const x = tailX + eng.length * 0.35
-    const z = spec.rx * 0.42
-    pts.push(new THREE.Vector3(x, centerY, z), new THREE.Vector3(x, centerY, -z))
-    return pts
-  }
-  const semi = spec.spanM / 2
-  // Inboard pair for quads (747, A380, C-130). Narrowbody twins sit closer to the root than widebody twins.
-  const fracs = eng.count === 4 ? [0.25, 0.52] : [spec.spanM >= 55 ? 0.34 : 0.3]
-  const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
-  const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
-  const fan = eng.kind !== 'turboprop'
-  for (const frac of fracs) {
-    const z = semi * frac
-    // Follow the swept, dihedral leading edge so the pod hangs under the wing, not behind it.
-    const chordAt = spec.rootChord + (spec.tipChord - spec.rootChord) * frac
-    const le = wingX + spec.rootChord / 2 - tanSweep * z
-    const wy = wingY + tanDih * z
-    const x = fan ? le + eng.length * 0.12 : le - chordAt * 0.15 + eng.length * 0.2
-    const y = spec.wingHigh
-      ? (fan ? wy - eng.radius * 1.15 : wy - eng.radius * 0.2)
-      : (fan ? wy - eng.radius * 1.3 - spec.thickness * 0.2 : wy + eng.radius * 0.1)
-    pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
-  }
-  return pts
+  return engineLayout(frame.spec)
 }
 
 function addInstances(
@@ -256,12 +217,6 @@ function addFuselage(frame: Frame) {
   }
 }
 
-/** Crown, airline band and belly colours for the fuselage loft. */
-function fuselagePaint(livery: Livery): { crown: string; body: string; belly: string } {
-  const belly = `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
-  const crown = livery.crown ?? (livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown)
-  return { crown, body: livery.body, belly }
-}
 
 function addWing(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
@@ -328,10 +283,8 @@ function addWing(frame: Frame) {
 
 function addTail(frame: Frame) {
   if (frame.tier === 'high' || frame.spec.family === 'helo') return
-  const { spec, tailX, top, finH, centerY } = frame
-  const chord = Math.max(1.1, spec.lengthM * 0.11)
-  const thick = Math.max(0.08, spec.rx * 0.08)
-  const finX = tailX + chord * 0.55
+  const { spec } = frame
+  const { chord, thick, finX, rootY: top, finH, stabX, stabY } = finPose(frame)
   const tailPaint = frame.livery.tail || frame.livery.stripe
   const finBox: LiveryBox = {
     x0: finX + chord * 0.42,
@@ -354,13 +307,13 @@ function addTail(frame: Frame) {
   } else {
     placeFin(0, 'tail')
   }
-  const stabY = spec.tail === 't' ? frame.spec.heightM - 0.12 : centerY + spec.ry * 0.2
   const stabChord = Math.max(0.8, spec.rootChord * 0.42)
   const stab = new THREE.Mesh(stabGeometry())
   stab.scale.set(stabChord, Math.max(0.08, spec.thickness * 0.22), spec.tailSpan)
-  stab.position.set(finX - chord * 0.15, stabY, 0)
+  stab.position.set(stabX, stabY, 0)
   stab.name = 'stab'
-  addMesh(frame, stab, 'tail', 'mesh')
+  // Tailplanes wear the wing grey, as on real liveries; the fin carries the airline colour.
+  addMesh(frame, stab, 'wing', 'mesh')
 }
 
 function addEngines(frame: Frame) {
@@ -374,7 +327,7 @@ function addEngines(frame: Frame) {
     compose(p.x, p.y, p.z, 0, 0, Math.PI / 2, eng.radius, eng.length, eng.radius),
   )
   const fanPod = eng.kind === 'turbofan' || eng.kind === 'turbojet'
-  const mesh = addInstances(frame, fanPod && tier === 'mid' ? nacelleGeometry(sides) : unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
+  const mesh = addInstances(frame, fanPod && tier !== 'low' ? nacelleGeometry(sides) : unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
   if (mesh) {
     mesh.name = 'engines'
     markLivery(mesh, 'engine')
@@ -432,14 +385,15 @@ function addEngines(frame: Frame) {
         eng.radius * 0.8,
       ),
     )
-    addInstances(frame, unitCylinder(sides), discs, 'dark', 'mesh', 'fan-disc')
+    addInstances(frame, unitCylinder(sides), discs, fanPod ? 'duct' : 'dark', 'mesh', 'fan-disc')
     if (fanPod) {
       // Separate spinner cone on the fan face and a bright rolled intake lip.
-      const cones = pts.map((p) => compose(p.x + eng.length * 0.3, p.y, p.z, 0, 0, 0, eng.radius * 0.5, eng.radius * 0.3, eng.radius * 0.3))
-      const cone = addInstances(frame, spinnerConeGeometry(), cones, 'metal', 'mesh', 'spinner')
+      // Silver spinner seated on the fan hub, its tip still inside the intake lip.
+      const cones = pts.map((p) => compose(p.x + eng.length * 0.41, p.y, p.z, 0, 0, 0, Math.min(eng.radius * 0.42, eng.length * 0.08), eng.radius * 0.25, eng.radius * 0.25))
+      const cone = addInstances(frame, spinnerConeGeometry(), cones, 'chrome', 'mesh', 'spinner')
       if (cone) cone.name = 'spinner'
       const lips = pts.map((p) => compose(p.x + eng.length * 0.5, p.y, p.z, 0, 0, 0, eng.radius * 0.99, eng.radius * 0.99, eng.radius * 0.99))
-      const lip = addInstances(frame, intakeLipGeometry(), lips, 'metal', 'mesh', 'intake-lip')
+      const lip = addInstances(frame, intakeLipGeometry(), lips, 'lip', 'mesh', 'intake-lip')
       if (lip) lip.name = 'intake-lip'
     }
   }
@@ -447,7 +401,7 @@ function addEngines(frame: Frame) {
 }
 
 function addPropDiscs(frame: Frame, pts: THREE.Vector3[], eng: EngineSpec) {
-  const radius = eng.radius * 3.1
+  const radius = propRadius(frame.spec)
   for (const p of pts) {
     const disc = new THREE.Mesh(unitDisc('prop'))
     disc.scale.setScalar(radius)
@@ -464,9 +418,8 @@ function addPropBlades(
   eng: EngineSpec,
   name: 'prop' | 'fan',
 ) {
-  const blades = name === 'fan' ? 8 : Math.max(4, frame.spec.blades || 4)
-  const radius = name === 'fan' ? eng.radius * 0.78 : eng.radius * 3.05
-  const geo = unitBox()
+  const blades = name === 'fan' ? (eng.kind === 'turbojet' ? 18 : 22) : Math.max(2, frame.spec.blades || 4)
+  const radius = name === 'fan' ? eng.radius * 0.78 : propRadius(frame.spec)
   for (const p of pts) {
     const hub = new THREE.Group()
     hub.name = name
@@ -474,6 +427,15 @@ function addPropBlades(
     const matrices: THREE.Matrix4[] = []
     for (let i = 0; i < blades; i++) {
       const angle = (i / blades) * Math.PI * 2
+      if (name === 'fan') {
+        // Twisted wide-chord blades filling the duct (fan radius ≈ duct inner wall).
+        const R = eng.radius * 0.83
+        matrices.push(compose(0, 0, 0, angle, 0, 0, R, R, R))
+        continue
+      }
+      // Tapered, twisted prop blades at the real diameter.
+      matrices.push(compose(0, 0, 0, angle, 0, 0, radius, radius, radius))
+      continue
       matrices.push(
         compose(
           0,
@@ -482,21 +444,62 @@ function addPropBlades(
           angle,
           0,
           0,
-          name === 'fan' ? 0.06 : 0.1,
+          0.1,
           radius * 0.92,
-          name === 'fan' ? 0.14 : 0.22,
+          0.22,
         ),
       )
     }
-    const mesh = new THREE.InstancedMesh(name === 'prop' ? bladeGeometry() : geo, new THREE.MeshBasicMaterial(), blades)
+    const mesh = new THREE.InstancedMesh(name === 'prop' ? propBladeGeometry() : fanBladeGeometry(), new THREE.MeshBasicMaterial(), blades)
     matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
     mesh.instanceMatrix.needsUpdate = true
-    const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', frame.tier)
+    const painted = paintMesh(mesh, name === 'fan' ? 'fan' : 'dark', frame.livery, 'mesh', frame.tier)
     hub.add(painted)
     frame.meshes.push(painted)
+    hub.userData.blades = [painted]
+    if (name === 'prop') {
+      // Spinner cone on the hub, and a soft motion-blur disc the LOD fades in with prop speed.
+      const cone = new THREE.Mesh(spinnerConeGeometry())
+      cone.scale.set(radius * 0.32, radius * 0.17, radius * 0.17)
+      cone.position.x = -radius * 0.08
+      cone.name = 'prop-spinner'
+      const paintedCone = paintMesh(cone, 'lip', frame.livery, 'mesh', frame.tier)
+      hub.add(paintedCone)
+      frame.meshes.push(paintedCone)
+      // The disc does not turn with the hub: a stationary blur reads steady and so does its shadow.
+      const blur = spinBlurDisc('prop', radius * 1.02)
+      blur.position.copy(hub.position)
+      blur.position.x += 0.02
+      frame.group.add(blur)
+      hub.userData.blur = blur
+    }
     frame.group.add(hub)
     frame.spinners.push(hub)
   }
+}
+
+/**
+ * Motion-blur disc for a spinning prop or rotor: radial soft alpha (clear hub, faint body,
+ * denser tip track, feathered rim). Hidden and fully transparent at rest; lod.ts fades it in
+ * with spool. Its custom depth material uses hashed alpha, so a spinning disc throws a soft,
+ * partial disc shadow (PCF blurs the hash) instead of the frozen blades.
+ */
+export function spinBlurDisc(kind: 'prop' | 'rotor', radius: number): THREE.Mesh {
+  const alphaMap = spinBlurTexture(kind)
+  const blur = new THREE.Mesh(
+    unitDisc(kind === 'prop' ? 'prop-blur' : 'rotor-blur'),
+    new THREE.MeshBasicMaterial({ color: kind === 'prop' ? '#24272b' : '#2a2c30', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, alphaMap }),
+  )
+  blur.customDepthMaterial = new THREE.MeshDepthMaterial({ alphaMap, alphaHash: true, opacity: 0, side: THREE.DoubleSide })
+  blur.scale.setScalar(radius)
+  blur.name = kind === 'prop' ? 'prop-blur' : 'rotor-blur'
+  blur.visible = false
+  blur.castShadow = false
+  blur.receiveShadow = false
+  blur.userData.ownMat = true
+  blur.userData.blurMax = kind === 'prop' ? 0.42 : 0.3
+  blur.raycast = () => {}
+  return blur
 }
 
 function addFans(frame: Frame) {
@@ -673,13 +676,37 @@ function addGear(frame: Frame) {
 
   if (spec.skids) {
     if (tier === 'high') return
-    for (const sign of [1, -1]) {
-      const skid = new THREE.Mesh(unitBox())
-      skid.scale.set(spec.lengthM * 0.46, 0.08, 0.1)
-      skid.position.set(0, localGround + 0.04, sign * spec.rx * 0.75)
-      const painted = paintMesh(skid, 'metal', frame.livery, 'mesh', tier)
+    // Skids sit under the cabin (not the boom) on two cross tubes that reach the belly.
+    const cab = heloCabin(spec)
+    const cabLen = cab.x1 - cab.x0
+    const skidX = (cab.x0 + cab.x1) / 2
+    const skidZ = spec.rx * 0.78
+    const skidY = localGround + 0.04
+    const push = (mesh: THREE.Mesh) => {
+      const painted = paintMesh(mesh, 'metal', frame.livery, 'mesh', tier)
       gear.add(painted)
       frame.meshes.push(painted)
+    }
+    for (const sign of [1, -1]) {
+      const skid = new THREE.Mesh(unitBox())
+      skid.scale.set(cabLen * 1.18, 0.08, 0.1)
+      skid.position.set(skidX, skidY, sign * skidZ)
+      push(skid)
+    }
+    for (const f of [0.22, 0.74]) {
+      const x = cab.x0 + cabLen * f
+      const st = skinAt(frame, x)
+      const bellyY = st.mid - spec.ry * st.r * 0.82 - spec.gear
+      const bellyZ = spec.rx * st.r * 0.55
+      for (const sign of [1, -1]) {
+        const dz = skidZ - bellyZ
+        const dy = bellyY - skidY
+        const strut = new THREE.Mesh(unitBox())
+        strut.scale.set(0.09, Math.hypot(dy, dz), 0.09)
+        strut.position.set(x, (bellyY + skidY) / 2, sign * (skidZ + bellyZ) / 2)
+        strut.rotation.x = sign * Math.atan2(dz, dy)
+        push(strut)
+      }
     }
     return
   }
@@ -768,18 +795,34 @@ function addWindows(frame: Frame) {
 /** Pack door stations, one instanced mesh. Close LOD only. */
 function addRealDoors(frame: Frame) {
   if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
-  const boxes = doorBoxes(frame.spec)
+  const boxes = renderDoorBoxes(frame.spec)
   // Ramps and belly doors keep the plain dark cut; side doors get a framed doorway with
   // a cabin glimpse, seen when the leaf swings open.
   const plain = boxes.filter((b) => b.door.side === 0)
   if (plain.length) {
     addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
   }
+  for (const cargo of [false, true]) addDoorways(frame, boxes.filter((b) => b.door.side !== 0 && !b.omit && (b.door.kind === 'cargo') === cargo), cargo)
+}
+
+/** Side half-width of the real loft at (x, y): where a door leaf or doorway meets the skin. */
+function sideSkin(frame: Frame, x: number, y: number): number {
+  const { spec } = frame
+  const t = Math.max(0, Math.min(1, (frame.nose - x) / spec.lengthM))
+  const st = loftStation(loftFamily(spec), t)
+  const k = (y - (frame.centerY + spec.ry * st.dy)) / spec.ry
+  return spec.rx * Math.sqrt(Math.max(0.0004, st.r * st.r - k * k))
+}
+
+/**
+ * Framed doorway cut with a cabin glimpse, seated on the actual skin. Hidden while the leaf is
+ * shut (the leaf then reads flush with a thin seam); the rig shows it as soon as the door cracks.
+ */
+function addDoorways(frame: Frame, boxes: DoorBox[], cargo: boolean) {
   const parts = boxes
-    .filter((b) => b.door.side !== 0)
     .map((b) => {
       const g = doorwayGeometry(b.w, b.h)
-      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
+      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * (sideSkin(frame, b.x, b.y) - 0.012))
       if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
       g.applyMatrix4(m)
       if (b.door.side < 0) {
@@ -801,22 +844,49 @@ function addRealDoors(frame: Frame) {
     })
   if (parts.length) {
     const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
-    mesh.name = 'doorways'
+    mesh.name = cargo ? 'doorways-cargo' : 'doorways'
     mesh.userData.ownGeo = true
+    mesh.userData.reveal = cargo ? 'cargo' : 'door'
     parts.forEach((g) => g.dispose())
     frame.group.add(mesh)
     frame.meshes.push(mesh)
   }
 }
 
+/** Crown height and centreline of the real loft at group-space x (the tail cone sweeps up and narrows). */
+function skinAt(frame: Pick<Frame, 'spec' | 'nose' | 'centerY'>, x: number): { top: number; mid: number; r: number } {
+  const { spec } = frame
+  const t = Math.max(0, Math.min(1, (frame.nose - x) / spec.lengthM))
+  const st = loftStation(loftFamily(spec), t)
+  return {
+    top: frame.centerY + spec.ry * (st.dy + st.r),
+    mid: frame.centerY + spec.ry * st.dy,
+    r: st.r,
+  }
+}
+
+/**
+ * Fin, rudder, stabiliser and tail-logo stations. The fin root follows the actual
+ * tail-cone crown (sunk slightly into the skin) so it never floats above a narrowing
+ * cone, and the tip keeps the published height. The stabiliser sits on the cone centreline.
+ */
 function finPose(frame: Frame) {
   const chord = Math.max(1.1, frame.spec.lengthM * 0.11)
   const thick = Math.max(0.08, frame.spec.rx * 0.08)
+  const finX = frame.tailX + chord * 0.55
+  const twin = frame.spec.tail === 'twin'
+  const rootY = twin ? frame.top : Math.min(frame.top, skinAt(frame, finX).top - frame.spec.ry * 0.06)
+  const finH = frame.top + frame.finH - rootY
+  const stabX = finX - chord * 0.15
+  const cone = skinAt(frame, stabX)
   return {
-    finX: frame.tailX + chord * 0.55,
+    finX,
     chord,
     thick,
-    stabY: frame.spec.tail === 't' ? frame.spec.heightM - 0.12 : frame.centerY + frame.spec.ry * 0.2,
+    rootY,
+    finH,
+    stabX,
+    stabY: frame.spec.tail === 't' ? frame.spec.heightM - 0.12 : cone.mid + frame.spec.ry * cone.r * 0.2,
   }
 }
 
@@ -846,12 +916,13 @@ function addControls(frame: Frame) {
     mesh.userData.surface = 'aileron'
     mesh.userData.sign = sign
   }
-  const { finX, chord, stabY, thick } = finPose(frame)
+  const pose = finPose(frame)
+  const { finX, chord, stabY, thick } = pose
   const elevator = addBox(
     frame,
     [Math.max(0.28, chord * 0.28), Math.max(0.05, spec.thickness * 0.16), spec.tailSpan * 0.72],
     [finX - chord * 0.42, stabY, 0],
-    'tail',
+    'wing',
     'control',
   )
   elevator.name = 'elevator'
@@ -862,8 +933,8 @@ function addControls(frame: Frame) {
     for (const sign of [1, -1] as const) {
       const rudder = addBox(
         frame,
-        [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.8],
-        [finX - chord * 0.2, frame.top + frame.finH * 0.62, sign * spread],
+        [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.8],
+        [finX - chord * 0.2, pose.rootY + pose.finH * 0.62, sign * spread],
         'tail',
         'control',
       )
@@ -874,8 +945,8 @@ function addControls(frame: Frame) {
   } else {
     const rudder = addBox(
       frame,
-      [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.9],
-      [finX - chord * 0.15, frame.top + frame.finH * 0.62, 0],
+      [Math.max(0.22, chord * 0.22), pose.finH * 0.55, thick * 0.9],
+      [finX - chord * 0.15, pose.rootY + pose.finH * 0.62, 0],
       'tail',
       'control',
     )
@@ -939,12 +1010,17 @@ function addLogo(frame: Frame) {
     frame.meshes.push(mesh as PaintedMesh)
   }
   if (frame.spec.family === 'helo') {
-    place(frame.tailX + frame.spec.lengthM * 0.08, frame.centerY + frame.spec.ry * 0.15, frame.spec.rx + 0.04, 0.7)
+    // On the fin, flush with its skin (the boom is far too thin to carry a mark).
+    const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number } | undefined
+    if (!fin) return
+    const half = Math.max(0.1, frame.spec.rx * 0.1) * 0.5
+    const size = Math.min(0.62, fin.h * 0.42, fin.chord * 0.5)
+    place(fin.x - fin.chord * 0.12, fin.y + fin.h * 0.42, -(half + 0.02), size)
     return
   }
-  const { finX, thick } = finPose(frame)
-  const size = Math.max(0.55, Math.min(frame.finH * 0.38, frame.spec.rx * 0.85))
-  const y = frame.top + frame.finH * 0.55
+  const { finX, thick, rootY, finH } = finPose(frame)
+  const size = Math.max(0.55, Math.min(finH * 0.38, frame.spec.rx * 0.85))
+  const y = rootY + finH * 0.55
   if (frame.spec.tail === 'twin') {
     const spread = Math.max(0.7, frame.spec.rx * 0.85)
     place(finX, y, spread + thick * 0.6, size * 0.7)
@@ -1056,17 +1132,22 @@ function addFeatures(frame: Frame) {
     ).name = 'hull'
   }
   if (frame.tier === 'mid') {
-    // Cheatline as paint on each flank, not a box around the tube.
+    // Cheatline as paint on each flank, not a box around the tube. Only for paint without an
+    // airline plate: over a plate the flat strip sat proud of the curved skin and doubled the titles.
     const lineY = 0.42
-    const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.02
-    for (const sign of [1, -1]) {
-      addBox(
+    const plated = Boolean(frame.livery.airline)
+    const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.008
+    for (const sign of plated ? [] : [1, -1]) {
+      const line = addBox(
         frame,
-        [spec.lengthM * 0.56, spec.ry * 0.11, 0.04],
+        [spec.lengthM * 0.56, spec.ry * 0.11, 0.012],
         [-spec.lengthM * 0.02, centerY + spec.ry * lineY, sign * lineZ],
         'stripe',
         'mesh',
-      ).name = 'cheatline'
+      )
+      line.name = 'cheatline'
+      // Under an airline plate the strip takes the plate's own texels, so it never cuts across the titles.
+      markLivery(line, 'fuselage', fuselageBox(frame))
     }
     if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) addBellyFairing(frame)
     if (spec.family === 'point') {
@@ -1088,7 +1169,7 @@ function addBellyFairing(frame: Frame) {
   mesh.scale.set(spec.rootChord * 0.95, spec.ry * 0.42, spec.rx * 0.93)
   mesh.position.set(wingX - spec.rootChord * 0.05, centerY - spec.ry * 0.7, 0)
   mesh.name = 'wing-body-fairing'
-  addMesh(frame, mesh, 'belly', 'mesh')
+  markLivery(addMesh(frame, mesh, 'belly', 'mesh'), 'fuselage', fuselageBox(frame))
 }
 
 /**
@@ -1097,16 +1178,18 @@ function addBellyFairing(frame: Frame) {
  */
 function addCockpitWindows(frame: Frame) {
   const { spec, centerY, nose } = frame
-  const fam = spec.family === 'rearjet' ? 'rearjet' : spec.family === 'prop' ? 'prop' : 'tube'
+  const lf = loftFamily(spec)
+  const fam = lf === 'rearjet' || lf === 'prop' || lf === 'turboprop' ? lf : 'tube'
   const L = spec.lengthM
   const tAt = Math.min(0.065, 3.2 / L)
   const panes: THREE.Matrix4[] = []
-  const pane = (t: number, ang: number, w: number, h: number) => {
+  const at = (t: number, ang: number) => {
     const st = loftStation(fam, t)
+    return { st, p: new THREE.Vector3(nose - t * L, centerY + spec.ry * (Math.sin(ang) * st.r + st.dy), spec.rx * Math.cos(ang) * st.r) }
+  }
+  const pane = (t: number, ang: number, w: number, h: number) => {
+    const { st, p } = at(t, ang)
     const ahead = loftStation(fam, Math.max(0, t - 0.004))
-    const x = nose - t * L
-    const y = centerY + spec.ry * (Math.sin(ang) * st.r + st.dy)
-    const z = spec.rx * Math.cos(ang) * st.r
     // Surface normal: radial part plus forward lean from the taper.
     const dr = ((st.r - ahead.r) * Math.max(spec.rx, spec.ry)) / (0.004 * L)
     const n = new THREE.Vector3(dr, Math.sin(ang) / spec.ry, Math.cos(ang) / spec.rx).normalize()
@@ -1114,23 +1197,40 @@ function addCockpitWindows(frame: Frame) {
     const side = new THREE.Vector3().crossVectors(up, n).normalize()
     const basis = new THREE.Matrix4().makeBasis(side, up, n)
     const q = new THREE.Quaternion().setFromRotationMatrix(basis)
-    const pos = new THREE.Vector3(x, y, z).addScaledVector(n, 0.015)
-    panes.push(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(w, h, 0.05)))
+    panes.push(new THREE.Matrix4().compose(p.addScaledVector(n, 0.015), q, new THREE.Vector3(w, h, 0.05)))
   }
   const h = Math.max(0.22, spec.ry * 0.2)
-  const w = Math.max(0.3, spec.rx * 0.3)
-  // Angle runs from +Z toward +Y; the port side mirrors it to (π − a).
+  // The windscreen runs as one level band at ~0.45 ry: centre pane on the nose front, then the
+  // side panes stepping aft round the curve, each as wide as the gap to its neighbour.
+  const yRel = 0.45
+  const ts = [0.5, 0.78, 1.06, 1.36].map((k) => tAt * k)
+  const angOf = (t: number) => {
+    const st = loftStation(fam, t)
+    return Math.asin(Math.max(-0.98, Math.min(0.98, (yRel - st.dy) / Math.max(0.05, st.r))))
+  }
+  const angs = ts.map(angOf)
+  const pts = ts.map((t, i) => at(t, angs[i]).p)
   for (const sign of [1, -1]) {
-    const a = (v: number) => (sign > 0 ? v : Math.PI - v)
-    pane(tAt * 0.72, a(1.18), w, h)
-    pane(tAt * 0.95, a(0.78), w * 0.95, h * 0.95)
-    pane(tAt * 1.22, a(0.55), w * 0.6, h * 0.8)
+    ts.forEach((t, i) => {
+      const nb = pts[Math.min(pts.length - 1, i + 1)].distanceTo(pts[Math.max(0, i - 1)]) / (i === 0 || i === pts.length - 1 ? 1 : 2)
+      const ang = sign > 0 ? angs[i] : Math.PI - angs[i]
+      pane(t, ang, nb * 1.02, h * (1 - i * 0.07))
+    })
   }
   addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
 }
 
+/** Main-rotor mast station: over the aft cabin, where the gearbox sits on a real AW139 / S-76. */
+export function heloMastX(spec: ModelSpec): number {
+  const cab = heloCabin(spec)
+  // Over the aft cabin, but no further forward than lets the blade tips overhang the nose by
+  // 5% of the length (keeps the overall rotors-turning length true to the published figure).
+  const limit = spec.lengthM / 2 - spec.spanM / 2 + spec.lengthM * 0.05
+  return Math.max(cab.x0 + 0.2, Math.min(cab.x0 + (cab.x1 - cab.x0) * 0.22, limit))
+}
+
 function addHelo(frame: Frame) {
-  const { spec, tier, centerY, nose, tailX } = frame
+  const { spec, tier, centerY, tailX } = frame
   if (tier !== 'high') {
     const sides = fuselageSides(tier === 'low' ? 'low' : 'mid')
     const body = new THREE.Mesh(paintedLoftGeometry('helo', sides, fuselagePaint(frame.livery)))
@@ -1139,118 +1239,163 @@ function addHelo(frame: Frame) {
     body.name = 'fuselage'
     markLivery(addMesh(frame, body, 'body', 'mesh', tier === 'mid'), 'fuselage', fuselageBox(frame))
   }
-  if (tier === 'mid') {
-    addBox(
-      frame,
-      [spec.lengthM * 0.22, spec.ry * 0.55, spec.rx * 1.7],
-      [nose - spec.lengthM * 0.42, centerY + spec.ry * 0.15, 0],
-      'glass',
-      'mesh',
-    ).name = 'cockpit'
-  }
-  const mastH = Math.max(0.4, spec.heightM - (centerY + spec.ry))
-  if (tier !== 'high') {
-    addCylinder(
-      frame,
-      0.12,
-      mastH,
-      [0, centerY + spec.ry + mastH / 2, 0],
-      'metal',
-      'mesh',
-      'y',
-    )
-  }
+  const mastX = heloMastX(spec)
+  const roofY = skinAt(frame, mastX).top
   const rotorY = spec.heightM - 0.05
+  if (tier === 'mid') {
+    const cab = heloCabin(spec)
+    // Flush cabin and cockpit side windows on the full-section cabin (the old glass block stood
+    // proud of the boom taper).
+    const panes: THREE.Matrix4[] = []
+    const winY = centerY + spec.ry * 0.28
+    const len = cab.x1 - cab.x0
+    const wins = [
+      { x: cab.x1 - len * 0.13, w: len * 0.16, h: spec.ry * 0.5 },
+      { x: cab.x1 - len * 0.33, w: len * 0.13, h: spec.ry * 0.42 },
+    ]
+    // Skin half-width at a station, at the window's height, so panes follow the loft taper.
+    const skinZAt = (x: number) => {
+      const st = skinAt(frame, x)
+      const k = Math.min(0.95, Math.abs(winY - st.mid) / (spec.ry * st.r))
+      return spec.rx * st.r * Math.sqrt(1 - k * k) - 0.014
+    }
+    for (const side of [1, -1]) {
+      for (const w of wins) {
+        const za = skinZAt(w.x - w.w / 2)
+        const zb = skinZAt(w.x + w.w / 2)
+        const yaw = -side * Math.atan2(zb - za, w.w)
+        panes.push(compose(w.x, winY, side * (za + zb) / 2, 0, yaw, 0, w.w, w.h, 0.04))
+      }
+    }
+    addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
+    // Engine and gearbox cowling on the cabin roof, under the mast.
+    const cowl = new THREE.Mesh(smoothSphere())
+    cowl.scale.set(len * 0.36, spec.ry * 0.36, spec.rx * 0.62)
+    cowl.position.set(mastX - len * 0.04, roofY - spec.ry * 0.08, 0)
+    cowl.name = 'cowling'
+    addMesh(frame, cowl, 'body', 'mesh', true)
+    // Tail: swept fin at the boom end, small tailplane ahead of it.
+    const finChord = Math.max(1, spec.lengthM * 0.085)
+    const finH = Math.max(1.1, spec.ry * 1.15)
+    const finX = tailX + finChord * 0.5
+    const boomTop = skinAt(frame, finX).top
+    const fin = new THREE.Mesh(finGeometry(frame.livery.tail || frame.livery.stripe, frame.livery.stripe))
+    fin.scale.set(finChord, finH, Math.max(0.1, spec.rx * 0.1))
+    fin.position.set(finX, boomTop - 0.05, 0)
+    fin.name = 'tail'
+    addMesh(frame, fin, 'tail', 'mesh', true)
+    const stabX = tailX + spec.lengthM * 0.14
+    const stab = new THREE.Mesh(stabGeometry())
+    stab.scale.set(Math.max(0.5, spec.lengthM * 0.045), 0.08, spec.tailSpan)
+    stab.position.set(stabX, skinAt(frame, stabX).mid, 0)
+    stab.name = 'stab'
+    addMesh(frame, stab, 'tail', 'mesh', true)
+    frame.group.userData.heloFin = { x: finX, y: boomTop - 0.05, h: finH, chord: finChord }
+  }
+  if (tier !== 'high') {
+    // Mast from the cowling up to the hub.
+    addCylinder(frame, 0.16, rotorY - roofY + 0.1, [mastX, (roofY + rotorY) / 2, 0], 'metal', 'mesh', 'y')
+  }
   if (tier === 'low') {
     const disc = new THREE.Mesh(unitDisc('rotor'))
     disc.scale.setScalar(spec.rotor)
-    disc.position.set(0, rotorY, 0)
+    disc.position.set(mastX, rotorY, 0)
     disc.name = 'rotor'
     addMesh(frame, disc, 'dark', 'mesh')
     frame.spinners.push(disc)
-  } else if (tier === 'mid') {
-    const hub = new THREE.Group()
-    hub.name = 'rotor'
-    hub.position.set(0, rotorY, 0)
-    const blades = Math.max(2, Math.min(4, spec.blades || 4))
-    const matrices: THREE.Matrix4[] = []
-    for (let i = 0; i < blades; i++) {
-      const angle = (i / blades) * Math.PI * 2
-      matrices.push(
-        compose(
-          Math.cos(angle) * spec.rotor * 0.5,
-          0.02,
-          Math.sin(angle) * spec.rotor * 0.5,
-          0,
-          -angle,
-          0,
-          spec.rotor,
-          0.06,
-          0.18,
-        ),
-      )
-    }
-    const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), blades)
-    matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
-    mesh.instanceMatrix.needsUpdate = true
-    const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', tier)
-    hub.add(painted)
-    frame.meshes.push(painted)
-    frame.group.add(hub)
-    frame.spinners.push(hub)
-    if (spec.fenestron) {
-      addCylinder(frame, 0.55, 0.18, [tailX + 0.4, centerY, 0], 'metal', 'mesh', 'z')
-    } else {
-      const tail = new THREE.Group()
-      tail.name = 'tail-rotor'
-      tail.position.set(tailX + 0.15, centerY + spec.ry * 0.2, spec.rx + 0.15)
-      const mini: THREE.Matrix4[] = []
-      for (let i = 0; i < 2; i++) {
-        mini.push(compose(0, 0, 0, 0, 0, i * Math.PI * 0.5, 1.3, 0.08, 0.12))
-      }
-      const bladesMesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), 2)
-      mini.forEach((matrix, i) => bladesMesh.setMatrixAt(i, matrix))
-      bladesMesh.instanceMatrix.needsUpdate = true
-      const paintedTail = paintMesh(bladesMesh, 'dark', frame.livery, 'mesh', tier)
-      tail.add(paintedTail)
-      frame.meshes.push(paintedTail)
-      frame.group.add(tail)
-      frame.spinners.push(tail)
-    }
-  } else {
-    // Close-up: extra blades fade in on the same axis.
-    const hub = new THREE.Group()
-    hub.name = 'rotor'
-    hub.position.set(0, rotorY, 0)
-    const extra = Math.max(0, (spec.blades || 4) - 4)
-    if (extra > 0) {
-      const matrices: THREE.Matrix4[] = []
-      for (let i = 0; i < extra; i++) {
-        const angle = Math.PI / (extra + 1) + (i * Math.PI) / extra
-        matrices.push(
-          compose(
-            Math.cos(angle) * spec.rotor * 0.5,
-            0.05,
-            Math.sin(angle) * spec.rotor * 0.5,
-            0,
-            -angle,
-            0,
-            spec.rotor,
-            0.05,
-            0.16,
-          ),
-        )
-      }
-      const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), extra)
-      matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
-      mesh.instanceMatrix.needsUpdate = true
-      const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', tier)
-      hub.add(painted)
-      frame.meshes.push(painted)
-      frame.group.add(hub)
-      frame.spinners.push(hub)
-    }
+    return
   }
+  if (tier !== 'mid') return
+  // Main rotor: every blade, tapered with swept tips and washout, on a hub with grips.
+  const hub = new THREE.Group()
+  hub.name = 'rotor'
+  hub.position.set(mastX, rotorY, 0)
+  const blades = Math.max(2, spec.blades || 4)
+  const chord = spec.rotor * (blades >= 5 ? 0.082 : 0.074)
+  const rootR = 0.55
+  const bladeGeo = rotorBladeGeometry(spec.rotor, chord, rootR)
+  const mats: THREE.Matrix4[] = []
+  const grips: THREE.Matrix4[] = []
+  for (let i = 0; i < blades; i++) {
+    const angle = (i / blades) * Math.PI * 2
+    mats.push(compose(0, 0.02, 0, 0, angle, 0, 1, 1, 1))
+    grips.push(compose(Math.cos(angle) * 0.36, 0.02, -Math.sin(angle) * 0.36, 0, angle, 0, 0.42, 0.13, 0.2))
+  }
+  const bladeMesh = new THREE.InstancedMesh(bladeGeo, new THREE.MeshBasicMaterial(), blades)
+  mats.forEach((m, i) => bladeMesh.setMatrixAt(i, m))
+  bladeMesh.instanceMatrix.needsUpdate = true
+  bladeMesh.name = 'rotor-blades'
+  const paintedBlades = paintMesh(bladeMesh, 'dark', frame.livery, 'mesh', tier)
+  hub.add(paintedBlades)
+  frame.meshes.push(paintedBlades)
+  const gripMesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), blades)
+  grips.forEach((m, i) => gripMesh.setMatrixAt(i, m))
+  gripMesh.instanceMatrix.needsUpdate = true
+  const paintedGrips = paintMesh(gripMesh, 'metal', frame.livery, 'mesh', tier)
+  hub.add(paintedGrips)
+  frame.meshes.push(paintedGrips)
+  const hubCore = new THREE.Mesh(unitCylinder(cylinderSides(tier)))
+  hubCore.scale.set(0.34, 0.26, 0.34)
+  hubCore.position.y = 0.02
+  const paintedHub = paintMesh(hubCore, 'metal', frame.livery, 'mesh', tier)
+  hub.add(paintedHub)
+  frame.meshes.push(paintedHub)
+  const cap = new THREE.Mesh(smoothSphere())
+  cap.scale.set(0.24, 0.14, 0.24)
+  cap.position.y = 0.17
+  const paintedCap = paintMesh(cap, 'dark', frame.livery, 'mesh', tier)
+  hub.add(paintedCap)
+  frame.meshes.push(paintedCap)
+  hub.userData.blades = [paintedBlades]
+  frame.group.add(hub)
+  frame.spinners.push(hub)
+  const blur = spinBlurDisc('rotor', spec.rotor)
+  blur.position.set(mastX, rotorY + 0.03, 0)
+  frame.group.add(blur)
+  hub.userData.blur = blur
+  // Swashplate under the hub (static).
+  addCylinder(frame, 0.3, 0.06, [mastX, rotorY - 0.32, 0], 'metal', 'mesh', 'y')
+
+  const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number }
+  if (spec.fenestron) {
+    // Shrouded fan in the fin.
+    addCylinder(frame, Math.min(0.55, fin.h * 0.3), 0.22, [fin.x - fin.chord * 0.05, fin.y + fin.h * 0.32, 0], 'metal', 'mesh', 'z')
+    return
+  }
+  // Conventional tail rotor on the port side of the fin.
+  const tailR = Math.max(0.9, spec.rotor * 0.19)
+  const tail = new THREE.Group()
+  tail.name = 'tail-rotor'
+  tail.position.set(fin.x - fin.chord * 0.12, fin.y + fin.h * 0.62, Math.max(0.1, spec.rx * 0.1) * 0.5 + 0.28)
+  const tailBlades = 4
+  const tm: THREE.Matrix4[] = []
+  const edgeOn = new THREE.Matrix4().makeRotationX(Math.PI / 2)
+  for (let i = 0; i < tailBlades; i++) {
+    // Blade geometry spans +X with its chord on Z: stand the chord up (about X), then fan the
+    // blades round the lateral (Z) axis the rotor spins on.
+    tm.push(new THREE.Matrix4().makeRotationZ((i / tailBlades) * Math.PI * 2).multiply(edgeOn))
+  }
+  const tailMesh = new THREE.InstancedMesh(rotorBladeGeometry(tailR, tailR * 0.17, 0.12, 0), new THREE.MeshBasicMaterial(), tailBlades)
+  tm.forEach((m, i) => tailMesh.setMatrixAt(i, m))
+  tailMesh.instanceMatrix.needsUpdate = true
+  const paintedTail = paintMesh(tailMesh, 'dark', frame.livery, 'mesh', tier)
+  tail.add(paintedTail)
+  frame.meshes.push(paintedTail)
+  const tailHub = new THREE.Mesh(unitCylinder(cylinderSides(tier)))
+  tailHub.scale.set(0.14, 0.2, 0.14)
+  tailHub.rotation.x = Math.PI / 2
+  const paintedTailHub = paintMesh(tailHub, 'metal', frame.livery, 'mesh', tier)
+  tail.add(paintedTailHub)
+  frame.meshes.push(paintedTailHub)
+  tail.userData.blades = [paintedTail]
+  frame.group.add(tail)
+  frame.spinners.push(tail)
+  const tailBlur = spinBlurDisc('rotor', tailR)
+  tailBlur.rotation.x = Math.PI / 2
+  tailBlur.position.copy(tail.position)
+  tailBlur.position.z += 0.03
+  frame.group.add(tailBlur)
+  tail.userData.blur = tailBlur
 }
 
 let glowTex: THREE.DataTexture | null = null
@@ -1313,13 +1458,9 @@ function addServicePoints(frame: Frame) {
   const { spec, tier, nose, centerY } = frame
   if (tier !== 'mid' || spec.family === 'helo' || spec.lengthM < 20) return
   const sideZ = spec.rx * 0.97
-  // Forward hold door, starboard, swung up on its top hinge (belt loader side).
-  const doorX = nose - spec.lengthM * 0.24
-  const dw = Math.min(1.8, spec.lengthM * 0.045)
-  const dh = Math.min(1.7, spec.ry * 0.7)
-  const sill = centerY - spec.ry * 0.25
-  addBox(frame, [dw, dh, 0.06], [doorX, sill - dh / 2, sideZ + 0.01], 'dark', 'mesh').name = 'hold-opening'
-  addBox(frame, [dw, dh, 0.06], [doorX, sill + 0.05, sideZ + dh * 0.45], 'body', 'mesh', [-1.25, 0, 0]).name = 'hold-door-open'
+  // No static open hold door: it hung a black box and a primary-colour flap on every jet, even in
+  // flight. The animated cargo leaves in rig.ts open the real hold doors while the aircraft is serviced.
+  void sideZ
   // Single-point fuel panel under each wing, at the span the fuel hose aims for.
   const panelZ = Math.min(9, Math.max(3.6, spec.spanM * 0.18))
   if (panelZ < spec.spanM / 2 - 0.5) {
@@ -1391,10 +1532,14 @@ function addHeloLights(frame: Frame) {
     frame.lamps.push(painted)
     return
   }
+  const cab = heloCabin(spec)
+  const navX = cab.x0 + 0.35
+  const navK = 0.05
+  const navZ = spec.rx * Math.sqrt(Math.max(0, 0.9 * 0.9 - navK * navK))
   const port = new THREE.Mesh(unitSphere())
   port.scale.setScalar(radius)
-  // Port (left) is -Z with the nose on +X. Lamps sit flush on the cabin flank.
-  port.position.set(spec.lengthM * 0.05, centerY, -spec.rx * 0.95)
+  // Port (left) is -Z with the nose on +X. Lamps sit flush on the aft cabin flank, not out over the boom.
+  port.position.set(navX, centerY + spec.ry * navK, -navZ)
   port.name = 'nav-port'
   port.userData.baseScale = radius
   const portPainted = addMesh(frame, port, 'navRed', 'light')
@@ -1415,7 +1560,10 @@ function addHeloLights(frame: Frame) {
   frame.lamps.push(tailPainted)
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
-  beacon.position.set(0, centerY + spec.ry * 0.97, 0)
+  // Anti-collision beacon on the fin tip.
+  const fin = frame.group.userData.heloFin as { x: number; y: number; h: number; chord: number } | undefined
+  if (fin) beacon.position.set(fin.x - fin.chord * 0.25, fin.y + fin.h + radius * 0.4, 0)
+  else beacon.position.set(heloMastX(spec), skinAt(frame, heloMastX(spec)).top, 0)
   beacon.name = 'beacon'
   beacon.userData.baseScale = beacon.scale.x
   const paintedBeacon = addMesh(frame, beacon, 'beacon', 'beacon')
@@ -1423,13 +1571,64 @@ function addHeloLights(frame: Frame) {
   frame.beacons.push(paintedBeacon)
   frame.lamps.push(paintedBeacon)
   const strobe = port.clone()
-  strobe.position.set(spec.lengthM * 0.12, centerY + spec.ry * 0.4, 0)
+  // Lower anti-collision strobe on the belly under the gearbox.
+  strobe.position.set(heloMastX(spec), centerY - spec.ry * 0.97, 0)
   strobe.name = 'strobe'
   strobe.userData.baseScale = strobe.scale.x
   const paintedStrobe = addMesh(frame, strobe, 'navWhite', 'strobe')
   hangNav(paintedStrobe, 'navWhite')
   frame.strobes.push(paintedStrobe)
   frame.lamps.push(paintedStrobe)
+}
+
+/**
+ * Where wear shows on this airframe, in group-space metres. Soft, low-contrast fields:
+ * soot running aft of each engine exhaust and the APU, grime along the lower fuselage and
+ * belly, and dirty halos round doors, hatches and the wing roots. The fin stays clean.
+ */
+function grimeMask(frame: Frame): ((x: number, y: number, z: number) => number) | undefined {
+  if (frame.tier === 'low') return undefined
+  const { spec, centerY, wingX, tailX } = frame
+  const engines = spec.engines.count ? enginePoints(frame) : []
+  const doors = renderDoorBoxes(spec).filter((b) => b.door.side !== 0 && !b.omit)
+  const finRoot = frame.top
+  const smooth = (a: number, b: number, v: number) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)))
+    return t * t * (3 - 2 * t)
+  }
+  return (x, y, z) => {
+    if (y > finRoot + 0.2 && Math.abs(z) < spec.rx * 0.6 && x < tailX + spec.lengthM * 0.2) return 0
+    const onBody = Math.abs(z) <= spec.rx * 1.15
+    let g = 0
+    // Belly and lower fuselage staining.
+    if (onBody) g = Math.max(g, 0.55 * smooth(centerY - spec.ry * 0.15, centerY - spec.ry * 0.95, y))
+    // Wing-root halo.
+    const dxw = Math.abs(x - wingX) / Math.max(1, spec.rootChord * 0.7)
+    const dzw = Math.abs(Math.abs(z) - spec.rx) / 1.6
+    g = Math.max(g, 0.5 * Math.max(0, 1 - Math.hypot(dxw, dzw)))
+    // Door and hatch halos on the skin.
+    for (const b of doors) {
+      if (Math.sign(z) !== b.door.side) continue
+      const ex = Math.max(0, Math.abs(x - b.x) - b.w / 2)
+      const ey = Math.max(0, Math.abs(y - b.y) - b.h / 2)
+      const d = Math.hypot(ex, ey)
+      const k = b.door.kind === 'cargo' ? 0.75 : 0.55
+      g = Math.max(g, k * Math.max(0, 1 - d / 0.45) * (ex + ey > 0 ? 1 : 0.3))
+    }
+    // Exhaust soot wakes: aft of each engine, widening and fading over ~14 m.
+    for (const p of engines) {
+      const aft = p.x - spec.engines.length * 0.5 - x
+      if (aft < -0.3) continue
+      const along = Math.max(0, aft)
+      const width = spec.engines.radius * (1.1 + along * 0.06)
+      const dz = Math.abs(z - p.z) / width
+      const dy = Math.abs(y - p.y) / (width * 1.6)
+      g = Math.max(g, 0.85 * Math.max(0, 1 - Math.hypot(dz, dy)) * Math.max(0, 1 - along / 14))
+    }
+    // APU exhaust at the tail cone.
+    if (x < tailX + 3.5 && onBody) g = Math.max(g, 0.7 * smooth(tailX + 3.5, tailX, x))
+    return g
+  }
 }
 
 function paintForAirframe(paint: Livery, modelId: string): Livery {
@@ -1461,10 +1660,18 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addRealDoors(frame)
     addServicePoints(frame)
     addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
+    for (const set of frame.rigs) {
+      set.reveal = frame.group.children.find((o) => o.userData.reveal === set.kind)
+      if (set.reveal) {
+        set.reveal.visible = false
+        set.reveal.userData.shut = true
+      }
+    }
     addLights(frame)
   }
   attachLandingGlow(frame)
   mergeStaticShell({
+    grime: grimeMask(frame),
     tier: frame.tier,
     specId: frame.spec.id,
     livery: frame.livery,
