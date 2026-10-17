@@ -226,6 +226,18 @@ function turnaroundTrucks(frame: readonly { id?: string; kind: string; x: number
   }))
 }
 
+/** Plane-shaped shadow from three soft blobs: fuselage, wings, tailplane. Nose is local +X. */
+function pushPlaneShadow(out: BlobCaster[], x: number, y: number, z: number, yaw: number, sx: number, sy: number, sz: number, lift: number) {
+  const cx = Math.cos(yaw)
+  const cz = -Math.sin(yaw)
+  const h = sy * 0.35
+  const part = (dx: number, length: number, width: number, alpha: number) =>
+    out.push({ x: x + cx * dx, y, z: z + cz * dx, yaw, length, width, height: h, lift, alpha })
+  part(0, sx * 0.92, Math.max(sz * 0.11, sx * 0.09), 0.8)
+  part(sx * 0.02, sx * 0.2, sz * 0.92, 0.7)
+  part(-sx * 0.41, sx * 0.1, sz * 0.36, 0.6)
+}
+
 export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
   return new THREE.Vector3(
     (c - (SIZE - 1) / 2) * CELL,
@@ -418,6 +430,11 @@ export class World {
   private perfOverlay = retainPerfOverlay()
   private headlights = new VehicleHeadlights()
   private vehicleShadows = new BlobShadows('vehicle-blob-shadows', 512)
+  private planeShadows = new BlobShadows('aircraft-blob-shadows', 384)
+  private planeCasters: BlobCaster[] = []
+  private planeFootprints = new Map<string, { sx: number; sy: number; sz: number }>()
+  private lastParked: ParkedPlane[] = []
+  private yawEuler = new THREE.Euler()
   private vehicleCasters: BlobCaster[] = []
   private sunDirTmp = new THREE.Vector3()
   private headlightRoots: THREE.Object3D[] = []
@@ -503,6 +520,7 @@ export class World {
     this.entGroup.add(this.parkedFleet.root)
     this.entGroup.add(this.vehicleFleet.root)
     this.entGroup.add(this.vehicleShadows.mesh)
+    this.entGroup.add(this.planeShadows.mesh)
     this.entGroup.add(this.landsideLayer.group)
     this.entGroup.add(this.fuelLayer.group)
     this.entGroup.add(this.infoTint.group)
@@ -1685,6 +1703,7 @@ export class World {
       this.jets.delete(id)
     }
     this.parkedFleet.sync(planes, this.camera)
+    this.lastParked = planes
 
     const seen = new Set<string>()
     for (const f of game.flights) {
@@ -2291,6 +2310,63 @@ export class World {
     })
   }
 
+  /** Local (unrotated) aircraft extents per airframe, measured once from a real mesh. */
+  private planeFootprint(airframeId: string, sample?: THREE.Object3D) {
+    const hit = this.planeFootprints.get(airframeId)
+    if (hit) return hit
+    const own = !sample
+    const m = sample ?? createAircraft(airframeId, { primary: '#ffffff' } as unknown as Livery)
+    const q = m.quaternion.clone()
+    const p = m.position.clone()
+    const sc = m.scale.clone()
+    m.quaternion.identity()
+    m.position.set(0, 0, 0)
+    m.scale.setScalar(1)
+    m.updateMatrixWorld(true)
+    const box = new THREE.Box3().setFromObject(m)
+    m.quaternion.copy(q)
+    m.position.copy(p)
+    m.scale.copy(sc)
+    m.updateMatrixWorld(true)
+    const size = box.getSize(new THREE.Vector3())
+    const fp = { sx: size.x, sy: size.y, sz: size.z }
+    if (own) releaseAircraft(m as THREE.Group)
+    if (fp.sx > 0 && fp.sz > 0) this.planeFootprints.set(airframeId, fp)
+    return fp
+  }
+
+  /**
+   * Aircraft ground shadows. On the ground the blob sits under the airframe; once airborne it
+   * separates, slides away along the sun direction, shrinks and fades. Landing runs the same in reverse
+   * because it is driven purely by the drawn altitude.
+   */
+  private syncPlaneShadows() {
+    const out = this.planeCasters
+    out.length = 0
+    const groundY = 0.04
+    for (const mesh of this.jets.values()) {
+      if (!mesh.visible) continue
+      const id = (mesh.userData.airframeId as string | undefined) ?? 'b738'
+      const fp = this.planeFootprint(id, mesh)
+      const s = mesh.scale.x
+      const lift = Math.max(0, mesh.position.y - groundY)
+      if (lift > 60) continue
+      const yaw = this.yawEuler.setFromQuaternion(mesh.quaternion, 'YXZ').y
+      pushPlaneShadow(out, mesh.position.x, mesh.position.y, mesh.position.z, yaw, fp.sx * s, fp.sy * s, fp.sz * s, lift)
+    }
+    const tp = new THREE.Vector3()
+    const tq = new THREE.Quaternion()
+    const ts = new THREE.Vector3()
+    const te = new THREE.Euler()
+    for (const p of this.lastParked) {
+      p.matrix.decompose(tp, tq, ts)
+      te.setFromQuaternion(tq, 'YXZ')
+      const fp = this.planeFootprint(p.airframeId)
+      pushPlaneShadow(out, tp.x, tp.y, tp.z, te.y, fp.sx * ts.x, fp.sy * ts.x, fp.sz * ts.x, Math.max(0, tp.y - groundY))
+    }
+    this.planeShadows.sync(out, this.sunDirTmp, this.wr.dayNightSample?.daylight ?? 1)
+  }
+
   /** Soft sun-following ground shadow under every ground vehicle, every zoom, day and night. */
   private syncVehicleShadows() {
     const out = this.vehicleCasters
@@ -2301,6 +2377,7 @@ export class World {
     }
     this.sunDirTmp.copy(this.sun.position).sub(this.sun.target.position)
     this.vehicleShadows.sync(out, this.sunDirTmp, this.wr.dayNightSample?.daylight ?? 1)
+    this.syncPlaneShadows()
   }
 
   /** Headlamps follow trucks and service vehicles. Pools stay off on Low. */
