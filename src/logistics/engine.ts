@@ -438,7 +438,12 @@ export class LogisticsSim {
 
   /** Working vehicles of a type (for external event odds). */
   workingVehicles(type: VehicleType): number {
-    return this.vehicles.filter((v) => v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay').length
+    let count = 0
+    for (let i = 0; i < this.vehicles.length; i++) {
+      const v = this.vehicles[i]
+      if (v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay') count++
+    }
+    return count
   }
 
   on(listener: LogisticsListener): () => void {
@@ -805,7 +810,19 @@ export class LogisticsSim {
 
   /** Requests still waiting for a vehicle. */
   get queueLength(): number {
-    return this.requests.filter((r) => !this.vehicles.some((v) => v.requestId === r.id)).length
+    let count = 0
+    for (let i = 0; i < this.requests.length; i++) {
+      const id = this.requests[i].id
+      let active = false
+      for (let j = 0; j < this.vehicles.length; j++) {
+        if (this.vehicles[j].requestId === id) {
+          active = true
+          break
+        }
+      }
+      if (!active) count++
+    }
+    return count
   }
 
   /**
@@ -1232,7 +1249,12 @@ export class LogisticsSim {
   }
 
   private inTransitFor(t: TurnaroundState, s: ServiceKind): number {
-    return this.requests.filter((r) => r.turnaroundId === t.id && r.service === s).reduce((a, r) => a + r.inTransit, 0)
+    let total = 0
+    for (let i = 0; i < this.requests.length; i++) {
+      const r = this.requests[i]
+      if (r.turnaroundId === t.id && r.service === s) total += r.inTransit
+    }
+    return total
   }
 
   /** Amount the request ultimately has to move. */
@@ -1464,13 +1486,18 @@ export class LogisticsSim {
     }
     for (const t of Array.from(this.turnarounds.values())) {
       if (t.completedAt !== null) continue
-      for (const a of t.pax.arrivals.filter((a) => due(a.time))) {
-        t.pax.arrivals.splice(t.pax.arrivals.indexOf(a), 1)
+      // In-place forward sweeps (no per-tick filter arrays); same order as before.
+      for (let i = 0; i < t.pax.arrivals.length; ) {
+        const a = t.pax.arrivals[i]
+        if (!due(a.time)) { i++; continue }
+        t.pax.arrivals.splice(i, 1)
         t.pax.atGate = Math.min(t.pax.booked, t.pax.atGate + a.count)
         changed = true
       }
-      for (const a of t.bags.arrivals.filter((a) => due(a.time))) {
-        t.bags.arrivals.splice(t.bags.arrivals.indexOf(a), 1)
+      for (let i = 0; i < t.bags.arrivals.length; ) {
+        const a = t.bags.arrivals[i]
+        if (!due(a.time)) { i++; continue }
+        t.bags.arrivals.splice(i, 1)
         t.bags.atMakeup += a.count
         changed = true
       }

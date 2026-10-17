@@ -15,6 +15,7 @@
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",
     "perf:bench": "tsx scripts/perf-bench.mts",
+    "bench:sim": "vitest run --config vitest.sim-bench.config.ts",
     "autoplay": "tsx scripts/autoplay-stabilize.mts",
     "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs",
     "soak:150": "node scripts/soak-150.mjs",
