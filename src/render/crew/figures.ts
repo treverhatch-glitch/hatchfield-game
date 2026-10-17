@@ -69,6 +69,7 @@ export class CrewFigures {
   readonly stats: CrewDrawStats = { full: 0, dots: 0, hidden: 0, props: 0 }
   private readonly people: PeopleRenderer
   private readonly dots: THREE.InstancedMesh
+  private readonly stripes: THREE.InstancedMesh
   private readonly props: THREE.InstancedMesh
   private readonly bars: THREE.InstancedMesh
   private readonly mat: THREE.MeshLambertMaterial
@@ -87,6 +88,15 @@ export class CrewFigures {
     this.dots.frustumCulled = false
     this.dots.count = 0
     this.group.add(this.dots)
+
+    const stripeGeo = new THREE.BoxGeometry(0.43, 0.05, 0.43)
+    stripeGeo.translate(0, 0.7, 0)
+    this.stripes = new THREE.InstancedMesh(stripeGeo, this.mat, capacity)
+    this.stripes.name = 'crew-stripe'
+    this.stripes.frustumCulled = false
+    this.stripes.count = 0
+    this.group.add(this.stripes)
+
     const propGeo = new THREE.BoxGeometry(1, 0.08, 0.08)
     this.props = new THREE.InstancedMesh(propGeo, this.mat, capacity)
     this.props.name = 'crew-prop'
@@ -136,6 +146,8 @@ export class CrewFigures {
       _person.compose(_pos, _yaw, _scale)
       this.dots.setMatrixAt(dots, _person)
       this.dots.setColorAt(dots, _color.setHex(vest(row.person.role, row.person.service)))
+      this.stripes.setMatrixAt(dots, _person)
+      this.stripes.setColorAt(dots, _color.setHex(0xcccccc))
       dots++
     }
     this.people.update(agents, camera, dt, lite)
@@ -143,6 +155,9 @@ export class CrewFigures {
     this.dots.count = dots
     this.dots.instanceMatrix.needsUpdate = true
     if (this.dots.instanceColor) this.dots.instanceColor.needsUpdate = true
+    this.stripes.count = dots
+    this.stripes.instanceMatrix.needsUpdate = true
+    if (this.stripes.instanceColor) this.stripes.instanceColor.needsUpdate = true
     const propCount = this.writeProps(scene, toWorld, camera, lite)
     this.stats.full = full
     this.stats.dots = dots
@@ -214,6 +229,8 @@ export class CrewFigures {
     this.people.dispose()
     this.dots.geometry.dispose()
     this.dots.dispose()
+    this.stripes.geometry.dispose()
+    this.stripes.dispose()
     this.props.geometry.dispose()
     this.props.dispose()
     this.bars.geometry.dispose()

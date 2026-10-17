@@ -179,7 +179,7 @@ function joined(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 
 /** Leg centred on the hip pivot the hall already swings. */
 function doorwayLeg(): THREE.BufferGeometry {
-  const limb = new THREE.CylinderGeometry(0.09, 0.055, 0.78, 5, 1, true)
+  const limb = new THREE.CylinderGeometry(0.09, 0.055, 0.78, 8, 1, true)
   limb.translate(0, 0.02, 0)
   const shoe = new THREE.BoxGeometry(0.12, 0.07, 0.2)
   shoe.translate(0, -0.38, 0.04)
@@ -187,7 +187,7 @@ function doorwayLeg(): THREE.BufferGeometry {
 }
 
 function doorwayArm(): THREE.BufferGeometry {
-  const limb = new THREE.CylinderGeometry(0.05, 0.035, 0.42, 5, 1, true)
+  const limb = new THREE.CylinderGeometry(0.05, 0.035, 0.42, 8, 1, true)
   limb.translate(0, -0.02, 0)
   const hand = new THREE.SphereGeometry(0.04, 5, 4)
   hand.translate(0, -0.24, 0.02)
@@ -195,11 +195,13 @@ function doorwayArm(): THREE.BufferGeometry {
 }
 
 function doorwayTorso(): THREE.BufferGeometry {
-  const chest = new THREE.CylinderGeometry(0.22, 0.15, 0.5, 6, 1, true)
+  const chest = new THREE.CylinderGeometry(0.22, 0.15, 0.5, 8, 1, true)
   chest.translate(0, 0.04, 0)
+  const neck = new THREE.CylinderGeometry(0.06, 0.06, 0.1, 8)
+  neck.translate(0, 0.34, 0)
   const shoulders = new THREE.BoxGeometry(0.5, 0.1, 0.16)
   shoulders.translate(0, 0.22, 0)
-  return joined([chest, shoulders])
+  return joined([chest, neck, shoulders])
 }
 
 function doorwayHead(): THREE.BufferGeometry {

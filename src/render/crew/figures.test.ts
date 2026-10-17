@@ -26,6 +26,14 @@ describe('crew figures', () => {
     const lite = figures.update(scene([person('close', 2)]), camera, 0.016, true, toWorld)
     expect(lite.full).toBe(0)
     expect(lite.dots).toBe(1)
+
+    let stripeCount = 0
+    figures.group.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh
+      if (mesh.name === 'crew-stripe') stripeCount = mesh.count
+    })
+    expect(stripeCount).toBe(1)
+
     figures.dispose()
     expect(parent.children).toHaveLength(0)
   })
