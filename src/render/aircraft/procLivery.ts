@@ -15,7 +15,7 @@ import { rosterAirline, type RosterAirline, type TailMotif } from '../../airline
 import { LIVERY_ART } from './liveryUv'
 import { DEFAULT_TEXTURE_QUALITY, type TextureQuality } from './liveryFiles'
 import type { AirlineLiveryTex } from './liveryTex'
-import { MODEL_SPECS, type Livery } from './specs'
+import { MODEL_SPECS, DERIVED_SPECS, type Livery } from './specs'
 
 export const LIVERY_KEY_SEP = '@'
 
@@ -188,8 +188,29 @@ function drawWordmark(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
   ctx.fillStyle = luma(p.fuselage) < 0.55 ? WHITE : p.scheme === 'solid' ? WHITE : p.tail
-  const maxWidth = w * (p.helicopter ? 0.5 : 0.42)
-  ctx.fillText(p.wordmark, w * 0.2, h * 0.33, maxWidth)
+  const [u0, u1] = titleSpan(p.modelId, p.helicopter)
+  ctx.fillText(p.wordmark, w * u0, h * 0.33, w * (u1 - u0))
+}
+
+/**
+ * Plate U span for the fuselage titles. Port reads the plate nose→tail and starboard tail→nose
+ * (outwardUv), so on high-wing types the span must miss the wing chord on BOTH sides: it goes
+ * in the clear band beyond the wing and its mirror, forward of the wing on one side and aft of
+ * it on the other, never under it.
+ */
+export function titleSpan(modelId: string, helicopter = false): [number, number] {
+  if (helicopter) return [0.2, 0.7]
+  const spec = MODEL_SPECS[modelId] ?? DERIVED_SPECS[modelId]
+  if (!spec || !spec.wingHigh) return [0.2, 0.62]
+  const half = spec.rootChord / 2 / spec.lengthM
+  const le = Math.max(0, spec.wingAt - half - 0.035)
+  const te = Math.min(1, spec.wingAt + half + 0.035)
+  // Exclude [le, te] and its mirror [1 - te, 1 - le].
+  const lo = Math.min(le, 1 - te)
+  const hi = Math.max(te, 1 - le)
+  const front: [number, number] = [0.14, lo]
+  const back: [number, number] = [hi, 0.9]
+  return front[1] - front[0] >= back[1] - back[0] ? front : back
 }
 
 /** Tail plate: U leading edge to trailing edge, V root (bottom) to tip (top). */

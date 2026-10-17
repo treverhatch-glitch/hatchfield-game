@@ -1,5 +1,5 @@
 import type { RealDoor } from './realworld'
-import { airframeStations, engineLayout } from './layout'
+import { airframeStations, engineLayout, propRadius } from './layout'
 import {
   AIRCRAFT_VISUAL_SCALE,
   BRIDGE_CAB_M,
@@ -129,8 +129,10 @@ export interface DoorBox {
   /** Floor of the doorway, meters above the wheels. */
   sillM: number
   upper: boolean
-  /** Plug-door swing direction when opened: +1 forward along the skin (default), −1 aft. */
+  /** Plug-door swing direction when opened: +1 forward along the skin (default), −1 aft. Cargo: −1 is an inward plug. */
   swing?: 1 | -1
+  /** Drawn door left off: no clean station exists on this airframe (render-only). */
+  omit?: boolean
 }
 
 /** Same boxes the close LOD instances, so a bridge cab meets the doorway. */
@@ -147,85 +149,126 @@ export function renderDoorBoxes(spec: ModelSpec): DoorBox[] {
   return clearDoors(spec, rawDoorBoxes(spec))
 }
 
-interface Keepout {
+/** Axis-aligned volume in airframe metres (+X nose, +Y up, +Z port). */
+export interface Vol {
   x0: number
   x1: number
   y0: number
   y1: number
-  /** Side the obstacle sits on: +1 port, −1 starboard, 0 both. */
-  side: number
-  engine?: boolean
+  z0: number
+  z1: number
+  what: string
 }
 
-/** Wing-root fairings and fuselage-hugging nacelles a door leaf must not cut into. */
-function doorKeepouts(spec: ModelSpec): Keepout[] {
-  const out: Keepout[] = []
+function vol(what: string, xa: number, xb: number, ya: number, yb: number, za: number, zb: number): Vol {
+  return { what, x0: Math.min(xa, xb), x1: Math.max(xa, xb), y0: Math.min(ya, yb), y1: Math.max(ya, yb), z0: Math.min(za, zb), z1: Math.max(za, zb) }
+}
+
+export function volsOverlap(a: Vol, b: Vol): boolean {
+  return a.x1 > b.x0 && a.x0 < b.x1 && a.y1 > b.y0 && a.y0 < b.y1 && a.z1 > b.z0 && a.z0 < b.z1
+}
+
+/**
+ * Everything a door leaf must stay clear of, closed or open: the wing near the body (with its
+ * real root thickness and a margin), the wing-to-body fairing, nacelles and propeller discs.
+ */
+export function airframeKeepouts(spec: ModelSpec): Vol[] {
+  const out: Vol[] = []
   const st = airframeStations(spec)
+  const { rx } = spec
   if (spec.family !== 'helo' && spec.spanM > 0) {
-    out.push({
-      x0: st.wingX - spec.rootChord / 2 - 0.3,
-      x1: st.wingX + spec.rootChord / 2 + 0.3,
-      y0: st.wingY - spec.thickness / 2 - 0.3,
-      y1: st.wingY + spec.thickness / 2 + 0.3,
-      side: 0,
-    })
+    const semi = spec.spanM / 2
+    const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
+    const reach = Math.min(semi, rx + 3.2)
+    const f = reach / semi
+    const le0 = st.wingX + spec.rootChord / 2
+    const te0 = st.wingX - spec.rootChord / 2
+    const le1 = le0 - tanSweep * reach
+    const te1 = st.wingX + (-spec.rootChord / 2) * (1 - f) + (spec.rootChord / 2 - tanSweep * semi - spec.tipChord) * f
+    const t = Math.max(spec.thickness * 1.3, spec.rootChord * 0.14)
+    for (const s of [1, -1]) {
+      out.push(vol('wing', Math.max(le0, le1) + 0.3, Math.min(te0, te1) - 0.3, st.wingY - t * 0.55 - 0.25, st.wingY + t * 0.6 + 0.25, 0, s * (rx + 3.2)))
+    }
+  }
+  if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) {
+    const cx = st.wingX - spec.rootChord * 0.05
+    const cy = st.centerY - spec.ry * 0.7
+    for (const s of [1, -1]) out.push(vol('fairing', cx - spec.rootChord * 0.95, cx + spec.rootChord * 0.95, cy - spec.ry * 0.42, cy + spec.ry * 0.42 + 0.2, 0, s * (rx * 0.93 + 0.15)))
   }
   const eng = spec.engines
+  const prop = eng.kind === 'turboprop'
+  const R = prop ? propRadius(spec) : 0
   for (const p of engineLayout(spec)) {
     const r = eng.radius * 1.15
-    if (Math.abs(p.z) - r > spec.rx + 0.35 || p.z === 0) continue
-    out.push({ x0: p.x - eng.length * 0.6, x1: p.x + eng.length * 0.6, y0: p.y - r, y1: p.y + r, side: Math.sign(p.z), engine: true })
+    out.push(vol('nacelle', p.x - eng.length * 0.6, p.x + eng.length * 0.6, p.y - r, p.y + r, p.z - r, p.z + r))
+    if (prop && eng.mount !== 'nose') {
+      const hub = p.x + eng.length * 0.55
+      out.push(vol('prop', hub - 0.3, hub + 0.3, p.y - R - 0.15, p.y + R + 0.15, p.z - R - 0.15, p.z + R + 0.15))
+    }
   }
   return out
 }
 
-function overlaps(a0: number, a1: number, b0: number, b1: number) {
-  return a1 > b0 && a0 < b1
+/** Closed leaf plus the space its opening swing sweeps through. */
+export function doorVolumes(spec: ModelSpec, b: DoorBox): Vol[] {
+  const s = b.door.side
+  const rx = spec.rx
+  const vols = [vol('closed', b.x - b.w / 2, b.x + b.w / 2, b.y - b.h / 2, b.y + b.h / 2, s * (rx - 0.25), s * (rx + 0.12))]
+  if (b.door.kind === 'cargo') {
+    if (b.swing !== -1) vols.push(vol('open', b.x - b.w / 2, b.x + b.w / 2, b.y + b.h / 2 - 0.1, b.y + b.h / 2 + b.h * 0.4, s * rx, s * (rx + b.h + 0.1)))
+  } else {
+    const sw = b.swing ?? 1
+    vols.push(vol('open', b.x - sw * (b.w / 2), b.x + sw * (b.w * 1.5 + 0.15), b.y - b.h / 2, b.y + b.h / 2, s * (rx - 0.1), s * (rx + 0.55)))
+  }
+  return vols
+}
+
+function doorClear(spec: ModelSpec, b: DoorBox, keep: Vol[], placed: DoorBox[]): boolean {
+  const vols = doorVolumes(spec, b)
+  if (vols.some((v) => keep.some((k) => volsOverlap(v, k)))) return false
+  const mine = vols[0]
+  return !placed.some((o) => o.door.side === b.door.side && !o.omit && volsOverlap(mine, doorVolumes(spec, o)[0]))
 }
 
 /**
- * Real-world door stations are nominal; on our proportions some land on a wing-root fairing or a
- * rear nacelle. Slide such a door clear (nearest side), and swing a plug door aft when the space
- * ahead of it is taken. Render-only: bridges, trucks and leaves all read these boxes.
+ * Real-world door stations are nominal; on our proportions some land on a wing root, the
+ * fairing, a nacelle or a prop disc, or open into one. Find the nearest clean placement for the
+ * drawn leaf: first a different opening (aft swing, inward plug), then a slide along the skin,
+ * and as a last resort (an over-wing exit with nowhere to go) leave it off. Render-only: the sim's
+ * service sockets read `doorBoxes`, which stays on the published stations.
  */
-/** Beyond this slide, a door under a nacelle is trimmed instead (the docked truck stays put). */
-const MAX_SLIDE_M = 1.6
-
 function clearDoors(spec: ModelSpec, boxes: DoorBox[]): DoorBox[] {
-  const keep = doorKeepouts(spec)
-  if (!keep.length) return boxes
+  if (spec.family === 'helo') return boxes
+  const keep = airframeKeepouts(spec)
   const nose = spec.lengthM / 2
-  const hits = (b: DoorBox, x0: number, x1: number, y1 = b.y + b.h / 2) =>
-    keep.find((k) => (k.side === 0 || k.side === b.door.side) && overlaps(x0, x1, k.x0, k.x1) && overlaps(b.y - b.h / 2, y1, k.y0, k.y1))
-  return boxes.map((b) => {
-    if (b.door.side === 0 || b.door.kind === 'ramp') return b
-    let x = b.x
-    let h = b.h
-    let y = b.y
-    for (let pass = 0; pass < 3; pass++) {
-      const k = hits({ ...b, y, h }, x - b.w / 2, x + b.w / 2)
-      if (!k) break
-      const fwd = k.x1 + b.w / 2 + 0.12
-      const aft = k.x0 - b.w / 2 - 0.12
-      const shift = Math.abs(fwd - x) <= Math.abs(aft - x) && fwd + b.w / 2 < nose - spec.lengthM * 0.06 ? fwd : aft
-      // A small slide reads fine next to the docked truck; a big one would leave it at a blank wall,
-      // so lower doors under a nacelle are trimmed to stop short of it instead (sill unchanged).
-      const sill = y - h / 2
-      const trimmed = k.y0 - 0.12 - sill
-      if (Math.abs(shift - b.x) > MAX_SLIDE_M && k.engine && k.y0 > sill + 0.75) {
-        h = Math.min(h, trimmed)
-        y = sill + h / 2
-      } else x = shift
+  const xMax = nose - spec.lengthM * 0.07
+  const xMin = -nose + spec.lengthM * 0.1
+  const placed: DoorBox[] = []
+  for (const b of boxes) {
+    if (b.door.side === 0 || b.door.kind === 'ramp') {
+      placed.push(b)
+      continue
     }
-    const moved = { ...b, x, y, h }
-    if (b.door.kind === 'cargo') {
-      // Top-hinged leaves swing up and out; one trimmed under a nacelle opens as an inward plug.
-      if (h < b.h - 0.01) moved.swing = -1
-      return moved
+    const configs: (1 | -1 | undefined)[] = b.door.kind === 'cargo' ? [undefined, -1] : [1, -1]
+    let found: DoorBox | null = null
+    for (let step = 0; step <= 80 && !found; step++) {
+      const dxs = step === 0 ? [0] : [step * 0.25, -step * 0.25]
+      for (const dx of dxs) {
+        const x = b.x + dx
+        if (x + b.w / 2 > xMax || x - b.w / 2 < xMin) continue
+        for (const swing of configs) {
+          const cand: DoorBox = { ...b, x, swing }
+          if (doorClear(spec, cand, keep, placed)) {
+            found = cand
+            break
+          }
+        }
+        if (found) break
+      }
     }
-    if (hits(moved, x + b.w / 2, x + b.w * 1.5 + 0.15)) moved.swing = -1
-    return moved
-  })
+    placed.push(found ?? { ...b, omit: true })
+  }
+  return placed
 }
 
 function rawDoorBoxes(spec: ModelSpec): DoorBox[] {

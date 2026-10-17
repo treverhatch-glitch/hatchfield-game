@@ -268,6 +268,17 @@ export class CrossfadeLOD extends THREE.LOD {
     this.spinAngle += dt * (0.04 + this.motion.spool * 0.96)
     const a = this.spinAngle
     for (const spinner of buckets.spinners) {
+      if (spinner.name === 'prop') {
+        // Motion-blur disc fades in with prop speed; the blades stay underneath it.
+        const blur = spinner.getObjectByName('prop-blur') as THREE.Mesh | undefined
+        if (blur) {
+          const k = Math.max(0, (this.motion.spool - 0.3) / 0.7)
+          blur.visible = k > 0.01
+          ;(blur.material as THREE.MeshBasicMaterial).opacity = 0.32 * k
+        }
+      }
+    }
+    for (const spinner of buckets.spinners) {
       if (spinner.name === 'rotor' || spinner.name === 'tail-rotor') {
         if (spinner.name === 'tail-rotor') spinner.rotation.z = a * 22
         else spinner.rotation.y = a * 11

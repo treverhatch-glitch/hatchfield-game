@@ -65,6 +65,22 @@ const PROFILES: Record<string, { t: number; r: number; dy?: number }[]> = {
     { t: 0.95, r: 0.14, dy: 0.16 },
     { t: 1, r: 0.03, dy: 0.18 },
   ],
+  // Wing-mounted turboprop airliner (ATR, Dash 8, Twin Otter, C-130): blunt rounded radome
+  // straight into a deep cockpit, constant cabin, long upswept tail cone.
+  turboprop: [
+    { t: 0, r: 0.08, dy: -0.12 },
+    { t: 0.008, r: 0.36, dy: -0.11 },
+    { t: 0.022, r: 0.58, dy: -0.08 },
+    { t: 0.045, r: 0.78, dy: -0.04 },
+    { t: 0.08, r: 0.92, dy: -0.01 },
+    { t: 0.13, r: 0.99 },
+    { t: 0.17, r: 1 },
+    { t: 0.66, r: 1 },
+    { t: 0.76, r: 0.82, dy: 0.06 },
+    { t: 0.86, r: 0.52, dy: 0.17 },
+    { t: 0.94, r: 0.25, dy: 0.25 },
+    { t: 1, r: 0.07, dy: 0.29 },
+  ],
   // Helicopter: blunt cabin, then a long thin tail boom.
   helo: [
     { t: 0, r: 0.2, dy: -0.02 },
@@ -433,8 +449,10 @@ export function windowGeometry(): THREE.BufferGeometry {
  * Which loft to draw. A full-length double deck uses the deck stations.
  * The 747 forehead stays a separate hump on the tube, so its livery box is unchanged.
  */
-export function loftFamily(spec: { family: string; decks?: number; hump?: boolean }): string {
+export function loftFamily(spec: { family: string; decks?: number; hump?: boolean; engines?: { mount: string; count: number } }): string {
   if (spec.decks === 2 && !spec.hump) return 'deck'
+  // Wing-mounted turboprops get the blunt radome; nose-engine singles keep the cowl point.
+  if (spec.family === 'prop' && spec.engines?.mount === 'wing' && spec.engines.count >= 2) return 'turboprop'
   return spec.family
 }
 
@@ -652,6 +670,44 @@ export function fanBladeGeometry(): THREE.BufferGeometry {
     for (let i = 0; i < steps; i++) connectRings(pos, rows[i], rows[i + 1], false)
     capRing(pos, rows[steps], false)
     // Two-sided: the blade is thin enough that winding should never hide it.
+    const n = pos.length
+    for (let i = 0; i < n; i += 9) pos.push(pos[i], pos[i + 1], pos[i + 2], pos[i + 6], pos[i + 7], pos[i + 8], pos[i + 3], pos[i + 4], pos[i + 5])
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Tapered, twisted propeller blade in hub space: radial +Y from the root (0.14) to the tip (1),
+ * axial +X, tangential +Z. Narrow root shank, widest near 40% span, tapered rounded tip, with
+ * the pitch flattening outboard. Two-sided; scale uniformly by the prop radius.
+ */
+export function propBladeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('prop-blade-twist', () => {
+    const steps = 6
+    const rows: number[][][] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const r = 0.14 + 0.86 * t
+      const chord = t < 0.4 ? 0.07 + 0.08 * (t / 0.4) : 0.15 - 0.09 * ((t - 0.4) / 0.6) ** 1.4
+      const half = 0.014 * (1 - 0.6 * t)
+      const pitch = (62 - 44 * t) * (Math.PI / 180)
+      const ax = Math.sin(pitch) * chord * 0.5
+      const tz = Math.cos(pitch) * chord * 0.5
+      const nx = Math.cos(pitch) * half
+      const nz = -Math.sin(pitch) * half
+      rows.push([
+        [ax + nx, r, tz + nz],
+        [-ax + nx, r, -tz + nz],
+        [-ax - nx, r, -tz - nz],
+        [ax - nx, r, tz - nz],
+      ])
+    }
+    const pos: number[] = []
+    for (let i = 0; i < steps; i++) connectRings(pos, rows[i], rows[i + 1], false)
+    capRing(pos, rows[steps], false)
     const n = pos.length
     for (let i = 0; i < n; i += 9) pos.push(pos[i], pos[i + 1], pos[i + 2], pos[i + 6], pos[i + 7], pos[i + 8], pos[i + 3], pos[i + 4], pos[i + 5])
     const geo = new THREE.BufferGeometry()

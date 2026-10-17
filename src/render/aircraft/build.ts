@@ -2,10 +2,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { renderDoorBoxes, type DoorBox } from './stands'
-import { bladeGeometry, cylinderSides, fanBladeGeometry, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { cylinderSides, fanBladeGeometry, propBladeGeometry, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
 import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
-import { engineLayout } from './layout'
+import { engineLayout, propRadius } from './layout'
 import { fuselagePaint } from './doorLeaf'
 import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
@@ -401,7 +401,7 @@ function addEngines(frame: Frame) {
 }
 
 function addPropDiscs(frame: Frame, pts: THREE.Vector3[], eng: EngineSpec) {
-  const radius = eng.radius * 3.1
+  const radius = propRadius(frame.spec)
   for (const p of pts) {
     const disc = new THREE.Mesh(unitDisc('prop'))
     disc.scale.setScalar(radius)
@@ -418,8 +418,8 @@ function addPropBlades(
   eng: EngineSpec,
   name: 'prop' | 'fan',
 ) {
-  const blades = name === 'fan' ? (eng.kind === 'turbojet' ? 18 : 22) : Math.max(4, frame.spec.blades || 4)
-  const radius = name === 'fan' ? eng.radius * 0.78 : eng.radius * 3.05
+  const blades = name === 'fan' ? (eng.kind === 'turbojet' ? 18 : 22) : Math.max(2, frame.spec.blades || 4)
+  const radius = name === 'fan' ? eng.radius * 0.78 : propRadius(frame.spec)
   for (const p of pts) {
     const hub = new THREE.Group()
     hub.name = name
@@ -433,6 +433,9 @@ function addPropBlades(
         matrices.push(compose(0, 0, 0, angle, 0, 0, R, R, R))
         continue
       }
+      // Tapered, twisted prop blades at the real diameter.
+      matrices.push(compose(0, 0, 0, angle, 0, 0, radius, radius, radius))
+      continue
       matrices.push(
         compose(
           0,
@@ -447,12 +450,31 @@ function addPropBlades(
         ),
       )
     }
-    const mesh = new THREE.InstancedMesh(name === 'prop' ? bladeGeometry() : fanBladeGeometry(), new THREE.MeshBasicMaterial(), blades)
+    const mesh = new THREE.InstancedMesh(name === 'prop' ? propBladeGeometry() : fanBladeGeometry(), new THREE.MeshBasicMaterial(), blades)
     matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
     mesh.instanceMatrix.needsUpdate = true
     const painted = paintMesh(mesh, name === 'fan' ? 'fan' : 'dark', frame.livery, 'mesh', frame.tier)
     hub.add(painted)
     frame.meshes.push(painted)
+    if (name === 'prop') {
+      // Spinner cone on the hub, and a faint motion-blur disc the LOD shows while the prop turns.
+      const cone = new THREE.Mesh(spinnerConeGeometry())
+      cone.scale.set(radius * 0.32, radius * 0.17, radius * 0.17)
+      cone.position.x = -radius * 0.08
+      cone.name = 'prop-spinner'
+      const paintedCone = paintMesh(cone, 'lip', frame.livery, 'mesh', frame.tier)
+      hub.add(paintedCone)
+      frame.meshes.push(paintedCone)
+      const blur = new THREE.Mesh(
+        unitDisc('prop-blur'),
+        new THREE.MeshBasicMaterial({ color: '#2a2d31', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }),
+      )
+      blur.scale.setScalar(radius)
+      blur.name = 'prop-blur'
+      blur.visible = false
+      blur.userData.ownMat = true
+      hub.add(blur)
+    }
     frame.group.add(hub)
     frame.spinners.push(hub)
   }
@@ -734,7 +756,7 @@ function addRealDoors(frame: Frame) {
   if (plain.length) {
     addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
   }
-  for (const cargo of [false, true]) addDoorways(frame, boxes.filter((b) => b.door.side !== 0 && (b.door.kind === 'cargo') === cargo), cargo)
+  for (const cargo of [false, true]) addDoorways(frame, boxes.filter((b) => b.door.side !== 0 && !b.omit && (b.door.kind === 'cargo') === cargo), cargo)
 }
 
 /** Side half-width of the real loft at (x, y): where a door leaf or doorway meets the skin. */
@@ -1105,7 +1127,8 @@ function addBellyFairing(frame: Frame) {
  */
 function addCockpitWindows(frame: Frame) {
   const { spec, centerY, nose } = frame
-  const fam = spec.family === 'rearjet' ? 'rearjet' : spec.family === 'prop' ? 'prop' : 'tube'
+  const lf = loftFamily(spec)
+  const fam = lf === 'rearjet' || lf === 'prop' || lf === 'turboprop' ? lf : 'tube'
   const L = spec.lengthM
   const tAt = Math.min(0.065, 3.2 / L)
   const panes: THREE.Matrix4[] = []
@@ -1445,7 +1468,7 @@ function grimeMask(frame: Frame): ((x: number, y: number, z: number) => number) 
   if (frame.tier === 'low') return undefined
   const { spec, centerY, wingX, tailX } = frame
   const engines = spec.engines.count ? enginePoints(frame) : []
-  const doors = renderDoorBoxes(spec).filter((b) => b.door.side !== 0)
+  const doors = renderDoorBoxes(spec).filter((b) => b.door.side !== 0 && !b.omit)
   const finRoot = frame.top
   const smooth = (a: number, b: number, v: number) => {
     const t = Math.max(0, Math.min(1, (v - a) / (b - a)))

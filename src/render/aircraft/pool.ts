@@ -75,10 +75,10 @@ export function unitPlane(): THREE.BufferGeometry {
 }
 
 /** Prop disc lies in YZ so it can spin on local X. Rotor disc lies in XZ. */
-export function unitDisc(kind: 'prop' | 'rotor'): THREE.BufferGeometry {
+export function unitDisc(kind: 'prop' | 'rotor' | 'prop-blur'): THREE.BufferGeometry {
   return sharedGeo(`disc:${kind}`, () => {
-    const geo = new THREE.CircleGeometry(1, kind === 'rotor' ? 10 : 7)
-    if (kind === 'prop') geo.rotateY(Math.PI / 2)
+    const geo = new THREE.CircleGeometry(1, kind === 'rotor' ? 10 : kind === 'prop-blur' ? 40 : 7)
+    if (kind !== 'rotor') geo.rotateY(Math.PI / 2)
     else geo.rotateX(-Math.PI / 2)
     return geo
   })

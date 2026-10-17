@@ -57,3 +57,13 @@ export function engineLayout(spec: ModelSpec): THREE.Vector3[] {
   }
   return pts
 }
+
+/** Real propeller diameters (m) where we know them; others scale from the nacelle. */
+const PROP_DIAMETER_M: Record<string, number> = {
+  atr72: 3.93, atr42: 3.93, q400: 4.11, dhc6: 2.59, bn2: 2.03, pc12: 2.67, c130: 4.11, cl415: 4.2, at802: 2.9,
+}
+
+export function propRadius(spec: ModelSpec): number {
+  const d = PROP_DIAMETER_M[spec.id]
+  return d ? d / 2 : spec.engines.radius * 3.05
+}

@@ -3,7 +3,7 @@ import type { AircraftMotion } from './motion'
 import { paintMesh, paintVertexMesh, sharedGeo, unitCylinder, unitSphere, type PaintedMesh, type PaintSlot } from './pool'
 import type { ModelSpec, Livery } from './specs'
 import { renderDoorBoxes } from './stands'
-import { airfoilGeometry, loftFamily, loftStation, smoothSphere, spinnerConeGeometry } from './geom'
+import { airfoilGeometry, loftFamily, loftStation, smoothSphere } from './geom'
 import { doorLeafGeometry, fuselagePaint } from './doorLeaf'
 
 /**
@@ -317,15 +317,6 @@ function addApu(frame: RigFrame) {
   addStatic(frame, unitCylinder(10), [trs(frame.tailX + 0.05, y, 0, CYL_X, r, 0.5, r)], 'dark', 'apu-exhaust')
 }
 
-function addSpinnerCones(frame: RigFrame, pts: THREE.Vector3[]) {
-  const { spec } = frame
-  if (!isJet(spec) || pts.length === 0) return
-  const eng = spec.engines
-  const cones = pts.map((p) =>
-    trs(p.x + eng.length * 0.3, p.y, p.z, IDENT, eng.radius * 0.5, eng.radius * 0.3, eng.radius * 0.3),
-  )
-  addStatic(frame, spinnerConeGeometry(), cones, 'metal', 'spinner-cones')
-}
 
 function addLandingLights(frame: RigFrame) {
   const { spec } = frame
@@ -357,7 +348,7 @@ function addDoorLeaves(frame: RigFrame) {
   const sets = new Map<string, { geo: () => THREE.BufferGeometry; parts: RigPart[]; shift: number[]; kind: RigKind }>()
   for (const box of renderDoorBoxes(spec)) {
     const side = box.door.side
-    if (side === 0) continue
+    if (side === 0 || box.omit) continue
     const t = Math.max(0, Math.min(1, (frame.nose - box.x) / spec.lengthM))
     const st = loftStation(family, t)
     const mid = frame.centerY + spec.ry * st.dy
@@ -447,5 +438,4 @@ export function addRig(frame: RigFrame, enginePts: THREE.Vector3[]) {
     return
   }
   addDoorLeaves(frame)
-  addSpinnerCones(frame, enginePts)
 }
