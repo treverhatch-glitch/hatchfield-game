@@ -62,7 +62,7 @@ Most items below wait until plane graphics and the current playthrough are done.
 - Binary-heap A* + route cache keyed on start/goal; **invalidate on any layout change** so new check-in / security is used immediately.
 - Passengers still pick the **shortest live queue**; needs-driven detours (food, shops, getting lost) request a **fresh route**.
 - **Path variation (Trever):** share exact paths **only** in queues and at interaction points (check-in desks, security scanners/x-ray, gates, anything they interact with). Everywhere else: per-agent lateral offset, spacing and speed variation so crowds look alive.
-- Jules: `sys_18_brief.txt`.
+- Jules: `sys_18_brief.txt`. Absorbs sys_14 (truck path cache) and the heap half of borrow PB-04/PB-22 ([cross-ref](./plans/permissive-borrow.md#11-cross-reference-with-existing-plans-17-oct-2026)).
 
 ### After playthrough — Fixed-tick clock (pairs with seeded RNG)
 - Run the clock in equal, fixed ticks so 5× plays out exactly like 1× on any machine (replays and bug repros match).
@@ -71,10 +71,12 @@ Most items below wait until plane graphics and the current playthrough are done.
 ### Per-airline service rating + airport growth
 - Rating per airline from how well you treat them; airlines grow or leave.
 - Tied to airport growth: as the airport levels up, airlines send **newer and bigger aircraft** (and stock / standing rise with it).
+- Borrow tasks folded in: PB-23 (market → offers/growth/exit) and PB-08 (load factor as a rating input). Builds on the unwired `src/features/ratings`; aircraft picks stay inside the sys_03 tier ladder + Field Level; exits via `diplomacy/departure.ts`.
 
 ### Breakdowns and inspections
 - Wire up the existing uncalled `breakdownChance()` in `maintenance/wear.ts`.
 - Breakdowns, inspections and mechanics become real gameplay.
+- Borrow PB-10/PB-25 folded in: reliability functions live in `maintenance/wear.ts`; reconcile with the live `logistics/maintenance.ts` breakdowns (one roll per vehicle).
 - **After the next playthrough.**
 
 ### Staff patrol zones
@@ -84,17 +86,21 @@ Most items below wait until plane graphics and the current playthrough are done.
 ### Explainable airport rating ↔ airport levels
 - One airport rating that shows what is dragging the score down.
 - Feeds, and is fed by, the airport level / Field Level system.
+- One task with borrow PB-24 + PB-09 (shared eased-rating helper) + PB-02 tower score as a component; Airport Council happiness (sys_02) uses the same components.
 
 ### Happiness easing + value-for-money
 - Passenger happiness eases toward a target instead of jumping.
 - Prices carry a value-for-money feel.
+- Same pass as the airport rating (PB-09 `easeToward`).
 
 ### Commands → undo / replay (+ hardcore)
 - Every player action recorded as a command (undo, replays, easier bug fix).
 - Optional **hardcore mode** with no undo (Ctrl-Z off) for the shipped game.
+- Builds on the unwired `src/features/undo` (keep it out of the sys_11 dead-code deletion) plus the OpenLoco estimate/apply pattern.
 
 ### Destination demand (Cargodist-style)
 - Smarter cargo / passenger demand by destination, run in a **Web Worker** so it doesn't stall the main thread.
+- Borrow PB-06 (Airline Club fare + city-pair demand) is the kernel; extend `src/fids/cities.ts`. Domestic only until international progression opens.
 
 ### Smaller approved items
 - News by category.
@@ -129,3 +135,4 @@ Most items below wait until plane graphics and the current playthrough are done.
 - **May code now:** Seeded RNG (`sys_16`), time-slicing (`sys_17`), pathfinder + crowd path variation (`sys_18`) — Jules briefs queued 16:40 Asia/Bangkok Oct 17.
 - **Still docs-only until** plane graphics pass merged + current playthrough finished: fixed-tick clock, airline service ratings, breakdowns, patrol zones, airport rating↔levels, happiness easing, command/undo+hardcore, OD demand, buses, smaller items, Steam rename, CC0 adoption PRs.
 - Then pull remaining items into [BUILD.md](./BUILD.md) / [EXECUTION.md](./EXECUTION.md) in priority order.
+- **Borrow plan cross-reference:** [permissive-borrow.md §11](./plans/permissive-borrow.md#11-cross-reference-with-existing-plans-17-oct-2026), with layers, folded tasks and the consolidated order. Borrow PB-20 (type-based runway separation), PB-22 (turn-penalty taxi) and PB-26 (arrival metering) change sim timing and each need Trever's sign-off. PB-26 also waits for the fixed-tick clock.
