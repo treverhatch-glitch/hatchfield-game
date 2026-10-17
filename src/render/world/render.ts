@@ -51,6 +51,7 @@ import { fitShadow, groundFocus } from './lod'
 import { softShadowRadius } from './softShadows'
 import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
 import { baseLevel, QUALITY, type QualityLevel, type QualityPreset } from './quality'
+import { applyAntiTile, concreteScale, detailScale, setAntiTile, setConcreteDetail } from './groundTiling'
 import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
@@ -59,7 +60,7 @@ import { boardSnapshot, isFidsSource } from '../../fids/project'
 import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
-import { airfieldTextures } from './airfieldArt'
+import { AIRFIELD_ANTI_TILE, airfieldTextures, CONCRETE_DETAIL_AMT, concreteDetailTexture, type AirfieldSurface } from './airfieldArt'
 import { landingTexture, seasonApronId, seasonGrassId, seasonPavedId } from './landingArt'
 import { propTexture } from './propArt'
 import { benchGeometry, binGeometry, curbFurniture } from './apronProps'
@@ -106,6 +107,9 @@ export const REPLACED_TILES = new Set(['grass', 'runway', 'taxi', 'stand', 'road
 
 const WHITE = new THREE.Color(1, 1, 1)
 
+/** World units per UV repeat on the merged ground (world-space UVs). Stand pads use 6.2 too. */
+const SURFACE_UV: Record<SurfaceKind, number> = { grass: 7, runway: 10, taxi: 8, apron: 6.2, pad: 6.2, road: 8 }
+const PAVED_ART: Partial<Record<SurfaceKind, AirfieldSurface>> = { runway: 'runway', taxi: 'asphalt', apron: 'apron', pad: 'apron', road: 'road' }
 const SURFACE_Y: Record<SurfaceKind, number> = { grass: 0.004, pad: 0.008, runway: 0.012, taxi: 0.012, apron: 0.012, road: 0.012 }
 
 export class WorldRenderer {
@@ -263,6 +267,7 @@ export class WorldRenderer {
           color: GROUND_LOOK.surfaceTint[k],
         }),
       )
+      if (k !== 'grass') applyAntiTile(this.surfaceMats.get(k)!)
     }
     this.lights = new AirfieldLights(this.tex)
     this.root.add(this.lights.root)
@@ -384,7 +389,7 @@ export class WorldRenderer {
       if (!cells[k].length) continue
       const geo = quadsGeometry(cells[k], {
         y: SURFACE_Y[k],
-        uvSize: k === 'grass' ? 7 : k === 'runway' ? 10 : k === 'apron' || k === 'pad' ? 6.2 : 8,
+        uvSize: SURFACE_UV[k],
         sub: k === 'grass' ? 2 : 1,
         macro: k === 'grass' ? 0.34 : 0.06,
         seed: k.length,
@@ -759,9 +764,13 @@ export class WorldRenderer {
       mat.map = tex
       mat.needsUpdate = true
     }
-    const paved = (mat: THREE.Material | undefined, id: 'asphalt' | 'runway' | 'apron' | null, fallback: THREE.Texture | null) => {
+    const paved = (mat: THREE.Material | undefined, id: AirfieldSurface | null, fallback: THREE.Texture | null) => {
       if (!(mat instanceof THREE.MeshLambertMaterial)) return
       const art = id ? airfieldTextures(id, anisotropy) : null
+      const kind = (Object.keys(PAVED_ART) as SurfaceKind[]).find((k) => this.surfaceMats.get(k) === mat)
+      setAntiTile(mat, art && id && kind ? detailScale(SURFACE_UV[kind], id) : 1, art && id ? AIRFIELD_ANTI_TILE[id] : 0)
+      const slab = art && kind && (id === 'runway' || id === 'apron')
+      setConcreteDetail(mat, slab ? concreteDetailTexture(anisotropy) : null, kind ? concreteScale(SURFACE_UV[kind]) : 1, CONCRETE_DETAIL_AMT)
       mat.normalMap = art?.normalMap ?? null
       if (art?.normalMap) mat.normalScale.set(0.6, 0.6)
       assign(mat, art?.map ?? fallback)
@@ -776,10 +785,10 @@ export class WorldRenderer {
     if (winter || wetBit) {
       const plate = landingTexture(winter ? 'snow_asphalt' : 'wet_asphalt', anisotropy)
       paved(this.surfaceMats.get('taxi'), null, plate)
-      assign(this.surfaceMats.get('road'), plate)
+      paved(this.surfaceMats.get('road'), null, plate)
     } else if (this.tex) {
       paved(this.surfaceMats.get('taxi'), 'asphalt', this.tex.asphalt)
-      assign(this.surfaceMats.get('road'), this.tex.road)
+      paved(this.surfaceMats.get('road'), 'road', this.tex.road)
     }
     assign(this.shoulderMat ?? undefined, landingTexture(winter ? 'snow_grass' : 'dirt_shoulder', anisotropy))
     const farm = landingTexture(winter ? 'snow_grass' : 'farmland', anisotropy)
