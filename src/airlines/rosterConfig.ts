@@ -49,6 +49,36 @@ export const UNLOCK_GATES: Record<Type, { size: number; reputation: number; repu
   flag: { size: 4, reputation: 65, reputationStep: 3 },
 }
 
+/** Passenger airline ladder: 5 tiers plus a tier 0. Cargo climbs its own ladder (not here). */
+export type LadderTier = 0 | 1 | 2 | 3 | 4 | 5
+export const LADDER_TIERS: readonly LadderTier[] = [0, 1, 2, 3, 4, 5]
+
+/**
+ * Default ladder tier per passenger type: 0 = heli/GA starters a brand-new field can earn,
+ * 1 = regional, 2 = low-cost, 3 = full-service (charter), 4 = large flag. Tier 5 (top
+ * long-haul flag) has no default type; a carrier only lands there explicitly.
+ */
+export const TYPE_TO_LADDER_TIER: Record<Exclude<Type, 'cargo'>, LadderTier> = {
+  heli: 0,
+  regional: 1,
+  budget: 2,
+  charter: 3,
+  flag: 4,
+}
+
+/**
+ * Unlock gate per ladder tier. Tiers 0-4 reuse the per-type gates above, so the default
+ * roster unlocks exactly as before; tier 5 sits above the large flags.
+ */
+export const LADDER_UNLOCK_GATES: Record<LadderTier, { size: number; reputation: number; reputationStep: number }> = {
+  0: UNLOCK_GATES.heli,
+  1: UNLOCK_GATES.regional,
+  2: UNLOCK_GATES.budget,
+  3: UNLOCK_GATES.charter,
+  4: UNLOCK_GATES.flag,
+  5: { size: 4, reputation: 80, reputationStep: 3 },
+}
+
 export const MAX_REPUTATION = 100
 
 /**

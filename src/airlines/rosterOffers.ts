@@ -15,6 +15,7 @@ import {
   OFFER_PROFILES,
   PENALTY_FEE_FACTOR,
   PENALTY_FINE_FACTOR,
+  LADDER_UNLOCK_GATES,
   UNLOCK_GATES,
 } from './rosterConfig.ts'
 import type { Airline, AirportCapabilities, ContractOffer, ContractTerms } from './types.ts'
@@ -48,10 +49,15 @@ export interface RouteOffer {
   penaltyTier: number
 }
 
-/** Size and reputation an airline needs before it will talk to you. */
+/**
+ * Size and reputation an airline needs before it will talk to you. Passenger carriers gate
+ * by ladder tier (ranked within their tier); cargo, off the passenger ladder, gates by type.
+ */
 export function unlockGate(airline: RosterAirline): { size: number; reputation: number } {
-  const gate = UNLOCK_GATES[airline.type]
-  const rank = rosterByType(airline.type).findIndex((a) => a.id === airline.id)
+  const tier = airline.ladderTier
+  const gate = tier === null ? UNLOCK_GATES[airline.type] : LADDER_UNLOCK_GATES[tier]
+  const peers = tier === null ? rosterByType(airline.type) : ROSTER.filter((a) => a.ladderTier === tier)
+  const rank = peers.findIndex((a) => a.id === airline.id)
   return { size: gate.size, reputation: Math.min(100, gate.reputation + gate.reputationStep * Math.max(0, rank)) }
 }
 

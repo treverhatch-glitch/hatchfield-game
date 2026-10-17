@@ -7,7 +7,7 @@
  */
 import palettes from '../../public/art/refs/airlines/palettes.json'
 import { DEFAULT_AIRLINES } from './data.ts'
-import { TYPE_REQS, TYPE_SATISFACTION, TYPE_UNLOCK_FLIGHTS } from './rosterConfig.ts'
+import { TYPE_REQS, TYPE_SATISFACTION, TYPE_TO_LADDER_TIER, TYPE_UNLOCK_FLIGHTS, type LadderTier } from './rosterConfig.ts'
 import type { Airline, AirlineRequirements, AirlineTier } from './types.ts'
 
 export type AirlineType = 'budget' | 'flag' | 'regional' | 'cargo' | 'charter' | 'heli'
@@ -34,6 +34,8 @@ export interface RosterAirline {
   /** ICAO-style three-letter code, unique across the roster. */
   code: string
   type: AirlineType
+  /** Passenger ladder tier 0-5. Null for cargo, which has its own ladder. */
+  ladderTier: LadderTier | null
   primary: string
   secondary: string
   accent: string
@@ -234,6 +236,11 @@ interface PaletteFile {
 }
 const PALETTES = (palettes as PaletteFile).airlines
 
+/** Default passenger ladder tier for a type; cargo is off this ladder. */
+export function defaultLadderTier(type: AirlineType): LadderTier | null {
+  return type === 'cargo' ? null : TYPE_TO_LADDER_TIER[type]
+}
+
 function build(): RosterAirline[] {
   const out: RosterAirline[] = []
   const used: Record<AirlineType, number> = { budget: 0, flag: 0, regional: 0, cargo: 0, charter: 0, heli: 0 }
@@ -245,6 +252,7 @@ function build(): RosterAirline[] {
       name: base.name,
       code: paint.code,
       type: paint.type,
+      ladderTier: defaultLadderTier(paint.type),
       primary: paint.primary,
       secondary: paint.secondary,
       accent: paint.accent,
@@ -267,6 +275,7 @@ function build(): RosterAirline[] {
       name: pal.name,
       code: seed.code,
       type: seed.type,
+      ladderTier: defaultLadderTier(seed.type),
       primary: pal.primary,
       secondary: pal.secondary,
       accent: pal.accent,
@@ -281,6 +290,7 @@ function build(): RosterAirline[] {
     name: 'Siam Breeze',
     code: 'SMB',
     type: 'budget',
+    ladderTier: defaultLadderTier('budget'),
     primary: '#1b8480',
     secondary: '#c6a35a',
     accent: '#f7fbfa',
