@@ -12,6 +12,7 @@ import { exteriorTexture, type ExteriorArtId } from './exteriorArt'
 import { landingTexture } from './landingArt'
 import { trackWindowGlow, windowGlowTarget, windowGlowTexture } from './nightArt'
 import type { QualityLevel } from './quality'
+import { applySkinProjection, SKIN_PLATES, SKIN_ROUGH_MEAN, skinPlateTextures, type SkinPlateId } from './skinArt'
 
 export type SkinPart = 'wall' | 'roof' | 'trim' | 'door'
 
@@ -65,6 +66,54 @@ const EXTERIOR: Partial<Record<BuildingTargetId, Partial<Record<SkinPart, Exteri
   transit_station: { wall: 'curtain', roof: 'membrane', door: 'curtain' },
 }
 
+/**
+ * PBR plates (src/render/world/skinArt.ts) for the service and landside buildings.
+ * They win over EXTERIOR and the Gemini plates. The terminal, tower, transit,
+ * hotel, fuel farm and de-ice pad keep their own approved looks.
+ */
+export const SKIN_PLATE_FOR: Partial<Record<BuildingTargetId, Partial<Record<SkinPart, SkinPlateId>>>> = {
+  hangar: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  cargo_terminal: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  baggage_hall: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  warehouse: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  parking_garage: { wall: 'cladding', roof: 'membrane', door: 'cladding' },
+  maintenance_shed: { wall: 'cladding', roof: 'membrane' },
+  guard_booth: { wall: 'cladding', roof: 'membrane' },
+  fire_station: { wall: 'brick', roof: 'membrane' },
+  kiosk: { wall: 'brick', roof: 'membrane', door: 'brick' },
+  police_station: { wall: 'panel', roof: 'membrane' },
+  catering_kitchen: { wall: 'panel', roof: 'membrane' },
+  ground_services: { wall: 'block', roof: 'membrane' },
+}
+
+/**
+ * Mean luminance of the plate each target part used before, so the new plate
+ * keeps the same overall tone. The depot wall used a floor plate (dock_floor,
+ * 0.41) by mistake; its CMU keeps its own brightness, nearer the concept colour.
+ */
+const LEGACY_LUM: Partial<Record<BuildingTargetId, Partial<Record<SkinPart, number>>>> = {
+  hangar: { wall: 0.735, roof: 0.525, door: 0.735 },
+  cargo_terminal: { wall: 0.735, roof: 0.525, door: 0.735 },
+  baggage_hall: { wall: 0.735, roof: 0.525, door: 0.735 },
+  warehouse: { wall: 0.735, roof: 0.525, door: 0.735 },
+  parking_garage: { wall: 0.735, roof: 0.525, door: 0.735 },
+  maintenance_shed: { wall: 0.727, roof: 0.376 },
+  guard_booth: { wall: 0.727, roof: 0.376 },
+  fire_station: { wall: 0.78, roof: 0.525 },
+  kiosk: { wall: 0.78, roof: 0.525, door: 0.78 },
+  police_station: { wall: 0.65, roof: 0.376 },
+  catering_kitchen: { wall: 0.65, roof: 0.376 },
+  ground_services: { roof: 0.376 },
+}
+
+/** Colour gain that keeps a target part's tone when its plate changes (1 = no change). */
+export function skinToneGain(target: BuildingTargetId, part: SkinPart): number {
+  const plate = SKIN_PLATE_FOR[target]?.[part]
+  const old = LEGACY_LUM[target]?.[part]
+  if (!plate || !old) return 1
+  return old / SKIN_PLATES[plate].albedoLum
+}
+
 const state = { photos: true, anisotropy: 4 }
 
 /** Follow the graphics preset: Low keeps flat colours. */
@@ -97,11 +146,22 @@ function exteriorMap(target: BuildingTargetId, part: SkinPart): THREE.Texture | 
 export function skinMaterial(target: BuildingTargetId, part: SkinPart, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
   const t = MATERIAL_TARGETS[target]
   const roughness = part === 'roof' ? t.roofRoughness : part === 'wall' ? t.wallRoughness : 0.5
-  const map = exteriorMap(target, part) ?? (part === 'wall' ? photo(t.wallTexture) : part === 'roof' ? photo(t.roofTexture) : null)
+  const plateId = state.photos ? SKIN_PLATE_FOR[target]?.[part] : undefined
+  const plate = plateId ? skinPlateTextures(plateId, state.anisotropy) : null
+  const map = plate?.map ?? exteriorMap(target, part) ?? (part === 'wall' ? photo(t.wallTexture) : part === 'roof' ? photo(t.roofTexture) : null)
   // A photo multiplies the colour, so ease the target toward white to keep the same overall tone.
   const color = extra.color ?? t[part]
-  const m = new THREE.MeshStandardMaterial({ roughness, map, ...extra, color: map ? tint(String(color instanceof THREE.Color ? `#${color.getHexString()}` : color), 0.35) : color })
+  const tinted = map ? tint(String(color instanceof THREE.Color ? `#${color.getHexString()}` : color), 0.35) : color
+  const m = new THREE.MeshStandardMaterial({ roughness, map, ...extra, color: tinted })
   m.name = `skin:${target}:${part}`
+  if (plate && plateId) {
+    m.color.multiplyScalar(skinToneGain(target, part))
+    m.normalMap = plate.normalMap
+    m.normalScale.set(SKIN_PLATES[plateId].normalScale, SKIN_PLATES[plateId].normalScale)
+    m.roughnessMap = plate.roughnessMap
+    m.roughness = Math.min(1, m.roughness / SKIN_ROUGH_MEAN)
+    applySkinProjection(m, plateId)
+  }
   if (part === 'wall' && windowGlowTarget(target)) {
     const glow = windowGlowTexture(1)
     if (glow) {
