@@ -6,6 +6,7 @@ import { stampStarterKit } from './starterLayout.ts'
 import { PREFAB_I_OPEN, schemeItems, schemeZones } from './terminal.ts'
 import type { StartFocus, Tile } from './types.ts'
 import { SIZE } from './types.ts'
+import { withSeed } from '../test/withSeed.ts'
 
 function kit(focus: StartFocus) {
   const game = new Game()
@@ -121,7 +122,7 @@ function soak(days: number, dt = 0.25): {
 
 describe('starter opening', () => {
   it('does not bottleneck during the opening window', () => {
-    const result = soak(OPENING_SEC / 180 + 0.05)
+    const result = withSeed(12345, () => soak(OPENING_SEC / 180 + 0.05))
     expect(result.signed).toBeGreaterThan(0)
     expect(result.firstBottleneck == null || result.firstBottleneck >= OPENING_SEC).toBe(true)
   }, 30_000)
@@ -129,7 +130,7 @@ describe('starter opening', () => {
 
 describe.skipIf(!SOAK_30)('starter 30-day soak', () => {
   it('stays clear at the start and keeps flying', () => {
-    const result = soak(30)
+    const result = withSeed(12345, () => soak(30))
     console.log(JSON.stringify(result))
     expect(result.firstBottleneck == null || result.firstBottleneck >= OPENING_SEC).toBe(true)
     expect(result.flights).toBeGreaterThan(0)

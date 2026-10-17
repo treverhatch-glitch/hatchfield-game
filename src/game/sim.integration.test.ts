@@ -1,21 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import { SAVE_KEY } from './types.ts'
-
-/** Mulberry32 so this flight's fees do not depend on Math.random. */
-function withSeed(seed: number, run: () => void) {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    run()
-  } finally {
-    Math.random = orig
-  }
-}
+import { withSeed } from '../test/withSeed.ts'
 
 describe('sim integration', () => {
   it('starter kit → signed airline → flight completes and cash posts', () => {

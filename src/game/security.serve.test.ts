@@ -1,20 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isAirside, spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
-
-function withSeed(seed: number, run: () => void) {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    run()
-  } finally {
-    Math.random = orig
-  }
-}
+import { withSeed } from '../test/withSeed.ts'
 
 function starter(): Game {
   const game = new Game()

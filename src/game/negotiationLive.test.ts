@@ -7,21 +7,7 @@ import { SERVICE_IDS } from '../negotiation/index.ts'
 import { negotiatedLineFactor } from '../negotiation/liveFees.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import type { Flight, Truck } from './types.ts'
-
-/** Mulberry32 so offer rolls do not depend on the process seed. */
-function withSeed<T>(seed: number, run: () => T): T {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    return run()
-  } finally {
-    Math.random = orig
-  }
-}
+import { withSeed } from '../test/withSeed.ts'
 
 function fresh(): Game {
   const game = new Game()

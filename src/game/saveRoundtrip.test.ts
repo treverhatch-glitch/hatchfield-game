@@ -4,20 +4,7 @@ import { DEFAULT_BUDGETS } from './catalog.ts'
 import { SAVE_KEY, type TerminalFit, type CaterBrand, type RoomId } from './types.ts'
 import { SAVE_SCHEMA_VERSION, serialize, storedData } from '../features/save/index.ts'
 import { InboundBridge } from './inboundBridge.ts'
-
-function withSeed<T>(seed: number, fn: () => T): T {
-  const orig = Math.random
-  let s = seed >>> 0
-  Math.random = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
-    return s / 4294967296
-  }
-  try {
-    return fn()
-  } finally {
-    Math.random = orig
-  }
-}
+import { withSeed } from '../test/withSeed.ts'
 
 function getInbound(game: Game): InboundBridge | null {
   return (game as unknown as { inbound: InboundBridge | null }).inbound
