@@ -274,7 +274,7 @@ export class CrossfadeLOD extends THREE.LOD {
         if (blur) {
           const k = Math.max(0, (this.motion.spool - 0.3) / 0.7)
           blur.visible = k > 0.01
-          ;(blur.material as THREE.MeshBasicMaterial).opacity = 0.32 * k
+          ;(blur.material as THREE.MeshBasicMaterial).opacity = 0.22 * k
         }
       }
     }

@@ -183,13 +183,15 @@ export function drawFuselagePlate(ctx: Ctx, w: number, h: number, p: ProcLivery)
 function drawWordmark(ctx: Ctx, w: number, h: number, p: ProcLivery) {
   const lengthM = MODEL_SPECS[p.modelId]?.lengthM ?? 40
   // Longer airframes carry a smaller share of the strip per letter.
-  const size = Math.round(h * (p.helicopter ? 0.16 : lengthM > 60 ? 0.2 : 0.24))
+  const high = !p.helicopter && (MODEL_SPECS[p.modelId] ?? DERIVED_SPECS[p.modelId])?.wingHigh === true
+  // High-wing types carry their titles above the window line, clear of the wing and windows.
+  const size = Math.round(h * (p.helicopter ? 0.16 : high ? 0.17 : lengthM > 60 ? 0.2 : 0.24))
   ctx.font = `bold ${size}px sans-serif`
   ctx.textBaseline = 'middle'
   ctx.textAlign = 'left'
   ctx.fillStyle = luma(p.fuselage) < 0.55 ? WHITE : p.scheme === 'solid' ? WHITE : p.tail
   const [u0, u1] = titleSpan(p.modelId, p.helicopter)
-  ctx.fillText(p.wordmark, w * u0, h * 0.33, w * (u1 - u0))
+  ctx.fillText(p.wordmark, w * u0, h * (high ? 0.19 : 0.33), w * (u1 - u0))
 }
 
 /**
@@ -203,8 +205,8 @@ export function titleSpan(modelId: string, helicopter = false): [number, number]
   const spec = MODEL_SPECS[modelId] ?? DERIVED_SPECS[modelId]
   if (!spec || !spec.wingHigh) return [0.2, 0.62]
   const half = spec.rootChord / 2 / spec.lengthM
-  const le = Math.max(0, spec.wingAt - half - 0.035)
-  const te = Math.min(1, spec.wingAt + half + 0.035)
+  const le = Math.max(0, spec.wingAt - half - 0.07)
+  const te = Math.min(1, spec.wingAt + half + 0.07)
   // Exclude [le, te] and its mirror [1 - te, 1 - le].
   const lo = Math.min(le, 1 - te)
   const hi = Math.max(te, 1 - le)

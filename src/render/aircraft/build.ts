@@ -1132,12 +1132,13 @@ function addCockpitWindows(frame: Frame) {
   const L = spec.lengthM
   const tAt = Math.min(0.065, 3.2 / L)
   const panes: THREE.Matrix4[] = []
-  const pane = (t: number, ang: number, w: number, h: number) => {
+  const at = (t: number, ang: number) => {
     const st = loftStation(fam, t)
+    return { st, p: new THREE.Vector3(nose - t * L, centerY + spec.ry * (Math.sin(ang) * st.r + st.dy), spec.rx * Math.cos(ang) * st.r) }
+  }
+  const pane = (t: number, ang: number, w: number, h: number) => {
+    const { st, p } = at(t, ang)
     const ahead = loftStation(fam, Math.max(0, t - 0.004))
-    const x = nose - t * L
-    const y = centerY + spec.ry * (Math.sin(ang) * st.r + st.dy)
-    const z = spec.rx * Math.cos(ang) * st.r
     // Surface normal: radial part plus forward lean from the taper.
     const dr = ((st.r - ahead.r) * Math.max(spec.rx, spec.ry)) / (0.004 * L)
     const n = new THREE.Vector3(dr, Math.sin(ang) / spec.ry, Math.cos(ang) / spec.rx).normalize()
@@ -1145,17 +1146,25 @@ function addCockpitWindows(frame: Frame) {
     const side = new THREE.Vector3().crossVectors(up, n).normalize()
     const basis = new THREE.Matrix4().makeBasis(side, up, n)
     const q = new THREE.Quaternion().setFromRotationMatrix(basis)
-    const pos = new THREE.Vector3(x, y, z).addScaledVector(n, 0.015)
-    panes.push(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(w, h, 0.05)))
+    panes.push(new THREE.Matrix4().compose(p.addScaledVector(n, 0.015), q, new THREE.Vector3(w, h, 0.05)))
   }
   const h = Math.max(0.22, spec.ry * 0.2)
-  const w = Math.max(0.3, spec.rx * 0.3)
-  // Angle runs from +Z toward +Y; the port side mirrors it to (π − a).
+  // The windscreen runs as one level band at ~0.45 ry: centre pane on the nose front, then the
+  // side panes stepping aft round the curve, each as wide as the gap to its neighbour.
+  const yRel = 0.45
+  const ts = [0.5, 0.78, 1.06, 1.36].map((k) => tAt * k)
+  const angOf = (t: number) => {
+    const st = loftStation(fam, t)
+    return Math.asin(Math.max(-0.98, Math.min(0.98, (yRel - st.dy) / Math.max(0.05, st.r))))
+  }
+  const angs = ts.map(angOf)
+  const pts = ts.map((t, i) => at(t, angs[i]).p)
   for (const sign of [1, -1]) {
-    const a = (v: number) => (sign > 0 ? v : Math.PI - v)
-    pane(tAt * 0.72, a(1.18), w, h)
-    pane(tAt * 0.95, a(0.78), w * 0.95, h * 0.95)
-    pane(tAt * 1.22, a(0.55), w * 0.6, h * 0.8)
+    ts.forEach((t, i) => {
+      const nb = pts[Math.min(pts.length - 1, i + 1)].distanceTo(pts[Math.max(0, i - 1)]) / (i === 0 || i === pts.length - 1 ? 1 : 2)
+      const ang = sign > 0 ? angs[i] : Math.PI - angs[i]
+      pane(t, ang, nb * 1.02, h * (1 - i * 0.07))
+    })
   }
   addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
 }

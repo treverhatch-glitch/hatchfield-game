@@ -62,7 +62,8 @@ function place(id: string, livery: Livery, x: number, z: number, label: string) 
   plane.position.set(x, 0, z)
   plane.rotation.y = Number(qs.get('rot') ?? 0.55)
   const open = Number(qs.get('doors') ?? 0)
-  if (open > 0) updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open) })
+  // Parked pose (engines off) unless ?spin=1 asks for running props/fans.
+  if (qs.get('spin') !== '1') updateAircraft(plane, true, { ...MOTION_IDLE, doors: open, cargo: Number(qs.get('cargo') ?? open) })
   plane.traverse((o) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true } })
   const hide = (qs.get('hide') ?? '').split(',').filter(Boolean)
   if (hide.length) plane.traverse((o) => { if (hide.includes(o.name)) o.visible = false })
@@ -147,4 +148,4 @@ function frame() {
   requestAnimationFrame(frame)
 }
 frame()
-;(window as unknown as { __gallery: unknown }).__gallery = { scene, cam, renderer, ready: true }
+;(window as unknown as { __gallery: unknown }).__gallery = { scene, cam, renderer, THREE, ready: true }
