@@ -6,7 +6,7 @@ import { initWorldRender, REPLACED_TILES, type RendererLike } from './index'
 import { frameGeometry } from './environment'
 import { fieldDraw } from '../../maps/index'
 import { bake } from './kit'
-import { paintGeometry, quadsGeometry } from './surfaces'
+import { paintGeometry, quadsGeometry, surfaceOf } from './surfaces'
 import { cellX, cellZ } from './view'
 import { contactSpots } from './contact'
 import { sharedSettings } from '../../features/settings/settings.ts'
@@ -598,5 +598,12 @@ describe('terminal rebuilds', () => {
       wr.update(game, cam, 1 / 60)
     }
     expect(waiting()).toBe(first)
+  })
+})
+
+describe('tug pavement (belt tiles)', () => {
+  it('draws as service-road tarmac, not the old flat grey slab', () => {
+    expect(surfaceOf('belt')).toBe('road')
+    expect(REPLACED_TILES.has('belt')).toBe(true)
   })
 })
