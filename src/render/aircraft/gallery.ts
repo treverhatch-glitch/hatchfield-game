@@ -7,6 +7,16 @@ import * as THREE from 'three'
 import { ROSTER } from '../../airlines/roster'
 import { createAircraft, setAircraftQuality } from './factory'
 import { installAircraftEnvironment } from './env'
+import { aircraftWear } from './airframeWear'
+
+/** Roster carrier type → size tier and persona for the wear preview. */
+const TYPE_TIER: Record<string, [number, string | undefined]> = { flag: [5, 'luxury'], charter: [3, undefined], regional: [2, undefined], cargo: [2, 'cargo_night'], heli: [2, undefined], budget: [0, 'budget'] }
+function rosterWear(type: string, seed: string): number {
+  const forced = qs.get('wear')
+  if (forced !== null) return Number(forced)
+  const [tier, persona] = TYPE_TIER[type] ?? [2, undefined]
+  return aircraftWear({ tier, persona, seed })
+}
 import { MODEL_SPECS, aircraftWorldPerMeter, type Livery } from './specs'
 
 /** Expansion-pack ids. Older builds without derived specs show their fallback. */
@@ -43,7 +53,7 @@ const wpm = aircraftWorldPerMeter()
 function liveryFor(id: string, n: number): Livery {
   const fleet = ROSTER.filter((a) => a.fleet.includes(id))
   const a = fleet.length ? fleet[n % fleet.length] : ROSTER[n % ROSTER.length]
-  return { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: a.type === 'cargo' ? 'solid' : 'twotone', airline: a.id }
+  return { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: a.type === 'cargo' ? 'solid' : 'twotone', airline: a.id, wear: rosterWear(a.type, `${id}-${n}`) }
 }
 
 function place(id: string, livery: Livery, x: number, z: number, label: string) {
@@ -62,7 +72,19 @@ let extent = 60
 let LABEL_DZ = 30 * wpm
 let halfW = 60
 let halfH = 40
-if (view === 'liveries') {
+if (view === 'wear') {
+  // Same airframe and airline: factory-fresh flag-carrier jet next to a tired budget one.
+  const id = qs.get('id') ?? 'a320neo'
+  const a = ROSTER.find((r) => r.id === (qs.get('airline') ?? '')) ?? ROSTER.find((r) => r.fleet.includes(id)) ?? ROSTER[0]
+  const step = 44 * wpm
+  const pick = qs.get('pick')
+  const dx = pick ? 0 : step / 2
+  if (pick !== 'worn') place(id, { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: 'twotone', airline: a.id, wear: 0 }, -dx, 0, 'Top tier: wear 0 (fresh)')
+  if (pick !== 'fresh') place(id, { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: 'twotone', airline: a.id, wear: 1 }, dx, 0, 'Budget tier 0: wear 1')
+  extent = step
+  halfW = step * 1.25
+  halfH = step * 0.6
+} else if (view === 'liveries') {
   const id = qs.get('id') ?? 'a320neo'
   const ids = ROSTER.filter((a) => a.fleet.includes(id)).slice(0, 8)
   const pick = ids.length >= 6 ? ids : ROSTER.slice(0, 8)
@@ -70,7 +92,7 @@ if (view === 'liveries') {
   LABEL_DZ = 24 * wpm
   pick.forEach((a, i) => {
     const col = i % 4, row = Math.floor(i / 4)
-    place(id, { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: 'twotone', airline: a.id }, (col - 1.5) * step, (row - 0.5) * step * 1.1, a.name)
+    place(id, { body: a.primary, stripe: a.secondary, tail: a.primary, scheme: 'twotone', airline: a.id, wear: rosterWear(a.type, `${a.id}-${i}`) }, (col - 1.5) * step, (row - 0.5) * step * 1.1, a.name)
   })
   extent = step * 2.6
   halfW = step * 2.2

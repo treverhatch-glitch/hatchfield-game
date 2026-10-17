@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { AIRCRAFT_LOOK } from '../look'
+import { quantizeWear, wearLook } from './airframeWear'
+import { DETAIL_ROUGH_CLEAN, surfaceDetailMaps } from './surfaceDetail'
 import { bindLiveryUniforms, disposeLiveryTextures, hookLiveryMaterial, resolveLiveryAirline } from './liveryTex'
 import type { Livery } from './specs'
 
@@ -226,18 +228,43 @@ export function vertexMaterials(
   tier: 'low' | 'mid',
   finish: 'paint' | 'metal' = 'paint',
   airline?: string,
+  wearIn = 0,
 ): { opaque: THREE.Material; fade: THREE.Material } {
   const unlit = tier === 'low'
   const metal = !unlit && finish === 'metal'
+  const wear = quantizeWear(wearIn)
   const base = unlit ? 'vc:basic' : metal ? 'vc:metal' : 'vc:standard'
-  const key = airline ? `${base}@${airline}` : base
+  const key = `${airline ? `${base}@${airline}` : base}${unlit ? '' : `#w${wear.toFixed(1)}`}`
   const make = () => {
     if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
-    if (metal) return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 })
-    return clearcoatPaint({
+    const look = wearLook(wear)
+    const detail = surfaceDetailMaps()
+    // Fake skin detail (panel joints, rivet rows, hatch seams, grime) from shared maps; no geometry.
+    const skin = {
       vertexColors: true,
+      normalMap: detail.normal,
+      normalScale: new THREE.Vector2(look.normalScale, look.normalScale),
+      roughnessMap: detail.roughness,
+      aoMap: detail.roughness,
+    }
+    if (metal) {
+      // Bare cowls and plugs: soot builds faster than on paint.
+      return new THREE.MeshStandardMaterial({
+        ...skin,
+        metalness: 0.45,
+        roughness: (0.38 + look.roughnessAdd * 0.6) / DETAIL_ROUGH_CLEAN,
+        aoMapIntensity: Math.min(1, 0.25 + look.grime),
+      })
+    }
+    return clearcoatPaint({
+      ...skin,
       metalness: AIRCRAFT_LOOK.paint.metalness,
-      roughness: AIRCRAFT_LOOK.paint.roughness,
+      roughness: (AIRCRAFT_LOOK.paint.roughness + look.roughnessAdd) / DETAIL_ROUGH_CLEAN,
+      clearcoat: look.clearcoat,
+      clearcoatRoughness: look.clearcoatRoughness,
+      aoMapIntensity: look.grime * 0.9,
+      // Chalky, sun-faded paint on tired airframes: a touch lighter and warmer-grey.
+      color: new THREE.Color(1, 1, 1).lerp(new THREE.Color('#f4efe6'), look.chalk * 5).multiplyScalar(1 + look.chalk * 0.4),
     })
   }
   const mat = sharedMat(key, make)
@@ -305,8 +332,9 @@ export function paintVertexMesh(
   kind: string,
   finish: 'paint' | 'metal' | 'gear' = 'paint',
   airline?: string,
+  wear = 0,
 ): PaintedMesh {
-  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish, airline)
+  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish, airline, wear)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque

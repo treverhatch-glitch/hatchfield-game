@@ -131,7 +131,9 @@ export function rosterLivery(airlineId: string, modelId: string): Livery | undef
 /** Swap a catalog-style Livery for the roster's when its airline is on the roster. */
 export function applyRosterLivery(livery: Livery, modelId: string): Livery {
   if (!livery.airline || livery.airline.includes(LIVERY_KEY_SEP)) return livery
-  return rosterLivery(livery.airline, modelId) ?? livery
+  const roster = rosterLivery(livery.airline, modelId)
+  // Wear is per aircraft, not per livery: carry it across.
+  return roster ? (livery.wear === undefined ? roster : { ...roster, wear: livery.wear }) : livery
 }
 
 /** Dev preview: every live aircraft wears this roster airline. `null` leaves flights alone. */

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { engineUv, outwardUv, type LiveryBox, type LiveryMapKind } from './liveryUv'
 import { liveryKey, paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
+import { PANEL_U_M, PANEL_V_M } from './surfaceDetail'
 import type { Livery } from './specs'
 
 type Tier = 'low' | 'mid' | 'high'
@@ -104,11 +105,27 @@ export function bakeGeometry(
     }
     flat.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   }
-  if (!flat.getAttribute('uv')) {
+  if (!flat.getAttribute('uv') || livery?.mode === 'fuselage' || livery?.mode === 'tail') {
+    // Surface-detail UVs in skin metres (surfaceDetail.ts): fuselage unrolled around the
+    // tube so panel joints ring it and run along it; fin flat; everything else planar.
     const uv = new Float32Array(pos.count * 2)
+    const box = livery?.box
+    const cy = box ? (box.y0 + box.y1) / 2 : 0
+    const rad = box ? Math.max(0.5, (box.y1 - box.y0) / 2) : 1
     for (let i = 0; i < pos.count; i++) {
-      uv[i * 2] = pos.getX(i) * 0.18
-      uv[i * 2 + 1] = pos.getZ(i) * 0.12 + pos.getY(i) * 0.04
+      const x = pos.getX(i)
+      const y = pos.getY(i)
+      const z = pos.getZ(i)
+      if (livery?.mode === 'fuselage') {
+        uv[i * 2] = x / PANEL_U_M
+        uv[i * 2 + 1] = (Math.atan2(y - cy, Math.abs(z)) * rad) / PANEL_V_M
+      } else if (livery?.mode === 'tail') {
+        uv[i * 2] = x / PANEL_U_M
+        uv[i * 2 + 1] = y / PANEL_V_M
+      } else {
+        uv[i * 2] = x * 0.18
+        uv[i * 2 + 1] = z * 0.12 + y * 0.04
+      }
     }
     flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
   }
@@ -172,7 +189,7 @@ function takeShell(
   }
   const shell = new THREE.Mesh(geometry)
   shell.name = name
-  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish, frame.livery.airline)
+  const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish, frame.livery.airline, frame.livery.wear ?? 0)
   painted.userData.airline = frame.livery.airline
   painted.castShadow = frame.tier === 'mid'
   frame.group.add(painted)

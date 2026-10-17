@@ -299,11 +299,16 @@ varying float vLiverySlot;`,
   else if (vLiverySlot < 2.5) liveryTex = texture2D(liveryEngine, vLiveryUv, -2.5);
   vec3 liveryLinear = sRGBTransferEOTF(vec4(liveryTex.rgb, 1.0)).rgb;
   diffuseColor.rgb = mix(diffuseColor.rgb, liveryLinear, liveryTex.a);
+#ifdef USE_AOMAP
+  // Airframe wear: grime and soot from the surface-detail map darken the paint itself,
+  // scaled by the wear bucket's aoMapIntensity (0 on factory-fresh jets).
+  diffuseColor.rgb *= mix(1.0, texture2D(aoMap, vAoMapUv).r, clamp(aoMapIntensity * 0.6, 0.0, 1.0));
+#endif
 }`,
       )
     material.userData.liveryShader = shader
   }
-  material.customProgramCacheKey = () => 'livery-maps-v2'
+  material.customProgramCacheKey = () => 'livery-maps-v3'
   material.needsUpdate = true
 }
 

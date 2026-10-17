@@ -164,6 +164,11 @@ export interface Livery {
    * Missing art keeps the procedural colours.
    */
   airline?: string
+  /**
+   * Render-only wear 0 (factory fresh) … 1 (tired). From airframeWear.ts; picks a shared
+   * material bucket, never the geometry, so it is not part of liveryKey.
+   */
+  wear?: number
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>
