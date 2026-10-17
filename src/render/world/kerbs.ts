@@ -11,6 +11,7 @@ export interface KerbSeg {
   z: number
   w: number
   d: number
+  sidewalk?: boolean
 }
 
 /** Raised kerb on every road edge that does not continue into another road cell. */
@@ -33,6 +34,19 @@ export function roadKerbs(view: WorldView): KerbSeg[] {
           w: v.dc ? width : along,
           d: v.dr ? width : along,
         })
+        if (t === 'terminal') {
+          const swInner = CELL * 0.46 + width / 2
+          const swOuter = CELL * 0.5
+          const swCenter = (swInner + swOuter) / 2
+          const swWidth = swOuter - swInner
+          out.push({
+            x: x + v.dc * swCenter,
+            z: z + v.dr * swCenter,
+            w: v.dc ? swWidth : along,
+            d: v.dr ? swWidth : along,
+            sidewalk: true,
+          })
+        }
       }
     }
   }
