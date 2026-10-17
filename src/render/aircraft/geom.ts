@@ -422,9 +422,66 @@ export function nacelleGeometry(sides: number): THREE.BufferGeometry {
   })
 }
 
-/** Oval cabin window decal facing +Z, 10 triangles. Scale is (width, height, 1). */
+/** Oval cabin window decal facing +Z. Scale is (width, height, 1). */
 export function windowGeometry(): THREE.BufferGeometry {
-  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 10))
+  return sharedGeo('window-pane', () => {
+    const s = new THREE.Shape()
+    s.moveTo(-0.35, -0.5)
+    s.lineTo(0.35, -0.5)
+    s.quadraticCurveTo(0.5, -0.5, 0.5, -0.35)
+    s.lineTo(0.5, 0.35)
+    s.quadraticCurveTo(0.5, 0.5, 0.35, 0.5)
+    s.lineTo(-0.35, 0.5)
+    s.quadraticCurveTo(-0.5, 0.5, -0.5, 0.35)
+    s.lineTo(-0.5, -0.35)
+    s.quadraticCurveTo(-0.5, -0.5, -0.35, -0.5)
+    return new THREE.ShapeGeometry(s)
+  })
+}
+
+/** Slightly larger rounded rectangle for the dark frame. */
+export function windowFrameGeometry(): THREE.BufferGeometry {
+  return sharedGeo('window-frame', () => {
+    const s = new THREE.Shape()
+    s.moveTo(-0.4, -0.55)
+    s.lineTo(0.4, -0.55)
+    s.quadraticCurveTo(0.55, -0.55, 0.55, -0.4)
+    s.lineTo(0.55, 0.4)
+    s.quadraticCurveTo(0.55, 0.55, 0.4, 0.55)
+    s.lineTo(-0.4, 0.55)
+    s.quadraticCurveTo(-0.55, 0.55, -0.55, 0.4)
+    s.lineTo(-0.55, -0.4)
+    s.quadraticCurveTo(-0.55, -0.55, -0.4, -0.55)
+
+    const h = new THREE.Path()
+    h.moveTo(-0.35, -0.5)
+    h.lineTo(0.35, -0.5)
+    h.quadraticCurveTo(0.5, -0.5, 0.5, -0.35)
+    h.lineTo(0.5, 0.35)
+    h.quadraticCurveTo(0.5, 0.5, 0.35, 0.5)
+    h.lineTo(-0.35, 0.5)
+    h.quadraticCurveTo(-0.5, 0.5, -0.5, 0.35)
+    h.lineTo(-0.5, -0.35)
+    h.quadraticCurveTo(-0.5, -0.5, -0.35, -0.5)
+    s.holes.push(h)
+
+    return new THREE.ShapeGeometry(s).translate(0, 0, -0.001)
+  })
+}
+
+export function doorOutlineGeometry(w: number, h: number): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  const t = 0.02
+  const d = 0.01
+
+  parts.push(new THREE.BoxGeometry(t, h + t, d).translate(-w / 2, 0, 0))
+  parts.push(new THREE.BoxGeometry(t, h + t, d).translate(w / 2, 0, 0))
+  parts.push(new THREE.BoxGeometry(w + t, t, d).translate(0, h / 2, 0))
+  parts.push(new THREE.BoxGeometry(w + t, t, d).translate(0, -h / 2, 0))
+
+  parts.push(new THREE.BoxGeometry(t * 3, t * 1.5, d * 1.5).translate(-w / 2 + t * 2, 0, 0))
+
+  return mergeGeometries(parts) || new THREE.BufferGeometry()
 }
 
 /**

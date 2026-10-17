@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { buildAircraft, createWindowMesh } from './build'
+import { buildAircraft, createWindowMeshes } from './build'
 import { CrossfadeLOD, type LodBuckets } from './lod'
 import type { PaintedMesh } from './pool'
 import type { AircraftMotion } from './motion'
@@ -143,10 +143,11 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
     rigs: [...mid.rigs, ...high.rigs],
   }
   lod.requestWindows = () => {
-    const mesh = createWindowMesh(spec, livery)
-    if (!mesh) return
-    high.group.add(mesh)
-    buckets.high.push(mesh as unknown as PaintedMesh)
+    const meshes = createWindowMeshes(spec, livery)
+    for (const mesh of meshes) {
+      high.group.add(mesh)
+      buckets.high.push(mesh as unknown as PaintedMesh)
+    }
   }
   lod.buckets = buckets
   lod.add(low.group)

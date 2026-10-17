@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
-import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
+import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, doorOutlineGeometry, windowGeometry, windowFrameGeometry, wingGeometry, wingletGeometry } from './geom'
 import { navLightSprite } from '../world/nightArt'
 import type { LiveryBox } from './liveryUv'
 import { airlineLogoUrl } from './airlineLogo'
@@ -775,30 +775,30 @@ function addRealDoors(frame: Frame) {
   if (plain.length) {
     addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
   }
-  const parts = boxes
-    .filter((b) => b.door.side !== 0)
-    .map((b) => {
-      const g = doorwayGeometry(b.w, b.h)
-      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
-      if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
-      g.applyMatrix4(m)
-      if (b.door.side < 0) {
-        // Mirroring flips the winding; swap it back so faces stay outward.
-        const pos = g.getAttribute('position')
-        for (let i = 0; i < pos.count; i += 3) {
-          for (const attr of Object.values(g.attributes)) {
-            const a = attr as THREE.BufferAttribute
-            for (let c = 0; c < a.itemSize; c++) {
-              const t = a.getComponent(i + 1, c)
-              a.setComponent(i + 1, c, a.getComponent(i + 2, c))
-              a.setComponent(i + 2, c, t)
-            }
+
+  const sideDoors = boxes.filter((b) => b.door.side !== 0)
+  const parts = sideDoors.map((b) => {
+    const g = doorwayGeometry(b.w, b.h)
+    const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
+    if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
+    g.applyMatrix4(m)
+    if (b.door.side < 0) {
+      const pos = g.getAttribute('position')
+      for (let i = 0; i < pos.count; i += 3) {
+        for (const attr of Object.values(g.attributes)) {
+          const a = attr as THREE.BufferAttribute
+          for (let c = 0; c < a.itemSize; c++) {
+            const t = a.getComponent(i + 1, c)
+            a.setComponent(i + 1, c, a.getComponent(i + 2, c))
+            a.setComponent(i + 2, c, t)
           }
         }
-        g.computeVertexNormals()
       }
-      return g
-    })
+      g.computeVertexNormals()
+    }
+    return g
+  })
+
   if (parts.length) {
     const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
     mesh.name = 'doorways'
@@ -806,6 +806,37 @@ function addRealDoors(frame: Frame) {
     parts.forEach((g) => g.dispose())
     frame.group.add(mesh)
     frame.meshes.push(mesh)
+  }
+
+  const outlineParts = sideDoors.map((b) => {
+    const g = doorOutlineGeometry(b.w, b.h)
+    const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 1.002)
+    if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
+    g.applyMatrix4(m)
+    if (b.door.side < 0) {
+      const pos = g.getAttribute('position')
+      for (let i = 0; i < pos.count; i += 3) {
+        for (const attr of Object.values(g.attributes)) {
+          const a = attr as THREE.BufferAttribute
+          for (let c = 0; c < a.itemSize; c++) {
+            const t = a.getComponent(i + 1, c)
+            a.setComponent(i + 1, c, a.getComponent(i + 2, c))
+            a.setComponent(i + 2, c, t)
+          }
+        }
+      }
+      g.computeVertexNormals()
+    }
+    return g
+  })
+
+  if (outlineParts.length) {
+    const outlineMesh = paintMesh(new THREE.Mesh(mergeGeometries(outlineParts)!), 'dark', frame.livery, 'mesh', frame.tier)
+    outlineMesh.name = 'door-outlines'
+    outlineMesh.userData.ownGeo = true
+    outlineParts.forEach((g) => g.dispose())
+    frame.group.add(outlineMesh)
+    frame.meshes.push(outlineMesh)
   }
 }
 
@@ -978,18 +1009,28 @@ function windowMatrices(spec: ModelSpec, decks: number): THREE.Matrix4[] {
 }
 
 /** Individual windows. Built on demand so mid-range aircraft skip the instance buffer. */
-export function createWindowMesh(spec: ModelSpec, livery: Livery): THREE.InstancedMesh | null {
-  if (!spec.windows || spec.family === 'helo') return null
+export function createWindowMeshes(spec: ModelSpec, livery: Livery): THREE.InstancedMesh[] {
+  if (!spec.windows || spec.family === 'helo') return []
   const matrices = windowMatrices(spec, spec.decks)
-  if (!matrices.length) return null
-  const mesh = new THREE.InstancedMesh(windowGeometry(), new THREE.MeshBasicMaterial(), matrices.length)
-  matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
-  mesh.instanceMatrix.needsUpdate = true
-  mesh.name = 'windows'
-  mesh.computeBoundingBox()
-  mesh.computeBoundingSphere()
-  paintMesh(mesh, 'glass', livery, 'mesh', 'high')
-  return mesh
+  if (!matrices.length) return []
+
+  const glass = new THREE.InstancedMesh(windowGeometry(), new THREE.MeshBasicMaterial(), matrices.length)
+  matrices.forEach((matrix, i) => glass.setMatrixAt(i, matrix))
+  glass.instanceMatrix.needsUpdate = true
+  glass.name = 'windows'
+  glass.computeBoundingBox()
+  glass.computeBoundingSphere()
+  paintMesh(glass, 'glass', livery, 'mesh', 'high')
+
+  const frame = new THREE.InstancedMesh(windowFrameGeometry(), new THREE.MeshBasicMaterial(), matrices.length)
+  matrices.forEach((matrix, i) => frame.setMatrixAt(i, matrix))
+  frame.instanceMatrix.needsUpdate = true
+  frame.name = 'window-frames'
+  frame.computeBoundingBox()
+  frame.computeBoundingSphere()
+  paintMesh(frame, 'dark', livery, 'mesh', 'high')
+
+  return [glass, frame]
 }
 
 function addCargoDoor(frame: Frame) {
@@ -1127,6 +1168,33 @@ function addCockpitWindows(frame: Frame) {
     pane(tAt * 1.22, a(0.55), w * 0.6, h * 0.8)
   }
   addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
+
+  if (frame.tier === 'high') {
+    const framePanes: THREE.Matrix4[] = []
+    const framePane = (t: number, ang: number, w: number, h: number) => {
+      const st = loftStation(fam, t)
+      const ahead = loftStation(fam, Math.max(0, t - 0.004))
+      const x = nose - t * L
+      const y = centerY + spec.ry * (Math.sin(ang) * st.r + st.dy)
+      const z = spec.rx * Math.cos(ang) * st.r
+      const dr = ((st.r - ahead.r) * Math.max(spec.rx, spec.ry)) / (0.004 * L)
+      const n = new THREE.Vector3(dr, Math.sin(ang) / spec.ry, Math.cos(ang) / spec.rx).normalize()
+      const up = new THREE.Vector3(0, 1, 0).addScaledVector(n, -n.y).normalize()
+      const side = new THREE.Vector3().crossVectors(up, n).normalize()
+      const basis = new THREE.Matrix4().makeBasis(side, up, n)
+      const q = new THREE.Quaternion().setFromRotationMatrix(basis)
+      const pos = new THREE.Vector3(x, y, z).addScaledVector(n, 0.014)
+      framePanes.push(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(w + 0.04, h + 0.04, 0.04)))
+    }
+
+    for (const sign of [1, -1]) {
+      const a = (v: number) => (sign > 0 ? v : Math.PI - v)
+      framePane(tAt * 0.72, a(1.18), w, h)
+      framePane(tAt * 0.95, a(0.78), w * 0.95, h * 0.95)
+      framePane(tAt * 1.22, a(0.55), w * 0.6, h * 0.8)
+    }
+    addInstances(frame, unitBox(), framePanes, 'dark', 'mesh', 'cockpit-frames')
+  }
 }
 
 function addHelo(frame: Frame) {
@@ -1456,6 +1524,9 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addWindows(frame)
     addCargoDoor(frame)
     addFeatures(frame)
+    if (frame.tier === 'high' && frame.spec.family !== 'point' && frame.spec.family !== 'helo') {
+      addCockpitWindows(frame)
+    }
     addControls(frame)
     addLogo(frame)
     addRealDoors(frame)

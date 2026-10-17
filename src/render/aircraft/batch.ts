@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { buildAircraft, createWindowMesh } from './build'
+import { buildAircraft, createWindowMeshes } from './build'
 import { getAircraftQuality, lodWeights } from './lod'
 import { bakeGeometry, bakeGroup } from './merge'
 import { bindLiveryUniforms, resolveLiveryAirline } from './liveryTex'
@@ -40,21 +40,26 @@ function windowGeometry(airframeId: string, livery: Livery): THREE.BufferGeometr
   const spec = getAircraftSpec(airframeId)
   if (!spec.windows || spec.family === 'helo') return null
   return sharedGeo(`windows:${spec.id}`, () => {
-    const mesh = createWindowMesh(spec, livery)
-    if (!mesh) return new THREE.BufferGeometry()
-    const hex = (mesh.userData.paint as string) || '#1a3c52'
-    const parts: THREE.BufferGeometry[] = []
-    const instance = new THREE.Matrix4()
-    for (let i = 0; i < mesh.count; i++) {
-      mesh.getMatrixAt(i, instance)
-      parts.push(bakeGeometry(mesh.geometry, instance, hex))
+    const meshes = createWindowMeshes(spec, livery)
+    if (!meshes || !meshes.length) return new THREE.BufferGeometry()
+    const allParts: THREE.BufferGeometry[] = []
+    for (const mesh of meshes) {
+      const hex = (mesh.userData.paint as string) || '#1a3c52'
+      const parts: THREE.BufferGeometry[] = []
+      const instance = new THREE.Matrix4()
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, instance)
+        parts.push(bakeGeometry(mesh.geometry, instance, hex))
+      }
+      mesh.dispose()
+      const merged = mergeGeometries(parts)
+      for (const part of parts) part.dispose()
+      if (merged) allParts.push(merged)
     }
-    mesh.dispose()
-    const merged = mergeGeometries(parts)
-    for (const part of parts) part.dispose()
-    if (!merged) return new THREE.BufferGeometry()
-    merged.computeBoundingSphere()
-    return merged
+    const finalMerged = mergeGeometries(allParts)
+    if (!finalMerged) return new THREE.BufferGeometry()
+    finalMerged.computeBoundingSphere()
+    return finalMerged
   })
 }
 
