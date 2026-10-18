@@ -4,6 +4,18 @@ Ordered plan. Ship top-down — the numbers below are the one priority order (re
 
 **North star:** [VISION.md](./VISION.md) · Ops: [REAL_OPS.md](./REAL_OPS.md) · Progression: [PROGRESSION.md](./PROGRESSION.md).
 
+## Priority 0: Deep test sweep on Trever's computer — TESTING ONLY, no fixes (decided Oct 18 2026)
+
+This is the first thing we do going forward. Grok Bot usage is low, so we test before fixing.
+
+- **Where:** a browser on Trever's computer (real GPU, full frame rate), driven by Grok Bot with his OK, so motion and visual bugs show up. The box only renders at about 0.6 fps.
+- **What:** a scripted sweep plus hands-on play: the passenger kit, the cargo kit, every map, long runs to Day 30+, a stress-built large airport, every build tool, terminal placement, and day, night and rain. It films clips and screenshots at set points and logs fps, stuck passengers and failed builds. Clips are reviewed with a video model.
+- **Seeds:** `sys_16` seeded RNG waits for the next usage cycle (Trever, Oct 18). It doesn't block the sweep; until then, runs are default-seed and evidence is clips and screenshots.
+- **Contract tests:** each model's size vs its tile footprint, plus overlap checks (catches security-vs-bathroom and taxiway-into-stand type bugs).
+- **Output:** every bug added to `docs/playtest/` and the Playtest Notes doc with what it is, why it's a bug (expected vs actual), repro steps, evidence (clip or screenshot), likely cause, a proposed fix, priority and size.
+- **No fixing during this phase.** Fixes start only after the sweep is done, P0 first.
+- **Then:** a big fix push (Jules + Grok Bot, plus Cursor after usage resets), a re-film to prove the fixes, then Trever's hands-on playtest.
+
 ## Priority 1: Playtest bug fixes (Oct 18 2026)
 
 Full playtest of `main` a5df0c17 on Oct 18 2026: **104 bugs** — 12 P0 play-breaking · 35 P1 major · 49 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
