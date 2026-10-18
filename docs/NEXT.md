@@ -6,7 +6,7 @@ Ordered plan. Ship top-down — the numbers below are the one priority order (re
 
 ## Priority 1: Playtest bug fixes (Oct 18 2026)
 
-Full playtest of `main` a5df0c17 on Oct 18 2026: **102 bugs** — 12 P0 play-breaking · 34 P1 major · 48 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
+Full playtest of `main` a5df0c17 on Oct 18 2026: **103 bugs** — 12 P0 play-breaking · 35 P1 major · 48 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
 
 Timing note: P1-04 (apron walk speed / deboard window) and P1-05 (5× is not 5× below 20 fps → fixed-tick clock) change sim timing and **need Trever's sign-off** before coding. P0-03 is the planned **Slice 4** (fuel bowser capacity / farm refill).
 
@@ -59,6 +59,7 @@ Timing note: P1-04 (apron walk speed / deboard window) and P1-05 (5× is not 5×
 - **P1-32** [Visual · Terminal render] Check-in row prop is 11.2×8.0 m on a 2×2.6 m desk footprint — fix: Build a single-desk prop or call fitScale() (S)
 - **P1-33** [Visual · Terminal render] Seat row and bench props are ~1.7× longer than their footprints — fix: Separate bench prop; fitScale() (S)
 - **P1-34** [Visual · Terminal render] FIDS board prop wider/deeper than footprint (3.6×0.6 vs 3.0×0.3) — fix: fitScale() or resize (S)
+- **P1-35** [Visual · Airfield / Landing] Planes land on the side of the runway, not the middle (Trever, Oct 18) — fix: Offset the approach/rollout line by half a cell to the strip's true middle for 2-wide runways. (S)
 
 ### P2 / P3
 56 more items (visual/moderate and polish) in the [playtest doc](./playtest/PLAYTEST_2026-10-18.md#p2--visual--moderate).
