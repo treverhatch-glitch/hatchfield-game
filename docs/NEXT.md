@@ -6,7 +6,7 @@ Ordered plan. Ship top-down — the numbers below are the one priority order (re
 
 ## Priority 1: Playtest bug fixes (Oct 18 2026)
 
-Full playtest of `main` a5df0c17 on Oct 18 2026: **103 bugs** — 12 P0 play-breaking · 35 P1 major · 48 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
+Full playtest of `main` a5df0c17 on Oct 18 2026: **104 bugs** — 12 P0 play-breaking · 35 P1 major · 49 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
 
 Timing note: P1-04 (apron walk speed / deboard window) and P1-05 (5× is not 5× below 20 fps → fixed-tick clock) change sim timing and **need Trever's sign-off** before coding. P0-03 is the planned **Slice 4** (fuel bowser capacity / farm refill).
 
