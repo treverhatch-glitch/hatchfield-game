@@ -16,6 +16,48 @@ This is the first thing we do going forward. Grok Bot usage is low, so we test b
 - **No fixing during this phase.** Fixes start only after the sweep is done, P0 first.
 - **Then:** a big fix push (Jules + Grok Bot, plus Cursor after usage resets), a re-film to prove the fixes, then Trever's hands-on playtest.
 
+## AI models & API keys: what we have and when to use which (checked Oct 18 2026)
+
+**Ground rules.** Never paste key values anywhere, including docs, commits or chat. Refer to keys only by their env var name or file path on the box. Trever lets all his bots use these keys whenever it improves quality. Grok Bot keeps its own usage for planning, testing, pushing code and checking the free models' work. Bulk work goes to the free models.
+
+### What we have
+
+| Key / access | Where it lives | Models that work | Cost / limits | Notes |
+|---|---|---|---|---|
+| **Vertex AI** (Google Cloud $300 free-trial credit) | `~/.secrets/VERTEX_API_KEY` on the box. Account treverhatch@gmail.com, project `hatchfield-free-credit-trial` | `gemini-2.5-pro`, `gemini-3-flash-preview`, `gemini-2.5-flash` (**Google retires 2.5 Flash on Oct 20 2026, so use 3 Flash instead**). `gemini-3-pro-preview` returns 404 (not open to us yet) | Paid from the $300 credit, which expires **Jan 14 2027**. List price: 2.5 Pro $1.25 in / $10 out per 1M tokens (≤200K prompt). 3 Flash $0.50 / $3. Both have a ~1M-token context window | Endpoint: `https://aiplatform.googleapis.com/v1/publishers/google/models/<model>:generateContent?key=$VERTEX_API_KEY`. Credit drawdown is not yet confirmed in the billing report. **Never click Activate/Upgrade**, because that bills the card. The credit can't pay for Claude or for AI Studio. |
+| `GEMINI_API_KEY` | box env | Gemini (AI Studio free tier, myhatchtag) | Free, rate-limited | Use as a backup for Vertex. |
+| `GROQ_API_KEY` | box env, `api.groq.com/openai/v1` | Llama / Qwen / GPT-OSS class open models | Free tier, per-minute and per-day caps | Very fast. OpenAI-compatible API. |
+| `OPENROUTER_API_KEY` | box env | `:free` models only | Free, rate-limited | Overflow. |
+| `NVIDIA_API_KEY` | box env, `integrate.api.nvidia.com/v1` | `z-ai/glm-5.3-flash`, `nemotron-3-ultra`. `moonshotai/kimi-k2.6` and `z-ai/glm-5.3` return 404 for this account. `deepseek-v4.1-flash` hangs | Free dev tier | Fine for dev. **Recheck the terms before the Steam launch.** |
+| `GITHUB_MODELS_TOKEN` | box env, `models.github.ai/inference` | `openai/gpt-4o-mini` | Free, low daily limits | Backup. |
+| `COHERE_API_KEY` | box env, `api.cohere.com/v2/chat` | `command-a-03-2025` | Trial, **NON-COMMERCIAL only** | Experiments only. Nothing from it goes into shipped game content. |
+| Cloudflare connector | connector | Workers AI | Free allowance | Good for small edge/test jobs. |
+| ❌ `HF_TOKEN` | box env | none | Inference returns 402 (credits used up) | Model and asset downloads only. |
+| ❌ `SAMBANOVA_API_KEY` | box env | none | 402, needs a card | Don't add a card. |
+| ❌ `CHUTES_API_KEY` | box env | none | 402, $0 balance | Unused. |
+| ❌ Mistral | none | none | Paid plan only | Skipped. |
+
+**Cursor** (Trever's Ultra plan) is a separate workflow with its own usage pool. Kimi K3 is toggled on there and counts against Cursor usage, and the Google key toggle stays OFF. **Don't put free keys into Cursor**: a capped free key would make Cursor's requests fail.
+
+### When to use which, where and why
+
+| Job | First choice | Fallback | Why |
+|---|---|---|---|
+| Hard reasoning, code review, big design docs, long-context reads of the codebase | **Gemini 2.5 Pro** (Vertex credit) | Nemotron 3 Ultra (NVIDIA), then `GEMINI_API_KEY` | The strongest model we have full access to. Its 1M-token context fits large parts of the repo in one prompt. |
+| Bulk bug write-ups, test cases, code drafts | **Gemini 3 Flash** (Vertex, cheap on the credit) or **GLM 5.3 Flash** (NVIDIA, free) | Groq | Good reasoning for its cost. Spread the volume across both. |
+| Quick classification, summaries, high-volume small jobs | **Groq** | OpenRouter `:free`, Cloudflare Workers AI | Fastest responses. Free. |
+| Overflow / backup when everything else is capped | OpenRouter `:free`, GitHub Models (`gpt-4o-mini`) | none | Low limits, but always there. |
+| Non-commercial experiments | Cohere | none | The trial terms forbid commercial or shipped use. |
+| Images / visuals | **None of these keys.** The image pipeline is separate (Grok Imagine, Gemini app images) | none | none |
+| Repo-wide agent coding (multi-file changes, PRs) | **Cursor** agents (own pool) | Jules | Cursor and Jules have full repo tooling. Free keys aren't wired into them. |
+| Planning, running tests, pushing/merging, checking free-model output | **Grok Bot on the box** | none | One trusted reviewer before anything lands on main. |
+
+### When one runs out
+- **429 / rate limit:** wait, or move to the fallback in the table. Never upgrade anything.
+- **402 / payment required:** stop using that key and note it here. **Never add a card.**
+- **Vertex credit low, or near Jan 14 2027:** move Pro work to Nemotron Ultra and `GEMINI_API_KEY`. The trial account closes by itself. Don't click Activate.
+- **A model returns 404:** check the model id against the provider's catalog. Google renamed Vertex AI to "Gemini Enterprise Agent Platform", but the endpoint above still works.
+
 ## Priority 1: Playtest bug fixes (Oct 18 2026)
 
 Full playtest of `main` a5df0c17 on Oct 18 2026: **104 bugs** — 12 P0 play-breaking · 35 P1 major · 49 P2 visual/moderate · 8 P3 polish. Full list with repro, cause, files, fix, size and screenshots: **[playtest/PLAYTEST_2026-10-18.md](./playtest/PLAYTEST_2026-10-18.md)**. Fix P0 first, then P1; P2/P3 follow in the order of the playtest doc. Each fix PR names its bug ID (for example `P0-03`) and attaches before/after screenshots. Trever's seed list maps as: #1 → P0-11, #2–3 → P0-12, #4 → P0-01/P0-02/P1-06, #6 → P1-01–P1-03, #7 → P0-08/P0-09/P1-09; #5 (PR #27) and #8 (PR #26) were already fixed.
