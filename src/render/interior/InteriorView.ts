@@ -66,6 +66,7 @@ import { cellCenterInFloor, cellInFloor } from '../../game/shellFloor.ts'
 import { hallBaseLayout } from '../../game/hallNav.ts'
 import { dragRect, nearestEdge, tileAtPoint, tilesInRect, wallRun } from '../../terminalbuild/interior.ts'
 import { interiorEditSig, roomContains, syncInteriorEdit, syncInteriorGhost } from '../interiorBuild.ts'
+import { NO_RENDER } from '../noRender.ts'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -1416,7 +1417,7 @@ export class HallWorld {
     this.fadeNearShell()
     perfEnd('hall.sync', t)
     t = perfStart()
-    this.renderer.render(this.scene, this.camera)
+    if (!NO_RENDER) this.renderer.render(this.scene, this.camera)
     this.perfOverlay.update(this.renderer, this.scene, {
       passengers: game.terminalPaxCount(),
       vehicles: game.trucks.length + game.servicePoses().length + game.cateringPoses().length,

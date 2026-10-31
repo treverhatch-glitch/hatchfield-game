@@ -1,13 +1,8 @@
-import { existsSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
+import { findChrome, gameUrl } from '../test/e2e.ts'
 
-const CHROME_PATHS = [
-  process.env.PLAYWRIGHT_CHROME,
-  '/usr/local/bin/google-chrome',
-  '/usr/bin/google-chrome',
-].filter((path): path is string => Boolean(path))
 
 const VIEWPORTS = [
   { width: 1280, height: 800 },
@@ -25,9 +20,8 @@ type HatchProbe = {
 describe('HUD top band layout', () => {
   it('keeps the info-view chips and overlays off the top bar after the kit is stamped', async () => {
     const port = 46118
-    const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
-      shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
@@ -36,7 +30,7 @@ describe('HUD top band layout', () => {
         headless: true,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       }
-      const chromePath = CHROME_PATHS.find((p) => existsSync(p))
+      const chromePath = findChrome()
       if (chromePath) {
         launchOptions.executablePath = chromePath
       }
@@ -44,9 +38,9 @@ describe('HUD top band layout', () => {
       try {
         for (const viewport of VIEWPORTS) {
           const page = await browser.newPage({ viewport })
-          await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle', timeout: 90_000 })
+          await page.goto(gameUrl(port), { waitUntil: 'domcontentloaded', timeout: 90_000 })
           await page.evaluate(() => localStorage.clear())
-          await page.reload({ waitUntil: 'networkidle', timeout: 90_000 })
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 90_000 })
           await page.getByTestId('sandbox-toggle').uncheck()
           await page.getByTestId('new-game').click()
           await page.getByTestId('start-pax').click()

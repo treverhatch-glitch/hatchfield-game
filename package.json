@@ -13,6 +13,7 @@
     "pretest": "node scripts/unpack-art.mjs",
     "unpack-art": "node scripts/unpack-art.mjs",
     "test": "vitest run",
+    "test:screens": "vitest run src/ui/infoViews.e2e.test.ts src/ui/deskTheme.e2e.test.ts",
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",
     "perf:bench": "tsx scripts/perf-bench.mts",

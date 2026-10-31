@@ -1,13 +1,10 @@
-import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
 import { screensDir } from '../test/screens.ts'
+import { findChrome, gameUrl } from '../test/e2e.ts'
 
-const CHROME_PATHS = [process.env.PLAYWRIGHT_CHROME, '/usr/bin/google-chrome', '/usr/local/bin/google-chrome'].filter(
-  (path): path is string => Boolean(path),
-)
 
 describe('check-in desk themes', () => {
   it('swaps a common desk from one airline to the next', async () => {
@@ -22,7 +19,7 @@ describe('check-in desk themes', () => {
         headless: true,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       }
-      const chromePath = CHROME_PATHS.find((path) => existsSync(path))
+      const chromePath = findChrome()
       if (chromePath) launchOptions.executablePath = chromePath
       const browser = await chromium.launch(launchOptions)
       try {
@@ -237,7 +234,7 @@ async function openTitle(page: Page, port: number): Promise<void> {
   let last: unknown
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
+      await page.goto(gameUrl(port, true), { waitUntil: 'domcontentloaded' })
       return
     } catch (err) {
       last = err
