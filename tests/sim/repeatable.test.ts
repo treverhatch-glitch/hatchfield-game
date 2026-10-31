@@ -24,9 +24,9 @@ function fingerprint(g: Game) {
 const SETUP = { airlines: ['northline'], deskStaff: 1, janitors: 1, mechanics: 1, cash: 250_000 }
 
 function run(seed: number, { noise = false, days = 2 } = {}) {
-  const restore = seedRandom(seed) // the new game's seed is drawn from this
+  const restore = seedRandom(seed) // whatever else rolls Math.random gets the same rolls each run
   try {
-    const g = buildAirport(SETUP)
+    const g = buildAirport({ ...SETUP, seed })
     // In the browser, drawing and sound call Math.random between ticks. Several draws per tick stand in for that.
     runDays(g, days, { onTick: noise ? () => { for (let i = 0; i < 3; i++) Math.random() } : undefined })
     return { g, print: fingerprint(g) }
@@ -49,7 +49,7 @@ describe('repeatable runs', () => {
   it('a saved game picks up its dice where it stopped', { timeout: 120_000 }, () => {
     const restore = seedRandom(11)
     try {
-      const straight = buildAirport(SETUP)
+      const straight = buildAirport({ ...SETUP, seed: 11 })
       runDays(straight, 1)
       straight.persist()
       const saved = localStorage.getItem('hatchfield-save') ?? [...Array(localStorage.length).keys()].map((i) => localStorage.getItem(localStorage.key(i) as string)).find((v) => v?.includes('"rngState"'))

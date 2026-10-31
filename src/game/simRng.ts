@@ -48,7 +48,14 @@ export function setSimRng(rng: SimRng): void {
   current = rng
 }
 
-/** A fresh seed for a new game. The one place the rules may ask Math.random: choosing which game to play. */
+/**
+ * A fresh seed for a new game. It comes from the platform's crypto source, so choosing a game never takes a
+ * roll from Math.random: code and tests that seed Math.random see the same rolls as before the rules had their
+ * own dice. Where there is no crypto (an embedded engine such as Jint), Math.random picks it; there the caller
+ * passes a seed anyway (tools/replay/host.ts).
+ */
 export function freshSeed(): number {
+  const c = (globalThis as { crypto?: { getRandomValues?: (a: Uint32Array) => Uint32Array } }).crypto
+  if (c?.getRandomValues) return c.getRandomValues(new Uint32Array(1))[0] >>> 0
   return Math.floor(Math.random() * 4294967296) >>> 0
 }

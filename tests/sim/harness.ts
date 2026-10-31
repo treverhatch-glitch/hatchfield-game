@@ -98,7 +98,7 @@ export function useSeed(seed: number) {
 export function buildAirport(opts: SetupOptions = {}): Game {
   const g = new Game()
   g.sandbox = false
-  g.beginNew(opts.difficulty ?? 'easy')
+  g.beginNew(opts.difficulty ?? 'easy', opts.seed)
   g.startFocus = 'pax'
   if (!g.buyLand('city')) throw new Error('harness: buyLand failed')
   g.buildStarterKit()
