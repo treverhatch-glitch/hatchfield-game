@@ -3,6 +3,7 @@
  * Pure functions over the roster. `rosterOffersToContractOffers` bridges an
  * offer into the legacy ContractOffer the existing offer UI already shows.
  */
+import { simRandom } from '../game/simRng.ts'
 import { meetsRequirements } from './logic.ts'
 import { rosterAsAirlines, ROSTER, rosterAirline, rosterByType, type AirlineType, type RosterAirline } from './roster.ts'
 import {
@@ -145,7 +146,7 @@ export interface GenerateRouteOffersInput {
 export function generateRouteOffers(input: GenerateRouteOffersInput): RouteOffer[] {
   const { airport, nowMinutes, dtMinutes, dayOfYear } = input
   if (dtMinutes <= 0) return []
-  const rng = input.rng ?? Math.random
+  const rng = input.rng ?? simRandom
   const prob = 1 - Math.pow(1 - OFFER_DAILY_PROBABILITY, dtMinutes / 1440)
   const offers: RouteOffer[] = []
   for (const airline of unlockedRoster(airport)) {

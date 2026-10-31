@@ -3,6 +3,7 @@
  * Pure helpers. The sim owns guests and cash; this file reads and mutates one
  * hall's litter state so it can be tested without a field.
  */
+import { simRandom } from './simRng.ts'
 import type { Advice, AdviceCell } from './advisor.ts'
 import type { PaxTag } from './guests.ts'
 import { itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
@@ -78,7 +79,7 @@ export function dropLitter(
   c: number,
   r: number,
   id: string,
-  rand: () => number = Math.random,
+  rand: () => number = simRandom,
 ): 'bin' | 'floor' {
   return dropLitterAt(hall, { c, r, ox: rand() * 0.8 - 0.4, oz: rand() * 0.8 - 0.4 }, id)
 }

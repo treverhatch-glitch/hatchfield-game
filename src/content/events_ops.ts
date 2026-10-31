@@ -4,6 +4,7 @@
  * a stand out of service, or a delay on the next departures.
  * Pure; the sim feeds the world in and raises the alert row.
  */
+import { simRandom } from '../game/simRng.ts'
 
 /** Which existing sim hook the event leans on. */
 export type OpsEffectKind = 'checkin' | 'security' | 'gate' | 'delay'
@@ -234,7 +235,7 @@ export class OpsEventRunner {
   private seq = 0
   private readonly rng: () => number
 
-  constructor(rng: () => number = Math.random) {
+  constructor(rng: () => number = simRandom) {
     this.rng = rng
   }
 

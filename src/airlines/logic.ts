@@ -1,3 +1,4 @@
+import { simRandom } from '../game/simRng.ts'
 import { shapeAirlineOffer } from '../wave3/contracts.ts';
 import type {
   AirlineState,
@@ -161,9 +162,9 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
     if (!airline) continue;
 
     if (meetsRequirements(airline, airport)) {
-      if (Math.random() < prob) {
+      if (simRandom() < prob) {
         const penaltyTier = state.penaltyTiers[airlineId] || 0;
-        const offerId = `offer_${Date.now()}_${airline.id}`;
+        const offerId = `offer_${state.elapsedMinutes}_${airline.id}`; // from the game clock, so a replay gives the same ids
         const shaped = shapeAirlineOffer(
           airline,
           generateTermsForTier(airline.tier, penaltyTier),

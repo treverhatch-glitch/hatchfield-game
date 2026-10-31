@@ -1,12 +1,13 @@
+import { simRandom } from './simRng.ts'
 import { isPaxEntrance, landsideCurbs, paxPath, tilesOf } from './path'
 import { SIZE, type PaxStop, type Person, type TerminalFit, type Tile, type Vec } from './types'
 
 function uid(): string {
-  return `pax-${Math.random().toString(36).slice(2, 8)}`
+  return `pax-${simRandom().toString(36).slice(2, 8)}`
 }
 
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+  return arr[Math.floor(simRandom() * arr.length)]
 }
 
 function nearest(points: readonly Vec[], target: Vec): Vec | null {
@@ -69,8 +70,8 @@ function pathTo(tiles: Tile[][], from: Vec, to: Vec): Vec[] | null {
 
 /** Stay inside the curb cell. A jitter must not push a walker off the map. */
 function onCell(cell: Vec): { x: number; y: number } {
-  const x = Math.min(SIZE - 1, Math.max(0, cell.c + (Math.random() - 0.5) * 0.3))
-  const y = Math.min(SIZE - 1, Math.max(0, cell.r + (Math.random() - 0.5) * 0.3))
+  const x = Math.min(SIZE - 1, Math.max(0, cell.c + (simRandom() - 0.5) * 0.3))
+  const y = Math.min(SIZE - 1, Math.max(0, cell.r + (simRandom() - 0.5) * 0.3))
   return { x, y }
 }
 
@@ -89,8 +90,8 @@ export function spawnArrivalPax(
     const hasHall = tilesOf(tiles, 'terminal').length > 0
     if (hasBags) itinerary.push('bags')
     else if (hasHall && fit && fit.rooms.bagclaim > 0) itinerary.push('claim')
-    if (Math.random() < 0.55 && (tilesOf(tiles, 'snack').length || hasHall)) itinerary.push('food')
-    if (Math.random() < 0.35 && hasHall && fit && fit.rooms.souvenir > 0) itinerary.push('shop')
+    if (simRandom() < 0.55 && (tilesOf(tiles, 'snack').length || hasHall)) itinerary.push('food')
+    if (simRandom() < 0.35 && hasHall && fit && fit.rooms.souvenir > 0) itinerary.push('shop')
     itinerary.push('exit')
 
     const first = itinerary[0]
@@ -106,7 +107,7 @@ export function spawnArrivalPax(
       y: at.y,
       path,
       seg: 0,
-      t: -Math.random() * 1.2,
+      t: -simRandom() * 1.2,
       color: pick(['#d9c7a3', '#c4a574', '#8b6b4a', '#f0d9b5', '#6a4a32']),
       job: 'arrive',
       itinerary: [...itinerary],
@@ -141,7 +142,7 @@ export function spawnDeparturePax(
     if (hall.length) {
       itinerary.push('checkin')
       if (fit && fit.rooms.security > 0) itinerary.push('security')
-      if (Math.random() < 0.4 && fit && fit.rooms.food > 0) itinerary.push('food')
+      if (simRandom() < 0.4 && fit && fit.rooms.food > 0) itinerary.push('food')
       itinerary.push('gate')
     }
     itinerary.push('plane')
@@ -158,7 +159,7 @@ export function spawnDeparturePax(
       y: at.y,
       path,
       seg: 0,
-      t: -Math.random() * 2.5,
+      t: -simRandom() * 2.5,
       color: pick(['#3a5a7a', '#5c4033', '#2d4739', '#7a4e2d', '#1e3a5f']),
       job: 'board',
       itinerary: [...itinerary],

@@ -1,3 +1,4 @@
+import { simRandom } from '../game/simRng.ts'
 import { calculateStaff } from '../economy/staff.ts'
 import type { StaffBuildingInput } from '../economy/types.ts'
 import {
@@ -73,7 +74,7 @@ export function cabinFromTag(tag: 'budget' | 'family' | 'business' | 'premium'):
 export function rollCabin(
   tag: 'budget' | 'family' | 'business' | 'premium',
   persona?: string,
-  roll = Math.random(),
+  roll = simRandom(),
 ): Cabin {
   if (persona === 'luxury' && roll < 0.03) return 'vip'
   if (persona === 'business' && roll < 0.015) return 'vip'
