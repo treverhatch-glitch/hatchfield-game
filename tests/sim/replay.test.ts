@@ -29,7 +29,8 @@ describe('replays', () => {
     }
   })
 
-  const parity = seedsOf(process.env.REPLAY_PARITY)
+  // STUDIO_PARITY_SEEDS: the studio harness's npm run parity sets it (no shell-specific syntax needed on Windows).
+  const parity = seedsOf(process.env.REPLAY_PARITY ?? process.env.STUDIO_PARITY_SEEDS)
   it.runIf(parity.length > 0)('prints parity lines', { timeout: 600_000 }, () => {
     for (const seed of parity) {
       const last = play(scenario, seed, days).at(-1)!
