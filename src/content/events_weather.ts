@@ -1,3 +1,4 @@
+import { simRandom } from '../game/simRng.ts'
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter'
 
 export interface WeatherEffects {
@@ -224,7 +225,7 @@ export const WEATHER_EVENTS: readonly WeatherEvent[] = [
 export function pickWeatherEvent(
   fl: number,
   season: Season,
-  rng: () => number = Math.random,
+  rng: () => number = simRandom,
 ): WeatherEvent | null {
   const eligible = WEATHER_EVENTS.filter(
     (event) => event.minFL <= fl && (event.weightBySeason[season] ?? 0) > 0,
