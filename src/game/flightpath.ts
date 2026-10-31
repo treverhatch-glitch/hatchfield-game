@@ -1,4 +1,5 @@
 import type { Vec } from './types.ts'
+import { detHypot } from './detMath.ts'
 
 /**
  * Extend a landing route backward past the runway end so the jet
@@ -23,7 +24,7 @@ export function inboundApproach(route: Vec[], cells = 14): Vec[] {
   const br = b.r
   let dc = ac - bc
   let dr = ar - br
-  const len = Math.hypot(dc, dr)
+  const len = detHypot(dc, dr)
   const safeLen = Number.isFinite(len) && len > 0 ? len : 1
   dc /= safeLen
   dr /= safeLen
@@ -73,7 +74,7 @@ export function sampleFlightPath(path: readonly Vec[], t: number): Vec {
     const pr = Number.isFinite(prev.r) ? prev.r : 0
     const cc = Number.isFinite(curr.c) ? curr.c : pc
     const cr = Number.isFinite(curr.r) ? curr.r : pr
-    const dist = Math.hypot(cc - pc, cr - pr)
+    const dist = detHypot(cc - pc, cr - pr)
     const safeDist = Number.isFinite(dist) ? dist : 0
     cum.push(cum[i - 1] + safeDist)
   }

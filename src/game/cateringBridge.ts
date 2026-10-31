@@ -2,6 +2,7 @@ import { CateringEngine, FuelOutageMonitor, type CateringEvent, type CateringPha
 import { HALL_COUNTER, type HallCounterKind } from '../catering/hallShelf.ts'
 import { etaToUnload, supplyPose, type SupplyCartPose } from '../catering/supplyPath.ts'
 import type { PurchaseResult } from '../catering/types.ts'
+import { detAtan2 } from './detMath.ts'
 
 /** Where a crew member stands relative to the truck, for the apron renderer. */
 export interface CateringCrewPose {
@@ -177,7 +178,7 @@ export class CateringBridge {
         x = from.c
         y = from.r
       }
-      const heading = Math.atan2(to.r - from.r, to.c - from.c)
+      const heading = detAtan2(to.r - from.r, to.c - from.c)
       out.push({
         id: truck.id,
         x: Number.isFinite(x) ? x : 0,

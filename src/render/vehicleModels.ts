@@ -11,6 +11,7 @@ import * as THREE from 'three'
 import { FULL_DETAIL_DIST } from './viewBudget'
 import { PROP_LOOK } from './look'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { detAtan2, detCos, detCosh, detSin } from '../game/detMath'
 
 export type VehicleModel =
   | 'fuel_tanker'
@@ -540,15 +541,15 @@ export function catenaryPoints(len: number, rise: number, sag: number, n = 16): 
   let hi = 1e4
   for (let i = 0; i < 60; i++) {
     const a = (lo + hi) / 2
-    if (a * (Math.cosh(len / 2 / a) - 1) > sag) lo = a
+    if (a * (detCosh(len / 2 / a) - 1) > sag) lo = a
     else hi = a
   }
   const a = (lo + hi) / 2
-  const base = a * Math.cosh(len / 2 / a)
+  const base = a * detCosh(len / 2 / a)
   for (let i = 0; i <= n; i++) {
     const u = (len * i) / n
     // level catenary plus the straight chord to the raised end
-    out.push([u, a * Math.cosh((u - len / 2) / a) - base + (rise * u) / len])
+    out.push([u, a * detCosh((u - len / 2) / a) - base + (rise * u) / len])
   }
   return out
 }
@@ -1114,12 +1115,12 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const back = k.cab(L, W, r + 0.2, 1.9, 1.7, LIVERY.white, { rake: 0.32 })
     const sl = back + L / 2 - 0.2
     const sx = -L / 2 + sl / 2 + 0.1
-    const pitch = Math.atan2(H - 0.8 - (r + 0.6), sl * 0.95)
+    const pitch = detAtan2(H - 0.8 - (r + 0.6), sl * 0.95)
     const sy = (r + 0.6 + H - 0.8) / 2
     k.slab(LIVERY.diamond, sl, 0.14, W * 0.7, sx, sy, 0, -pitch, 'stair')
     for (let i = 0; i < 12; i++) {
       const f = (i + 0.5) / 12 - 0.5
-      k.box(LIVERY.steel, 0.24, 0.05, W * 0.7, sx + f * sl * Math.cos(pitch), sy - f * sl * Math.sin(pitch) + 0.1, 0, 'stair')
+      k.box(LIVERY.steel, 0.24, 0.05, W * 0.7, sx + f * sl * detCos(pitch), sy - f * sl * detSin(pitch) + 0.1, 0, 'stair')
     }
     for (const s of [1, -1]) {
       k.slab(LIVERY.white, sl, 0.7, 0.06, sx, sy + 0.4, s * W * 0.36, -pitch, 'stair')
@@ -1254,7 +1255,7 @@ export function beltGeom(L: number, H: number) {
   const r = gseR
   const lowY = r + 0.6
   const highY = H - 0.1
-  const pitch = Math.atan2(highY - lowY, L * 0.9)
+  const pitch = detAtan2(highY - lowY, L * 0.9)
   return { pitch, by: (lowY + highY) / 2, lowX: -L * 0.45, lowY }
 }
 

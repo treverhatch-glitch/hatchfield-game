@@ -78,6 +78,7 @@ import {
   type StageTrace,
 } from './stages.ts'
 import { AIR, PRE, buildNavGrid, cellAt, cellX, cellZ, gridBounds, moveOpen, type NavGrid } from './grid.ts'
+import { detAtan2, detHypot, sq } from '../game/detMath.ts'
 
 export type NeedStop = (typeof NEED_STOPS)[number]
 
@@ -531,7 +532,7 @@ export class PaxNav {
     let bestD = Infinity
     for (let c = 0; c < g.mask.length; c++) {
       if (!(g.mask[c] & layer)) continue
-      const d = (cellX(g, c) - x) ** 2 + (cellZ(g, c) - z) ** 2
+      const d = sq(cellX(g, c) - x) + sq(cellZ(g, c) - z)
       if (d < bestD) {
         bestD = d
         best = c
@@ -739,7 +740,7 @@ export class PaxNav {
     const t = a.trail!
     const o = a.trailHead * TRAIL_STRIDE
     const c = cellAt(this.grid, a.x, a.z)
-    if (t[o + 2] !== c || t[o + 3] !== a.layer || Math.hypot(t[o] - a.x, t[o + 1] - a.z) >= GUEST_TUNING.trailStepM) {
+    if (t[o + 2] !== c || t[o + 3] !== a.layer || detHypot(t[o] - a.x, t[o + 1] - a.z) >= GUEST_TUNING.trailStepM) {
       this.pushTrail(a)
     }
   }
@@ -755,7 +756,7 @@ export class PaxNav {
     let o = lead.trailHead * TRAIL_STRIDE
     for (let j = 0; j < lead.trailN; j++) {
       o = ((lead.trailHead - j + L) % L) * TRAIL_STRIDE
-      acc += Math.hypot(t[o] - px, t[o + 1] - pz)
+      acc += detHypot(t[o] - px, t[o + 1] - pz)
       px = t[o]
       pz = t[o + 1]
       if (acc >= want) break
@@ -771,7 +772,7 @@ export class PaxNav {
     }
     const dx = x - f.x
     const dz = z - f.z
-    if (dx * dx + dz * dz > 1e-6) f.yaw = Math.atan2(dx, dz)
+    if (dx * dx + dz * dz > 1e-6) f.yaw = detAtan2(dx, dz)
     f.x = x
     f.z = z
     f.cell = cell
@@ -1431,7 +1432,7 @@ export class PaxNav {
     for (let hop = 0; hop < PAXNAV_TUNING.maxHopsPerTick && budget > EPS; hop++) {
       if (a.joined) {
         const idx = f.lineIdx.get(a.cell)
-        if (idx !== undefined && Math.hypot(cellX(g, a.cell) - a.x, cellZ(g, a.cell) - a.z) < 1e-3) {
+        if (idx !== undefined && detHypot(cellX(g, a.cell) - a.x, cellZ(g, a.cell) - a.z) < 1e-3) {
           a.lineS = idx * g.cellM
           this.stepLine(a, f, budget)
           return
@@ -1449,7 +1450,7 @@ export class PaxNav {
       const lined = f.lineIdx.has(goal) || a.joined
       const tx = cellX(g, goal) + (lined ? 0 : a.ox)
       const tz = cellZ(g, goal) + (lined ? 0 : a.oz)
-      const seg = Math.hypot(tx - a.x, tz - a.z)
+      const seg = detHypot(tx - a.x, tz - a.z)
       const gi = f.lineIdx.get(goal)
       if (a.joined && gi !== undefined && f.lineIdx.has(a.cell)) {
         // Already walking down the line: from here on, keep to our place on it.
@@ -1509,7 +1510,7 @@ export class PaxNav {
     a.cell = f.line[Math.min(f.line.length - 1, Math.round(a.lineS / g.cellM))]
     // Face the desk.
     const ahead = f.line[Math.max(0, i - (t > EPS ? 0 : 1))]
-    if (ahead !== c0 || t > EPS) a.yaw = Math.atan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
+    if (ahead !== c0 || t > EPS) a.yaw = detAtan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
     if (a.place === 0 && a.lineS <= EPS) {
       // Nobody at the point: the passenger stays at the head of the line.
       if (!f.staffed) {
@@ -1534,7 +1535,7 @@ export class PaxNav {
     const dz = tz - a.z
     a.x += dx * k
     a.z += dz * k
-    a.yaw = Math.atan2(dx, dz)
+    a.yaw = detAtan2(dx, dz)
   }
 
   private finishService(a: Agent) {
@@ -1601,7 +1602,7 @@ export class PaxNav {
       const goal = nxt < 0 ? a.cell : nxt
       const tx = cellX(g, goal) + a.ox
       const tz = cellZ(g, goal) + a.oz
-      const seg = Math.hypot(tx - a.x, tz - a.z)
+      const seg = detHypot(tx - a.x, tz - a.z)
       const step = Math.min(budget, seg)
       this.moveToward(a, tx, tz, step, seg)
       budget -= step
@@ -1863,7 +1864,7 @@ export class PaxNav {
     let best: string | null = null
     let bestD = maxM * maxM
     for (const a of this.agents) {
-      const d = (a.x - x) ** 2 + (a.z - z) ** 2
+      const d = sq(a.x - x) + sq(a.z - z)
       if (d <= bestD) {
         bestD = d
         best = a.id

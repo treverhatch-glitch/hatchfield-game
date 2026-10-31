@@ -11,6 +11,8 @@ import { Game } from '../../src/game/sim.ts'
 import { SCENARIOS } from './replay.ts'
 
 export { play, checkpoint, REPLAY_FORMAT, DAY_SEC, STEP_SEC } from './replay.ts'
+// The rules' deterministic math, exported so another engine can check it bit for bit (detmath-fixture.ts, PU-22).
+export { detSin, detCos, detTan, detAsin, detAcos, detAtan, detAtan2, detHypot, detExp, detLog, detPow, detCosh } from '../../src/game/detMath.ts'
 
 export function newGame(scenario: string, seed: number): Game {
   const s = SCENARIOS[scenario]

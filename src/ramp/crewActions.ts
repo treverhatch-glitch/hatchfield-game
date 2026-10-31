@@ -14,6 +14,7 @@ import {
   type CrewService,
   type CrewStepId,
 } from './crewConfig.ts'
+import { detAtan2, detCos, detHypot } from '../game/detMath.ts'
 
 export interface CrewStepSpan {
   id: CrewStepId
@@ -67,14 +68,14 @@ function lerpPt(a: Pt, b: Pt, t: number): Pt {
 }
 
 function dist(a: Pt, b: Pt): number {
-  return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z)
+  return detHypot(b.x - a.x, b.y - a.y, b.z - a.z)
 }
 
 /** Keep the coupling a short walk from the truck, on the side the caller aimed. */
 export function clampAim(aim: { x: number; z: number } | undefined): { x: number; z: number } {
   const x = aim?.x ?? -0.6
   const z = aim?.z ?? 5.6
-  const len = Math.hypot(x, z)
+  const len = detHypot(x, z)
   if (len < 1e-4) return { x: -0.6, z: 5.6 }
   const clamped = Math.min(10, Math.max(3.4, len))
   return { x: (x / len) * clamped, z: (z / len) * clamped }
@@ -191,8 +192,8 @@ function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x:
 
 function faceFor(service: CrewService, step: CrewStepId, aim: { x: number; z: number }): number {
   if (step === 'park' || step === 'drive_off' || step === 'exit' || step === 'board') return 0
-  if (service === 'fuel' || service === 'gpu' || service === 'pushback' || service === 'cleaning') return Math.atan2(aim.z, aim.x)
-  if (service === 'bags') return Math.atan2(3.4, -0.3)
+  if (service === 'fuel' || service === 'gpu' || service === 'pushback' || service === 'cleaning') return detAtan2(aim.z, aim.x)
+  if (service === 'bags') return detAtan2(3.4, -0.3)
   return Math.PI
 }
 
@@ -213,7 +214,7 @@ function along(points: Pt[], u: number, face: number): Pt & { heading: number } 
     if (remain <= len || i === lens.length - 1) {
       const t = len < 1e-5 ? 1 : Math.min(1, remain / len)
       const p = lerpPt(points[i], points[i + 1], t)
-      const heading = len < 1e-4 ? face : Math.atan2(points[i + 1].z - points[i].z, points[i + 1].x - points[i].x)
+      const heading = len < 1e-4 ? face : detAtan2(points[i + 1].z - points[i].z, points[i + 1].x - points[i].x)
       return { ...p, heading }
     }
     remain -= len
@@ -308,17 +309,17 @@ export function sampleService(
     let placed = along(track(service, span.id, role, coupling), u, face)
     if (service === 'bags' && role === 'helper' && span.id === 'work') {
       // Pick a bag off the cart, carry it two steps, hand it onto the belt foot.
-      const swing = (1 - Math.cos(u * Math.PI * 2 * BAG_TRIPS)) / 2
+      const swing = (1 - detCos(u * Math.PI * 2 * BAG_TRIPS)) / 2
       const home = bagBelt(role)
       const cart = bagCart()
       placed = {
         ...lerpPt(home, cart, swing),
-        heading: Math.atan2(cart.z - home.z, cart.x - home.x),
+        heading: detAtan2(cart.z - home.z, cart.x - home.x),
         pose: swing > 0.12 && swing < 0.88 ? 'carry' : 'lift',
       }
     }
     if (service === 'catering' && role === 'helper' && span.id === 'work') {
-      const swing = (1 - Math.cos(u * Math.PI * 2 * 2)) / 2
+      const swing = (1 - detCos(u * Math.PI * 2 * 2)) / 2
       const home = caterPad(role, LIFT_Y)
       const door = caterGalley()
       placed = {
@@ -328,12 +329,12 @@ export function sampleService(
       }
     }
     if (service === 'cleaning' && span.id === 'work') {
-      const swing = (1 - Math.cos(u * Math.PI * 4)) / 2
+      const swing = (1 - detCos(u * Math.PI * 4)) / 2
       const inside = cabin(role)
       const outside = { x: coupling.x, y: 0, z: coupling.z, pose: 'walk' as const }
       placed = {
         ...lerpPt(inside, outside, swing),
-        heading: Math.atan2(outside.z - inside.z, outside.x - inside.x),
+        heading: detAtan2(outside.z - inside.z, outside.x - inside.x),
         pose: 'carry',
       }
     }
@@ -382,7 +383,7 @@ export function sampleCateringStand(phase: CaterStandPhase, u: number): CaterSam
     if (phase === 'parking') return member(role, s, 0)
     if (phase === 'crew_exit') {
       const p = lerpPt(s, g, t)
-      return member(role, { ...p, pose: t > 0.15 && t < 0.9 ? 'walk' : p.pose }, Math.atan2(g.z - s.z, g.x - s.x))
+      return member(role, { ...p, pose: t > 0.15 && t < 0.9 ? 'walk' : p.pose }, detAtan2(g.z - s.z, g.x - s.x))
     }
     if (phase === 'lift_raise') {
       const p = lerpPt(g, high, t)

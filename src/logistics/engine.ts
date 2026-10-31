@@ -30,6 +30,7 @@ import type {
   VehicleType,
 } from './types'
 import { VEHICLE_TYPES } from './types'
+import { detAtan2, detHypot } from '../game/detMath'
 
 const EPS = 1e-6
 
@@ -37,7 +38,7 @@ function pointAlong(pts: { x: number; y: number }[], u: number): { x: number; y:
   const lens: number[] = []
   let total = 0
   for (let i = 1; i < pts.length; i++) {
-    const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    const len = detHypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
     lens.push(len)
     total += len
   }
@@ -47,7 +48,7 @@ function pointAlong(pts: { x: number; y: number }[], u: number): { x: number; y:
     const len = lens[i]
     const a = pts[i]
     const b = pts[i + 1]
-    const heading = Math.atan2(b.y - a.y, b.x - a.x)
+    const heading = detAtan2(b.y - a.y, b.x - a.x)
     if (remain <= len || i === lens.length - 1) {
       const t = len <= EPS ? 1 : Math.min(1, remain / len)
       return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, heading }
@@ -776,7 +777,7 @@ export class LogisticsSim {
     const dx = b.x - a.x
     const dy = b.y - a.y
     if (dx * dx + dy * dy < 1e-8) return 0
-    return Math.atan2(dy, dx)
+    return detAtan2(dy, dx)
   }
 
   /**

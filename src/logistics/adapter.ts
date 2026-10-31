@@ -3,6 +3,7 @@ import { LogisticsSim } from './engine'
 import type { MaintenanceMetrics } from './maintenance'
 import { applyFeatureEventEffect, type FeatureEventEffectLike } from './events-bridge'
 import type { DelayCause, LogisticsConfig, LogisticsEvent, TurnaroundOptions } from './types'
+import { sq } from '../game/detMath'
 
 export interface BagDock {
   socket: string
@@ -26,7 +27,7 @@ export function dockBagSockets(
       let best = tiles[0]
       let bestD = Infinity
       for (const t of tiles) {
-        const d = (t.x - s.x) ** 2 + (t.z - s.z) ** 2
+        const d = sq(t.x - s.x) + sq(t.z - s.z)
         if (d < bestD) {
           bestD = d
           best = t

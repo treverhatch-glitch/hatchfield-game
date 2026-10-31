@@ -19,6 +19,7 @@ import {
   UNLOCK_GATES,
 } from './rosterConfig.ts'
 import type { Airline, AirportCapabilities, ContractOffer, ContractTerms } from './types.ts'
+import { detPow } from '../game/detMath.ts'
 
 export interface RosterAirport extends AirportCapabilities {
   /** Airport size, 1 (strip) to 5 (international hub). */
@@ -92,8 +93,8 @@ function rosterAsAirlinesById(): Map<string, Airline> {
 
 function termsFor(type: AirlineType, penaltyTier: number, seasonMultiplier: number): ContractTerms {
   const base = OFFER_PROFILES[type].terms
-  const fee = Math.pow(PENALTY_FEE_FACTOR, penaltyTier)
-  const fine = Math.pow(PENALTY_FINE_FACTOR, penaltyTier)
+  const fee = detPow(PENALTY_FEE_FACTOR, penaltyTier)
+  const fine = detPow(PENALTY_FINE_FACTOR, penaltyTier)
   return {
     slotsPerWeek: Math.max(1, Math.round(base.slotsPerWeek * seasonMultiplier)),
     feePerPassenger: Math.round(base.feePerPassenger * fee),
@@ -147,7 +148,7 @@ export function generateRouteOffers(input: GenerateRouteOffersInput): RouteOffer
   const { airport, nowMinutes, dtMinutes, dayOfYear } = input
   if (dtMinutes <= 0) return []
   const rng = input.rng ?? simRandom
-  const prob = 1 - Math.pow(1 - OFFER_DAILY_PROBABILITY, dtMinutes / 1440)
+  const prob = 1 - detPow(1 - OFFER_DAILY_PROBABILITY, dtMinutes / 1440)
   const offers: RouteOffer[] = []
   for (const airline of unlockedRoster(airport)) {
     if (input.busyAirlineIds?.has(airline.id)) continue

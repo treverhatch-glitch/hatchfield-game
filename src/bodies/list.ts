@@ -1,14 +1,15 @@
 import type { Body, BodyOverlap, BodySource } from './types.ts'
+import { detCos, detHypot, detSin } from '../game/detMath.ts'
 
 /**
  * Separating-axis depth of two oriented rectangles, metres.
  * Positive is how far they overlap; zero or less means they are apart by that much.
  */
 export function penetration(a: Body, b: Body): number {
-  const ax = Math.cos(a.heading)
-  const ay = Math.sin(a.heading)
-  const bx = Math.cos(b.heading)
-  const by = Math.sin(b.heading)
+  const ax = detCos(a.heading)
+  const ay = detSin(a.heading)
+  const bx = detCos(b.heading)
+  const by = detSin(b.heading)
   const dx = b.x - a.x
   const dy = b.y - a.y
   let least = Infinity
@@ -26,7 +27,7 @@ export function penetration(a: Body, b: Body): number {
 }
 
 function reach(body: Body): number {
-  return Math.hypot(body.halfLength, body.halfWidth)
+  return detHypot(body.halfLength, body.halfWidth)
 }
 
 /**
@@ -60,7 +61,7 @@ export class BodyList {
 
   /** Bodies whose outline may reach within `radius` metres of (x, y). */
   near(x: number, y: number, radius: number, exceptId?: string): Body[] {
-    return this.all().filter((body) => body.id !== exceptId && Math.hypot(body.x - x, body.y - y) <= radius + reach(body))
+    return this.all().filter((body) => body.id !== exceptId && detHypot(body.x - x, body.y - y) <= radius + reach(body))
   }
 
   /** Pairs that overlap by more than `tolerance` metres, deepest first. */
@@ -71,7 +72,7 @@ export class BodyList {
       const a = bodies[i]
       for (let j = i + 1; j < bodies.length; j++) {
         const b = bodies[j]
-        if (Math.hypot(b.x - a.x, b.y - a.y) > reach(a) + reach(b)) continue
+        if (detHypot(b.x - a.x, b.y - a.y) > reach(a) + reach(b)) continue
         const depth = penetration(a, b)
         if (depth > tolerance) out.push({ a, b, depth })
       }

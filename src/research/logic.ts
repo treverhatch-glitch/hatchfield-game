@@ -12,6 +12,7 @@ import {
 import { linkFor } from './links.ts'
 import { RESEARCH_NODES, nodeById, nodesInCategory } from './nodes.ts'
 import type { NodeState, ResearchNode, ResearchState, RoomCounts } from './types.ts'
+import { detPow } from '../game/detMath.ts'
 
 export function emptyResearchState(): ResearchState {
   return { points: 0, carry: 0, unlocked: [], rewardedThrough: 1, primarySpec: null }
@@ -23,7 +24,7 @@ export function diminishedUnits(count: number): number {
   if (copies <= 0) return 0
   const ratio: number = ROOM_DIMINISH
   if (ratio === 1) return copies
-  return (1 - Math.pow(ratio, copies)) / (1 - ratio)
+  return (1 - detPow(ratio, copies)) / (1 - ratio)
 }
 
 export function roomRate(rooms: RoomCounts): number {

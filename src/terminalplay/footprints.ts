@@ -6,6 +6,7 @@
 import { HALL_D, HALL_W } from '../game/terminal.ts'
 import { apronToHall, hallToApron, type HallFit } from '../render/hallRooms.ts'
 import { roomAt, squareAt, type RoomKind, type RoomPlan } from '../render/world/rooms.ts'
+import { detHypot } from '../game/detMath.ts'
 
 export interface FootprintSpec {
   /** Width along local x before rotation, hall metres. */
@@ -133,7 +134,7 @@ function segHitsRect(x0: number, z0: number, x1: number, z1: number, rect: Rect,
   const maxX = rect.maxX + pad
   const minZ = rect.minZ - pad
   const maxZ = rect.maxZ + pad
-  const len = Math.hypot(x1 - x0, z1 - z0)
+  const len = detHypot(x1 - x0, z1 - z0)
   const n = Math.max(1, Math.ceil(len / 0.15))
   for (let i = 0; i <= n; i++) {
     const t = i / n

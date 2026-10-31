@@ -17,6 +17,7 @@ import { CREW_TUNING } from './config.ts'
 import { computeField, type Field } from './field.ts'
 import { apronCells, type Facility, type FacilitySet } from './facilities.ts'
 import { AIR, LANE, PRE, cellAt, cellX, cellZ, cellsOfTile, tileOfCell, type NavGrid } from './grid.ts'
+import { detAtan2, detHypot, sq } from '../game/detMath.ts'
 
 export type CrewRole = 'agent' | 'screener' | 'gate' | 'retail' | 'cleaner'
 
@@ -127,7 +128,7 @@ function postsFor(g: NavGrid, f: Facility, busy: Set<number>, n: number): CrewPo
     // Lane: stand in the lane tile, off the walk through it.
     for (const c of own) {
       if (busy.has(c) || !(g.mask[c] & CREW_LAYER)) continue
-      picks.push({ approach: c, stand: c, score: -Math.hypot(cellX(g, c) - sx, cellZ(g, c) - sz) })
+      picks.push({ approach: c, stand: c, score: -detHypot(cellX(g, c) - sx, cellZ(g, c) - sz) })
     }
   } else {
     // Desk: from a free floor cell next to it, one step onto the desk tile's edge.
@@ -140,7 +141,7 @@ function postsFor(g: NavGrid, f: Facility, busy: Set<number>, n: number): CrewPo
         const key = edgeKey(edgeBetween(tileOfCell(g, d), tileOfCell(g, a)))
         if (g.ix.walls.has(key) || g.ix.doors.has(key)) continue
         // Behind the desk: as far from the passenger's side as the floor allows.
-        picks.push({ approach: a, stand: d, score: -Math.hypot(cellX(g, d) - sx, cellZ(g, d) - sz) })
+        picks.push({ approach: a, stand: d, score: -detHypot(cellX(g, d) - sx, cellZ(g, d) - sz) })
       }
     }
   }
@@ -160,7 +161,7 @@ function postsFor(g: NavGrid, f: Facility, busy: Set<number>, n: number): CrewPo
       approach: p.approach,
       x,
       z,
-      yaw: Math.atan2(sx - x, sz - z),
+      yaw: detAtan2(sx - x, sz - z),
       airside: f.layer === AIR,
     })
   }
@@ -256,7 +257,7 @@ export class CrewNav {
       const atDesk = st && (m.phase === 'post' || m.phase === 'step' || m.phase === 'unstep')
       if (atDesk) {
         const p = st.post
-        const moved = Math.hypot(m.x - p.x, m.z - p.z) > EPS || m.cell !== p.approach
+        const moved = detHypot(m.x - p.x, m.z - p.z) > EPS || m.cell !== p.approach
         if (!moved) continue
         if (g.mask[m.cell] & CREW_LAYER) {
           // The post moved: step back out to the floor and walk to the new one.
@@ -324,7 +325,7 @@ export class CrewNav {
     let bestD = Infinity
     for (let c = 0; c < g.mask.length; c++) {
       if (!(g.mask[c] & CREW_LAYER)) continue
-      const d = (cellX(g, c) - x) ** 2 + (cellZ(g, c) - z) ** 2
+      const d = sq(cellX(g, c) - x) + sq(cellZ(g, c) - z)
       if (d < bestD) {
         bestD = d
         best = c
@@ -405,7 +406,7 @@ export class CrewNav {
       const goal = nxt < 0 ? m.cell : nxt
       const tx = cellX(g, goal)
       const tz = cellZ(g, goal)
-      const seg = Math.hypot(tx - m.x, tz - m.z)
+      const seg = detHypot(tx - m.x, tz - m.z)
       const step = Math.min(budget, seg)
       this.moveToward(m, tx, tz, step, seg)
       budget -= step
@@ -425,12 +426,12 @@ export class CrewNav {
     const dz = tz - m.z
     m.x += dx * k
     m.z += dz * k
-    m.yaw = Math.atan2(dx, dz)
+    m.yaw = detAtan2(dx, dz)
   }
 
   /** Straight walk to a point (the one step behind a desk). True on arrival. */
   private slide(m: Member, tx: number, tz: number, dt: number): boolean {
-    const seg = Math.hypot(tx - m.x, tz - m.z)
+    const seg = detHypot(tx - m.x, tz - m.z)
     const step = Math.min(CREW_TUNING.walkMps * dt, seg)
     this.moveToward(m, tx, tz, step, seg)
     if (step < seg - EPS) return false

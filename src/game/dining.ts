@@ -5,6 +5,7 @@
 import type { Advice, AdviceCell } from './advisor.ts'
 import { itemDef, type PlacedItem } from './terminal.ts'
 import { DINING_TUNING, TABLE_SEATS } from './diningData.ts'
+import { detHypot } from './detMath.ts'
 
 /** One chair: a bench place, a seat-row place, or a restaurant table place. */
 export interface DiningSeat {
@@ -105,7 +106,7 @@ export function hasTimeToSit(opts: {
 
 /** Walk time from the counter cell to the seat cell. */
 export function walkSecTo(fromC: number, fromR: number, seat: DiningSeat, cellMeters: number): number {
-  const cells = Math.hypot(seat.c - fromC, seat.r - fromR)
+  const cells = detHypot(seat.c - fromC, seat.r - fromR)
   return (cells * cellMeters) / DINING_TUNING.walkMps
 }
 

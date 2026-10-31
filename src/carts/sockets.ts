@@ -6,6 +6,7 @@
  * `resolveSocket` took off the aircraft or service mesh.
  */
 
+import { detCos, detSin } from '../game/detMath'
 export interface CartSocket {
   name: string
   x: number
@@ -32,10 +33,10 @@ export function resolveSocket(
   if (!Number.isFinite(along) || !Number.isFinite(across) || !Number.isFinite(origin.x) || !Number.isFinite(origin.y) || !Number.isFinite(heading)) {
     return null
   }
-  const fx = Math.cos(heading)
-  const fy = Math.sin(heading)
-  const rx = -Math.sin(heading)
-  const ry = Math.cos(heading)
+  const fx = detCos(heading)
+  const fy = detSin(heading)
+  const rx = -detSin(heading)
+  const ry = detCos(heading)
   return {
     name,
     x: origin.x + along * fx + across * rx,

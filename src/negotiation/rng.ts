@@ -1,4 +1,5 @@
 /** Mulberry32. Same seed, same stream. State is a plain uint32 so saves replay. */
+import { detCos, detLog } from '../game/detMath'
 export interface Rng {
   next(): number
   /** Inclusive min, exclusive max. */
@@ -30,7 +31,7 @@ export function createRng(seed: number): Rng {
 export function normal(rng: Rng, mean: number, sd: number): number {
   const u1 = Math.max(rng.next(), 1e-12)
   const u2 = rng.next()
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  const z = Math.sqrt(-2 * detLog(u1)) * detCos(2 * Math.PI * u2)
   return mean + z * sd
 }
 

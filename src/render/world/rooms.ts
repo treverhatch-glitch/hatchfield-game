@@ -10,6 +10,7 @@ import { METERS_PER_CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { DIR_VEC, type TerminalInfo } from './layout'
 import type { CellZone, Prop, PropKind } from './plan'
 import { CELL, cellX, cellZ } from './view'
+import { detCos, detHypot, detSin } from '../../game/detMath'
 
 const m = (meters: number) => meters * WORLD_PER_METER
 
@@ -395,8 +396,8 @@ function blockProps(plan: RoomPlan, props: readonly Prop[]) {
     const posts = p.kind === 'arch'
     const ext = posts ? null : SOLID[p.kind]
     if (!ext && !posts) continue
-    const ux = Math.cos(p.yaw)
-    const uz = -Math.sin(p.yaw)
+    const ux = detCos(p.yaw)
+    const uz = -detSin(p.yaw)
     if (posts) {
       for (const o of [-m(0.42), m(0.42)]) mark(p.x + ux * o, p.z + uz * o)
       continue
@@ -411,7 +412,7 @@ function blockProps(plan: RoomPlan, props: readonly Prop[]) {
         const lx = -hx + (2 * hx * a) / nx
         const lz = -hz + (2 * hz * b) / nz
         // Local z maps to world (sin yaw, cos yaw).
-        mark(p.x + ux * lx + Math.sin(p.yaw) * lz, p.z + uz * lx + Math.cos(p.yaw) * lz)
+        mark(p.x + ux * lx + detSin(p.yaw) * lz, p.z + uz * lx + detCos(p.yaw) * lz)
       }
     }
   }
@@ -519,7 +520,7 @@ function lineClear(
   q: { x: number; z: number },
   passable: (s: number) => boolean,
 ): boolean {
-  const len = Math.hypot(q.x - p.x, q.z - p.z)
+  const len = detHypot(q.x - p.x, q.z - p.z)
   const n = Math.max(1, Math.ceil(len / (plan.size * 0.25)))
   let prev = squareAt(plan, p.x, p.z)
   for (let k = 1; k <= n; k++) {

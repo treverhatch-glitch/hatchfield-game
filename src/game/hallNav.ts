@@ -45,6 +45,7 @@ import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './termina
 import { SERVICE_POINT_TUNING, openPointIds, type HiredPosts, type StaffPoint } from '../servicepoints/index.ts'
 import { HALL_ARRIVAL_TUNING, HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
+import { detHypot } from './detMath.ts'
 
 type Zones = readonly (readonly (ZoneId | null)[])[]
 
@@ -430,7 +431,7 @@ const NODE_OF: Partial<Record<EquipKind, { node: HallNode; label: string }>> = {
 /** Marked line length, metres. */
 function lineLength(line: readonly { x: number; z: number }[]): number {
   let d = 0
-  for (let i = 1; i < line.length; i++) d += Math.hypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z)
+  for (let i = 1; i < line.length; i++) d += detHypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z)
   return d
 }
 

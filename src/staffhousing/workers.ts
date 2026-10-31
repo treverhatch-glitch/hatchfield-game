@@ -1,5 +1,6 @@
 import { WALKERS } from './data.ts'
 import type { HousingBuilding, WalkerPose } from './types.ts'
+import { detAtan2 } from '../game/detMath.ts'
 
 /**
  * A short sample of crew walking from their house to the hall.
@@ -39,7 +40,7 @@ function posesAt(
     const from = slot.building.anchor
     const x = from.c + (work.c - from.c) * t
     const y = from.r + (work.r - from.r) * t
-    const heading = Math.atan2(going ? work.r - from.r : from.r - work.r, going ? work.c - from.c : from.c - work.c)
+    const heading = detAtan2(going ? work.r - from.r : from.r - work.r, going ? work.c - from.c : from.c - work.c)
     return { id: `${slot.building.id}-w${index}`, tier: slot.building.tier, x, y, heading }
   })
 }

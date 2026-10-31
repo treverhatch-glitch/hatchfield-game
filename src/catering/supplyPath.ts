@@ -5,6 +5,7 @@
  * raises the shelf only after the crate has docked.
  */
 import type { SupplyPhase } from './types.ts'
+import { detAtan2, detCos, detHypot, detSin } from '../game/detMath.ts'
 
 /** Longest hop while the cart or the crate is moving. Matches the socket hand-off. */
 export const RESTOCK_STEP_M = 0.4
@@ -64,7 +65,7 @@ const DRIVE: Record<SupplyPhase, readonly [number, number]> = {
 }
 
 export function dist(a: Pt, b: Pt): number {
-  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+  return detHypot(a.x - b.x, a.y - b.y, a.z - b.z)
 }
 
 /** Points along a polyline, never more than `step` apart. Endpoints stay. */
@@ -105,7 +106,7 @@ export function counterRoute(kind: 'food' | 'shop'): Pt[] {
   const floor: Pt = { x: to.x, y: 0, z: to.z }
   const dx = floor.x - aisle.x
   const dz = floor.z - aisle.z
-  const len = Math.hypot(dx, dz) || 1
+  const len = detHypot(dx, dz) || 1
   const park: Pt = {
     x: floor.x - (dx / len) * NOSE_LOCAL,
     y: 0,
@@ -238,12 +239,12 @@ function lerp(a: Pt, b: Pt, t: number): Pt {
 }
 
 function yawOf(a: Pt, b: Pt): number {
-  return Math.atan2(b.x - a.x, b.z - a.z)
+  return detAtan2(b.x - a.x, b.z - a.z)
 }
 
 function offset(origin: Pt, yaw: number, local: Pt): Pt {
-  const c = Math.cos(yaw)
-  const s = Math.sin(yaw)
+  const c = detCos(yaw)
+  const s = detSin(yaw)
   return {
     x: origin.x + local.x * s + local.z * c,
     y: origin.y + local.y,

@@ -29,6 +29,7 @@ import type {
   VehicleRead,
   VehicleState,
 } from './types.ts'
+import { detAtan2, detCos, detSin, sq } from '../game/detMath.ts'
 
 /** Vehicles per minute of each kind the city sends. */
 export interface ArrivalRates {
@@ -147,7 +148,7 @@ function smoothstepDeriv(p: number): number {
 }
 
 function wrap(a: number): number {
-  return Math.atan2(Math.sin(a), Math.cos(a))
+  return detAtan2(detSin(a), detCos(a))
 }
 
 /** Bumper-to-bumper gap `car` keeps behind the vehicle ahead in `lane`. Stalls in the layby pack closer. */
@@ -477,7 +478,7 @@ export class LandsideFleet {
         id: walker.id,
         c: walker.fromC + (walker.toC - walker.fromC) * t,
         r: walker.fromR + (walker.toR - walker.fromR) * t,
-        heading: Math.atan2(walker.toR - walker.fromR, walker.toC - walker.fromC),
+        heading: detAtan2(walker.toR - walker.fromR, walker.toC - walker.fromC),
         guestId: walker.guestId,
         orderId: walker.orderId,
         dir: walker.dir,
@@ -634,7 +635,7 @@ export class LandsideFleet {
       vCap = Math.min(vCap, L.pullSpeedMps)
     } else if (car.phase === 'arrive' && car.slot && m === curb) {
       const toPull = sAt(road, curb, car.slot.startX) - s
-      if (toPull >= 0) vCap = Math.min(vCap, Math.sqrt(L.pullSpeedMps ** 2 + 2 * L.decelMps2 * toPull))
+      if (toPull >= 0) vCap = Math.min(vCap, Math.sqrt(sq(L.pullSpeedMps) + 2 * L.decelMps2 * toPull))
     }
     vCap = Math.min(vCap, this.curveCap(road, m, car.x, s))
 
@@ -692,7 +693,7 @@ export class LandsideFleet {
     let steer = 0
     if (car.mode !== 'lane' && car.moveLen > 0.5) {
       const delta = geo.lat[car.lane] - geo.lat[car.from]
-      steer = Math.atan2(delta * smoothstepDeriv(car.p), car.moveLen)
+      steer = detAtan2(delta * smoothstepDeriv(car.p), car.moveLen)
     }
     car.heading = wrap(tangent + steer)
   }
@@ -1081,8 +1082,8 @@ export class LandsideFleet {
       const f = (n + 1) / (count + 1) - 0.5
       this.walkers.push({
         id: `${car.id}-p${n}`,
-        fromC: c + Math.cos(heading) * along * f,
-        fromR: r + Math.sin(heading) * along * f,
+        fromC: c + detCos(heading) * along * f,
+        fromR: r + detSin(heading) * along * f,
         toC: door.c,
         toR: door.r,
         age: 0,
@@ -1101,8 +1102,8 @@ export class LandsideFleet {
       const f = (n + 1) / (guests.length + 1) - 0.5
       this.walkers.push({
         id: `${car.id}-${guestId}`,
-        fromC: c + Math.cos(heading) * along * f,
-        fromR: r + Math.sin(heading) * along * f,
+        fromC: c + detCos(heading) * along * f,
+        fromR: r + detSin(heading) * along * f,
         toC: door.c,
         toR: door.r,
         age: 0,

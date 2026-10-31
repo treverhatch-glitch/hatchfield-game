@@ -8,6 +8,7 @@ import type {
   Airline,
   ContractTerms
 } from './types.ts';
+import { detPow } from '../game/detMath.ts'
 
 /**
  * Checks which airlines can be unlocked based on the airport's progression.
@@ -117,8 +118,8 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
 
   // Apply penalty tier (worse terms for the airport)
   // Each penalty tier reduces fees by 15% and increases penalties by 25%
-  const feeMultiplier = Math.pow(0.85, penaltyTier);
-  const penaltyMultiplier = Math.pow(1.25, penaltyTier);
+  const feeMultiplier = detPow(0.85, penaltyTier);
+  const penaltyMultiplier = detPow(1.25, penaltyTier);
 
   return {
     slotsPerWeek: base.slotsPerWeek,
@@ -145,7 +146,7 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
   // 20% chance per day (1440 minutes) -> calculate probability for dtMinutes
   // P(at least one event in t minutes) = 1 - (1 - P_daily)^(t/1440)
   const dailyProb = 0.20;
-  const prob = 1 - Math.pow(1 - dailyProb, dtMinutes / 1440);
+  const prob = 1 - detPow(1 - dailyProb, dtMinutes / 1440);
 
   for (const airlineId of state.unlockedAirlines) {
     // Skip if we already have an offer or active contract

@@ -6,6 +6,7 @@
 import { STAND_TIMELINE as T, type CrewPose, type CrewRole } from './crewConfig.ts'
 import { walkOutside, type CrewFootprint } from './crewPath.ts'
 import { placeLocal, type CrewPerson, type CrewProp } from './present.ts'
+import { detAtan2 } from '../game/detMath.ts'
 
 export interface StandArrival {
   id: string
@@ -76,14 +77,14 @@ export function standCrewPeople(a: StandArrival, metersPerUnit: number, out: Cre
     else if (t < T.chocksOn) {
       const k = (t - T.chocksWalk) / (T.chocksOn - T.chocksWalk)
       const at = walkOutside([sx, sz], [gear, gz], k, foot)
-      person(out, a, `chock${side}`, 'helper', at[0], at[1], Math.atan2(gz - sz, gear - sx), 'walk', metersPerUnit)
+      person(out, a, `chock${side}`, 'helper', at[0], at[1], detAtan2(gz - sz, gear - sx), 'walk', metersPerUnit)
     } else if (t < T.chocksOn + 2.5) person(out, a, `chock${side}`, 'helper', gear, gz, (-side * Math.PI) / 2, 'kneel', metersPerUnit)
     else if (t < T.chocksOn + 4.5) {
       // Stand up and step clear of the nose gear.
       const k = (t - T.chocksOn - 2.5) / 2
       const cx = gear + 1.5
       const at = walkOutside([gear, gz], [cx, clearZ], k, foot)
-      person(out, a, `chock${side}`, 'helper', at[0], at[1], Math.atan2(clearZ - gz, cx - gear), 'walk', metersPerUnit)
+      person(out, a, `chock${side}`, 'helper', at[0], at[1], detAtan2(clearZ - gz, cx - gear), 'walk', metersPerUnit)
     } else if (t < T.settled) person(out, a, `chock${side}`, 'helper', gear + 1.5, clearZ, 0, 'idle', metersPerUnit)
   }
   if (t >= T.conesStart - 1 && t < T.settled) {
@@ -97,7 +98,7 @@ export function standCrewPeople(a: StandArrival, metersPerUnit: number, out: Cre
     const at = walkOutside(from, to, w, footOf(a))
     const px = at[0]
     const pz = at[1]
-    const face = walking ? Math.atan2(to[1] - from[1], to[0] - from[0]) : -Math.PI / 2
+    const face = walking ? detAtan2(to[1] - from[1], to[0] - from[0]) : -Math.PI / 2
     person(out, a, 'cones', 'helper', px, pz + 0.6, face, walking ? 'walk' : 'kneel', metersPerUnit)
   }
   return out
