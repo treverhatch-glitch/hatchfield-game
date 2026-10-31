@@ -77,5 +77,5 @@ describe('measured strip occupancy', () => {
     expect(departure).toBeCloseTo(14, 2)
     expect(game.flightsDone).toBeGreaterThan(0)
     Math.random = random
-  }, 20_000)
+  }, 60_000) // ~8.3 s solo on an 8-core box, ~16 s on a busy PC; 3× + margin for full-suite load
 })

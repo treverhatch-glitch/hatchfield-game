@@ -1,14 +1,10 @@
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Page } from 'playwright'
 import { HUD_VIEWPORTS } from './regions.ts'
+import { findChrome, gameUrl } from '../../test/e2e.ts'
 
-const CHROME_PATHS = [
-  process.env.PLAYWRIGHT_CHROME,
-  '/usr/local/bin/google-chrome',
-  '/usr/bin/google-chrome',
-].filter((path): path is string => Boolean(path))
 
 type Box = { id: string; x: number; y: number; w: number; h: number }
 
@@ -58,10 +54,8 @@ type HatchProbe = {
 describe('HUD regions in the browser', () => {
   it('keeps every HUD panel apart at 1280×720, 1280×800, and 1920×1080', async () => {
     const port = 46121
-    const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
-      shell: true,
-      detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
@@ -70,7 +64,7 @@ describe('HUD regions in the browser', () => {
         headless: true,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       }
-      const chromePath = CHROME_PATHS.find((p) => existsSync(p))
+      const chromePath = findChrome()
       if (chromePath) launchOptions.executablePath = chromePath
       const browser = await chromium.launch(launchOptions)
       try {
@@ -79,9 +73,9 @@ describe('HUD regions in the browser', () => {
           const page = await browser.newPage({ viewport })
           // Cold Vite transforms and SwiftShader scene builds run past Playwright's 30 s default on a loaded VM.
           page.setDefaultTimeout(90_000)
-          await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' })
+          await page.goto(gameUrl(port), { waitUntil: 'domcontentloaded' })
           await page.evaluate(() => localStorage.clear())
-          await page.reload({ waitUntil: 'networkidle' })
+          await page.reload({ waitUntil: 'domcontentloaded' })
           await page.getByTestId('sandbox-toggle').uncheck()
           await page.getByTestId('new-game').click()
           await page.getByTestId('start-pax').click()
@@ -174,8 +168,7 @@ describe('HUD regions in the browser', () => {
         await browser.close()
       }
     } finally {
-      // Kill the whole group: `shell: true` makes vite a grandchild that outlives a plain kill and holds the port.
-      if (vite.pid) process.kill(-vite.pid, 'SIGTERM')
+      vite.kill('SIGTERM')
     }
   }, 480_000)
 })

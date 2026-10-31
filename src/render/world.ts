@@ -98,6 +98,7 @@ import {
   apronPrefabTier,
 } from './world/progressionBuildings'
 import { addSpottersDeck } from './spottersDeck.ts'
+import { NO_RENDER } from './noRender.ts'
 
 interface ClimbOut {
   airframeId: string
@@ -2512,7 +2513,7 @@ export class World {
     setAircraftLamp(this.wr.dayNightSample.aircraft)
     perfEnd('world.wr', t)
     t = perfStart()
-    this.renderer.render(this.scene, this.camera)
+    if (!NO_RENDER) this.renderer.render(this.scene, this.camera)
     this.perfOverlay.update(this.renderer, this.scene, {
       passengers: game.hallGuests.length,
       vehicles: this.vehicleFrame.length,

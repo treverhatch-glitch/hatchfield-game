@@ -150,5 +150,5 @@ describe('security lane releases the people it screens', () => {
       expect(dayHeld[dayHeld.length - 1]).toBeLessThanOrEqual(16)
       expect(peakHeld).toBeLessThan(24)
     })
-  }, 20000)
+  }, 45_000) // ~5.7 s solo on an 8-core box, ~10.7 s solo on a CI runner; 3× + margin for full-suite load
 })

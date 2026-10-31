@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 import { MAP_VIEWS, type MapViewId } from '../info/types.ts'
 import { screensDir } from '../test/screens.ts'
+import { findChrome, gameUrl } from '../test/e2e.ts'
 
 const SCORE: Record<MapViewId, string> = {
   traffic: 'info-score-pressure',
@@ -25,13 +26,13 @@ describe('info view screenshots', () => {
       await waitForVite(vite, port)
       const browser = await chromium.launch({
         headless: true,
-        executablePath: '/usr/bin/google-chrome',
+        executablePath: findChrome(),
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       })
       try {
         const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } })
         page.setDefaultTimeout(60_000)
-        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
+        await page.goto(gameUrl(port, true), { waitUntil: 'domcontentloaded' })
         await page.evaluate(() => {
           localStorage.clear()
           sessionStorage.clear()
