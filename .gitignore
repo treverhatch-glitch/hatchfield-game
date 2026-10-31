@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# The packed rules file (npm run pack:rules). Built on the PC, never committed anywhere.
+dist-sim
 *.local
 
 # Editor directories and files
