@@ -8,6 +8,7 @@
     "dev": "vite",
     "prebuild": "node scripts/unpack-art.mjs",
     "build": "tsc -b && vite build",
+    "pack:rules": "node tools/replay/pack-rules.mjs",
     "lint": "oxlint",
     "pretest": "node scripts/unpack-art.mjs",
     "unpack-art": "node scripts/unpack-art.mjs",

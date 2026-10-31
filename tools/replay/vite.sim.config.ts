@@ -4,6 +4,7 @@ const root = process.cwd()
 export default defineConfig({
   root,
   logLevel: 'warn',
+  publicDir: false, // the rules only: no art or textures in dist-sim/
   build: {
     outDir: resolve(root, 'dist-sim'),
     emptyOutDir: true,
