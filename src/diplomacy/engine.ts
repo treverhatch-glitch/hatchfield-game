@@ -95,6 +95,7 @@ import type {
   ProposalResponse
 } from './types.ts';
 import type { MissedConnectionFeed, NegotiationFeed, PremiumScreeningFeed, RivalAirportFeed } from './feeds.ts';
+import { detPow } from '../game/detMath.ts'
 
 export interface CreateStateOptions {
   seed?: number;
@@ -239,7 +240,7 @@ export class DiplomacyEngine {
     const ctx = core.ctx;
     this.unlockTiers(ctx.fieldLevel);
 
-    const smoothing = 1 - Math.pow(0.5, 1 / 30);
+    const smoothing = 1 - detPow(0.5, 1 / 30);
     for (const rel of allRelations(core)) {
       if (rel.status === 'locked') continue;
       const perDay = daysLeft > 0 ? rel.flightsToday / daysLeft : 0;

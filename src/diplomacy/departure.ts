@@ -27,6 +27,7 @@ import { alliesOf, evaluate } from './relations.ts';
 import { bandIndex, midpointOfBand, oneBandBelow } from './standing.ts';
 import { defaultTermsFor } from './proposals.ts';
 import type { ActionResult, AirlineRelation, Band, ExitReason, Proposal } from './types.ts';
+import { detPow } from '../game/detMath.ts'
 
 export function exitsInCurrentYear(core: EngineCore): number {
   const year = currentYear(core);
@@ -148,7 +149,7 @@ export function counterExitNotice(core: EngineCore, airlineId: string, useFavour
 }
 
 export function exitCounterCost(rel: AirlineRelation): number {
-  return Math.round(7500 * Math.pow(2.4, rel.tier - 3) * 0.6);
+  return Math.round(7500 * detPow(2.4, rel.tier - 3) * 0.6);
 }
 
 export function exitAirline(core: EngineCore, rel: AirlineRelation, reason: ExitReason): void {
