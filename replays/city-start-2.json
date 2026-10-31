@@ -4,7 +4,7 @@
  "seed": 2,
  "days": 3,
  "stepSec": 3,
- "rulesCommit": "6b582aa4",
+ "rulesCommit": "93f4e141",
  "checkpoints": [
   {
    "day": 0,
@@ -14,45 +14,45 @@
    "flightsDone": 0,
    "reputationMilli": 48000,
    "bagsLost": 0,
-   "ledgerEntries": 4,
+   "ledgerEntries": 6,
    "liveFlights": 0,
-   "rngState": 2903413564
+   "rngState": 440012081
   },
   {
    "day": 1,
-   "cashCents": 26804200,
-   "revenueCents": 2427700,
-   "paxServed": 169,
-   "flightsDone": 2,
-   "reputationMilli": 67988,
+   "cashCents": 27913300,
+   "revenueCents": 2341200,
+   "paxServed": 79,
+   "flightsDone": 1,
+   "reputationMilli": 60820,
    "bagsLost": 0,
-   "ledgerEntries": 76,
-   "liveFlights": 1,
-   "rngState": 3319782037
+   "ledgerEntries": 30,
+   "liveFlights": 2,
+   "rngState": 766379660
   },
   {
    "day": 2,
-   "cashCents": 26124600,
-   "revenueCents": 4633500,
-   "paxServed": 190,
+   "cashCents": 28482100,
+   "revenueCents": 4222700,
+   "paxServed": 165,
    "flightsDone": 3,
-   "reputationMilli": 63842,
+   "reputationMilli": 56402,
    "bagsLost": 0,
-   "ledgerEntries": 124,
+   "ledgerEntries": 48,
    "liveFlights": 2,
-   "rngState": 1855796100
+   "rngState": 3210383040
   },
   {
    "day": 3,
-   "cashCents": 25964400,
-   "revenueCents": 6618200,
-   "paxServed": 365,
+   "cashCents": 30053500,
+   "revenueCents": 7119800,
+   "paxServed": 260,
    "flightsDone": 5,
-   "reputationMilli": 81752,
+   "reputationMilli": 52212,
    "bagsLost": 0,
-   "ledgerEntries": 171,
+   "ledgerEntries": 68,
    "liveFlights": 2,
-   "rngState": 3389470122
+   "rngState": 625760757
   }
  ]
 }

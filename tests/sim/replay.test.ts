@@ -7,8 +7,14 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { DAY_SEC, REPLAY_FORMAT, STEP_SEC, firstDifference, play, type ReplayFile } from '../../tools/replay/replay.ts'
+import { forceSimRandom } from '../../src/game/simRng.ts'
+
+// The game's own dice, not the test default (src/test/setup.ts makes the rules follow Math.random).
+beforeEach(() => {
+  forceSimRandom(null)
+})
 
 const DIR = 'replays'
 const seedsOf = (v: string | undefined) => (v ? v.split(',').map((s) => Number(s.trim()) >>> 0) : [])
