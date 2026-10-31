@@ -1,0 +1,58 @@
+{
+ "format": "hatchfield-replay/1",
+ "scenario": "city-start",
+ "seed": 2,
+ "days": 3,
+ "stepSec": 3,
+ "rulesCommit": "6b582aa4",
+ "checkpoints": [
+  {
+   "day": 0,
+   "cashCents": 26054000,
+   "revenueCents": 0,
+   "paxServed": 0,
+   "flightsDone": 0,
+   "reputationMilli": 48000,
+   "bagsLost": 0,
+   "ledgerEntries": 4,
+   "liveFlights": 0,
+   "rngState": 2903413564
+  },
+  {
+   "day": 1,
+   "cashCents": 26804200,
+   "revenueCents": 2427700,
+   "paxServed": 169,
+   "flightsDone": 2,
+   "reputationMilli": 67988,
+   "bagsLost": 0,
+   "ledgerEntries": 76,
+   "liveFlights": 1,
+   "rngState": 3319782037
+  },
+  {
+   "day": 2,
+   "cashCents": 26124600,
+   "revenueCents": 4633500,
+   "paxServed": 190,
+   "flightsDone": 3,
+   "reputationMilli": 63842,
+   "bagsLost": 0,
+   "ledgerEntries": 124,
+   "liveFlights": 2,
+   "rngState": 1855796100
+  },
+  {
+   "day": 3,
+   "cashCents": 25964400,
+   "revenueCents": 6618200,
+   "paxServed": 365,
+   "flightsDone": 5,
+   "reputationMilli": 81752,
+   "bagsLost": 0,
+   "ledgerEntries": 171,
+   "liveFlights": 2,
+   "rngState": 3389470122
+  }
+ ]
+}

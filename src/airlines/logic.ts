@@ -164,7 +164,7 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
     if (meetsRequirements(airline, airport)) {
       if (simRandom() < prob) {
         const penaltyTier = state.penaltyTiers[airlineId] || 0;
-        const offerId = `offer_${Date.now()}_${airline.id}`;
+        const offerId = `offer_${state.elapsedMinutes}_${airline.id}`; // from the game clock, so a replay gives the same ids
         const shaped = shapeAirlineOffer(
           airline,
           generateTermsForTier(airline.tier, penaltyTier),
