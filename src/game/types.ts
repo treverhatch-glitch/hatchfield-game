@@ -864,6 +864,9 @@ export interface TerminalFit {
 }
 
 export interface GameSnapshot {
+  /** The rules' dice (src/game/simRng.ts): the game's seed and where its generator is. Older saves have neither. */
+  rngSeed?: number
+  rngState?: number
   tiles: Tile[][]
   terminalFits: TerminalFit[]
   cash: number

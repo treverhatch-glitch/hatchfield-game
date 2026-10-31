@@ -8,6 +8,7 @@ import type { PaxTag } from './guests.ts'
 import { itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
 import { LITTER_TUNING, TRASH_CAN } from './litterData.ts'
 import { OUTLETS } from './terminalKitData.ts'
+import { simRandom } from './simRng.ts'
 
 /** One piece of rubbish on the floor. Offsets place the decal inside its cell (−0.5…0.5). */
 export interface LitterSpot {
@@ -78,7 +79,7 @@ export function dropLitter(
   c: number,
   r: number,
   id: string,
-  rand: () => number = Math.random,
+  rand: () => number = simRandom,
 ): 'bin' | 'floor' {
   return dropLitterAt(hall, { c, r, ox: rand() * 0.8 - 0.4, oz: rand() * 0.8 - 0.4 }, id)
 }

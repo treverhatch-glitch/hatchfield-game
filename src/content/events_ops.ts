@@ -1,3 +1,4 @@
+import { simRandom } from '../game/simRng.ts'
 /**
  * Live ops events: strikes, outages, bird strikes, VIP visits.
  * Each one uses a hook the sim already has: slower check-in or screening,
@@ -234,7 +235,7 @@ export class OpsEventRunner {
   private seq = 0
   private readonly rng: () => number
 
-  constructor(rng: () => number = Math.random) {
+  constructor(rng: () => number = simRandom) {
     this.rng = rng
   }
 

@@ -28,6 +28,7 @@ import type {
   Tool,
 } from './types'
 import { MRO_COST, MRO_UPKEEP_PER_DAY, NIGHT_HUB_COST, NIGHT_HUB_UPKEEP_PER_DAY } from '../tier3/config.ts'
+import { simRandom } from './simRng.ts'
 
 /** Cash in hand before you buy the plot. */
 export const START_CASH = { easy: 220_000, standard: 150_000 } as const
@@ -1018,11 +1019,11 @@ export function createProcAirline(usedNames: string[] = []): Airline {
   const taken = new Set(usedNames.map((n) => n.toLowerCase()))
   const free = PROC_NAMES.filter((n) => !taken.has(n.toLowerCase()))
   const name = free.length
-    ? free[Math.floor(Math.random() * free.length)]
-    : `${PROC_NAMES[Math.floor(Math.random() * PROC_NAMES.length)]} ${10 + Math.floor(Math.random() * 89)}`
-  const color = PROC_COLORS[Math.floor(Math.random() * PROC_COLORS.length)]
-  const budget = Math.random() < 0.65
-  const id = `proc-${Math.random().toString(36).slice(2, 7)}`
+    ? free[Math.floor(simRandom() * free.length)]
+    : `${PROC_NAMES[Math.floor(simRandom() * PROC_NAMES.length)]} ${10 + Math.floor(simRandom() * 89)}`
+  const color = PROC_COLORS[Math.floor(simRandom() * PROC_COLORS.length)]
+  const budget = simRandom() < 0.65
+  const id = `proc-${simRandom().toString(36).slice(2, 7)}`
   return {
     id,
     name,

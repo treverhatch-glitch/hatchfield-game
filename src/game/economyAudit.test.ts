@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import type { Flight } from './types.ts'
+import { forceSimRandom } from './simRng.ts'
 
 function fresh(): Game {
   const game = new Game()
@@ -32,15 +33,14 @@ describe('crash charges', () => {
     game.runwayCondition = 0
     const f = stubJet()
     let rolls = 0
-    const real = Math.random
-    Math.random = () => {
+    forceSimRandom(() => {
       rolls += 1
       return 0.999 // never crashes
-    }
+    })
     try {
       for (let i = 0; i < 50; i++) game.checkCrash(f, 'landing')
     } finally {
-      Math.random = real
+      forceSimRandom(null)
     }
     expect(rolls).toBe(1)
     expect(game.crashes).toBe(0)
@@ -60,12 +60,11 @@ describe('crash charges', () => {
     game.runwayCondition = 0
     const f = stubJet()
     const cash = game.cash
-    const real = Math.random
-    Math.random = () => 0
+    forceSimRandom(() => 0)
     try {
       expect(game.checkCrash(f, 'landing')).toBe(true)
     } finally {
-      Math.random = real
+      forceSimRandom(null)
     }
     expect(game.crashes).toBe(1)
     expect(f.phase).toBe('gone')

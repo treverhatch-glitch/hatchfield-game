@@ -11,6 +11,7 @@ import {
 } from './logic.ts';
 import { DEFAULT_AIRLINES } from './data.ts';
 import type { AirlineState, AirportCapabilities } from './types.ts';
+import { forceSimRandom } from '../game/simRng.ts'
 
 describe('Airline Logic', () => {
   const baseAirport: AirportCapabilities = {
@@ -90,12 +91,11 @@ describe('Airline Logic', () => {
       const airport = { ...baseAirport, runwayLengthMeters: 1500, hasSmallStands: true };
       
       // Force random to always be 0 for testing (guaranteed to trigger if prob > 0)
-      const originalRandom = Math.random;
-      Math.random = () => 0.0;
+      forceSimRandom(() => 0.0)
 
       const newState = generateContractOffers(state, airport, 1440); // 24 hours passed
       
-      Math.random = originalRandom;
+      forceSimRandom(null)
 
       expect(newState.contractOffers.length).toBe(1);
       expect(newState.contractOffers[0].airlineId).toBe('air_regional_1');
@@ -113,12 +113,11 @@ describe('Airline Logic', () => {
       };
       const airport = { ...baseAirport, runwayLengthMeters: 1500, hasSmallStands: true };
       
-      const originalRandom = Math.random;
-      Math.random = () => 0.0;
+      forceSimRandom(() => 0.0)
 
       const newState = generateContractOffers(state, airport, 1440);
       
-      Math.random = originalRandom;
+      forceSimRandom(null)
 
       expect(newState.contractOffers.length).toBe(0);
     });

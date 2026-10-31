@@ -16,6 +16,7 @@ import type {
   ScreeningPax,
   StaffPools,
 } from './types.ts'
+import { simRandom } from '../game/simRng.ts'
 
 export function createPremiumState(): PremiumState {
   return {
@@ -73,7 +74,7 @@ export function cabinFromTag(tag: 'budget' | 'family' | 'business' | 'premium'):
 export function rollCabin(
   tag: 'budget' | 'family' | 'business' | 'premium',
   persona?: string,
-  roll = Math.random(),
+  roll = simRandom(),
 ): Cabin {
   if (persona === 'luxury' && roll < 0.03) return 'vip'
   if (persona === 'business' && roll < 0.015) return 'vip'

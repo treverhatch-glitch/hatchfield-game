@@ -3,9 +3,10 @@
  * Tunables live in contractPacingData.ts.
  */
 import { LETTER_PACING } from './contractPacingData.ts'
+import { simRandom } from './simRng.ts'
 
 /** Cool set when a carrier signs. `signed` counts the carrier that just signed. */
-export function coolAfterSign(signed: number, roll: number = Math.random()): number {
+export function coolAfterSign(signed: number, roll: number = simRandom()): number {
   const p = LETTER_PACING
   const n = Math.max(1, signed)
   const cool = p.afterSignBase + p.afterSignPerCarrier * (n - 1) + p.afterSignJitter * roll

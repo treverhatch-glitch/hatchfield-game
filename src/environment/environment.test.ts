@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Game } from '../game/sim.ts'
 import { skyState } from '../render/world/daylight.ts'
 import { SEASON_WEATHER } from './config.ts'
+import { forceSimRandom } from '../game/simRng.ts'
 import {
   arrivalDemand,
   arrivalSpacingScale,
@@ -179,10 +180,9 @@ describe('game wiring', () => {
       const game = new Game()
       game.clock = clock
       if (nightResearch) game.researchUnlocked.push('night_bank')
-      const orig = Math.random
-      Math.random = () => 0.5
+      forceSimRandom(() => 0.5)
       game.seedScheduleForAirline('northline', 4)
-      Math.random = orig
+      forceSimRandom(null)
       const etas = game.schedule.map((slot) => slot.eta).sort((a, b) => a - b)
       return etas[1] - etas[0]
     }
@@ -198,11 +198,10 @@ describe('game wiring', () => {
       game.clock = clock
       game.weather = 'storm'
       game.weatherCool = 0
-      const orig = Math.random
       let n = 0
-      Math.random = () => (n++ === 0 ? 0 : weatherRoll)
+      forceSimRandom(() => (n++ === 0 ? 0 : weatherRoll))
       game.tickWeather(1)
-      Math.random = orig
+      forceSimRandom(null)
       return game.weather
     }
     expect(roll(100 * 180, 0.01)).toBe('clear')

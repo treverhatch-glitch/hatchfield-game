@@ -6,6 +6,7 @@ import type {
   Airline,
   ContractTerms
 } from './types.ts';
+import { simRandom } from '../game/simRng.ts'
 
 /**
  * Checks which airlines can be unlocked based on the airport's progression.
@@ -160,7 +161,7 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
     if (!airline) continue;
 
     if (meetsRequirements(airline, airport)) {
-      if (Math.random() < prob) {
+      if (simRandom() < prob) {
         const penaltyTier = state.penaltyTiers[airlineId] || 0;
         const offerId = `offer_${Date.now()}_${airline.id}`;
         
