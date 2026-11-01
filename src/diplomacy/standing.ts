@@ -25,7 +25,6 @@ import type {
   StandingModifier,
   TraitId
 } from './types.ts';
-import { detPow } from '../game/detMath.ts'
 
 /** Raw band without hysteresis: Hostile < -60, Cold -60..-20, Neutral +-20, Warm 20..60, Partner > 60. */
 export function rawBand(value: number): Band {
@@ -240,7 +239,7 @@ function topPerformanceCause(relation: AirlineRelation): string | null {
 
 /** Fold one day's (or one step's) batch of grades into the slow performance score. */
 export function stepPerformance(relation: AirlineRelation, dtDays: number): void {
-  const decay = detPow(0.5, dtDays / PERFORMANCE_HALF_LIFE_DAYS);
+  const decay = Math.pow(0.5, dtDays / PERFORMANCE_HALF_LIFE_DAYS);
   if (relation.pendingGradeCount > 0) {
     const target = relation.pendingGradeSum / relation.pendingGradeCount;
     relation.performance += (target - relation.performance) * (1 - decay);
