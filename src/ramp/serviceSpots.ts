@@ -12,6 +12,7 @@ import { AIRCRAFT_VISUAL_SCALE, METERS_PER_CELL, getAircraftSpec, type ModelSpec
 import { aircraftSocketTable, vehicleSocket } from '../render/socketLayout.ts'
 import { beltGeom, HOSE_M, MODEL_SIZE, type VehicleModel } from '../render/vehicleModels.ts'
 import { SERVICE_SPOT } from './serviceSpotData.ts'
+import { detAsin, detAtan2, detCos, detHypot, detSin, detTan } from '../game/detMath.ts'
 
 export type SpotSize = 'small' | 'large'
 export type SpotSocket = 'plane_fuel_port' | 'plane_cargo_door_fwd'
@@ -64,10 +65,10 @@ function sizeOf(spec: ModelSpec): SpotSize {
 
 function axes(theta: number) {
   return {
-    fx: Math.cos(theta),
-    fz: Math.sin(theta),
-    rx: -Math.sin(theta),
-    rz: Math.cos(theta),
+    fx: detCos(theta),
+    fz: detSin(theta),
+    rx: -detSin(theta),
+    rz: detCos(theta),
   }
 }
 
@@ -103,24 +104,24 @@ function sideOf(z: number): number {
 
 /** Hose / nose direction that points inboard, swung `yaw` radians toward the tail. */
 function inwardDir(side: number, yaw: number) {
-  const x = -Math.sin(yaw)
-  const z = -side * Math.cos(yaw)
-  const len = Math.hypot(x, z) || 1
+  const x = -detSin(yaw)
+  const z = -side * detCos(yaw)
+  const len = detHypot(x, z) || 1
   return { x: x / len, z: z / len }
 }
 
 function thetaForRight(dir: { x: number; z: number }): number {
-  return Math.atan2(-dir.x, dir.z)
+  return detAtan2(-dir.x, dir.z)
 }
 
 function thetaForNose(dir: { x: number; z: number }): number {
-  return Math.atan2(dir.z, dir.x)
+  return detAtan2(dir.z, dir.x)
 }
 
 function wingBox(spec: ModelSpec, gap: number) {
   const wingX = spec.lengthM * (0.5 - spec.wingAt) * SCALE
   const le = wingX + (spec.rootChord / 2) * SCALE + gap
-  const sweep = Math.tan((spec.sweep * Math.PI) / 180) * (spec.spanM / 2) * SCALE
+  const sweep = detTan((spec.sweep * Math.PI) / 180) * (spec.spanM / 2) * SCALE
   const te = wingX - (spec.rootChord / 2) * SCALE - sweep - gap
   const inner = Math.max(0, spec.rx * SCALE - gap)
   const outer = (spec.spanM / 2) * SCALE + gap
@@ -233,7 +234,7 @@ function segmentHits(
     const x = from.x + (to.x - from.x) * t
     const z = from.z + (to.z - from.z) * t
     const y = from.y + (to.y - from.y) * t
-    const along = exempt ? Math.hypot(x - exempt.x, z - exempt.z) : Infinity
+    const along = exempt ? detHypot(x - exempt.x, z - exempt.z) : Infinity
     if (along > 0.85 && inFuselage(x, z, spec, gap * 0.35)) return true
     if (along > 1.05 && inWing(x, z, spec, 0) && y > lower - 0.08 && y < lower + thick) return true
   }
@@ -292,7 +293,7 @@ function solveSmallFuel(spec: ModelSpec, port: { x: number; y: number; z: number
         }
         if (bodyHits(pose, spec, truck) || hoseHits(pose, spec, truck, port)) continue
         const ends = hoseEnds(pose, truck)
-        const miss = ends ? Math.hypot(ends.nozzle.x - port.x, ends.nozzle.z - port.z) : 99
+        const miss = ends ? detHypot(ends.nozzle.x - port.x, ends.nozzle.z - port.z) : 99
         if (!best || miss < best.miss - 0.05) best = { pose, miss }
       }
     }
@@ -324,7 +325,7 @@ function bagPose(door: { x: number; z: number }, truck: TruckBox, yaw: number, n
 }
 
 function tooClose(a: LocalPose, aBox: TruckBox, b: LocalPose, bBox: TruckBox): boolean {
-  const dist = Math.hypot(a.cx - b.cx, a.cz - b.cz)
+  const dist = detHypot(a.cx - b.cx, a.cz - b.cz)
   return dist < SERVICE_SPOT.minSeparationM || rectOverlap(a, aBox, b, bBox.length, bBox.width, SERVICE_SPOT.skinGapM)
 }
 
@@ -335,7 +336,7 @@ function shoveClear(mover: LocalPose, moverBox: TruckBox, spec: ModelSpec, block
     const hitTruck = blocks.some((b) => tooClose(mover, moverBox, b.pose, b.box))
     if (!hitBody && !hitTruck) return
     const near = blocks.reduce((best, b) => {
-      const d = Math.hypot(mover.cx - b.pose.cx, mover.cz - b.pose.cz)
+      const d = detHypot(mover.cx - b.pose.cx, mover.cz - b.pose.cz)
       return d < best.d ? { d, pose: b.pose } : best
     }, { d: Infinity, pose: blocks[0]?.pose ?? mover })
     const dir = Math.sign(mover.cx - near.pose.cx) || -1
@@ -346,10 +347,10 @@ function shoveClear(mover: LocalPose, moverBox: TruckBox, spec: ModelSpec, block
 
 function publish(pose: LocalPose, origin: SpotOrigin, socket: SpotSocket, size: SpotSize, deck = 0, slide = 0): ServiceSpot {
   const h = origin.heading
-  const fx = Math.cos(h)
-  const fy = Math.sin(h)
-  const rx = -Math.sin(h)
-  const ry = Math.cos(h)
+  const fx = detCos(h)
+  const fy = detSin(h)
+  const rx = -detSin(h)
+  const ry = detCos(h)
   return {
     x: origin.x + (pose.cx * fx + pose.cz * rx) / METERS_PER_CELL,
     y: origin.y + (pose.cx * fy + pose.cz * ry) / METERS_PER_CELL,
@@ -370,10 +371,10 @@ function beltTipLocal(rz: number): { x: number; y: number; z: number } {
   const [L, , W] = MODEL_SIZE.belt_loader
   const g = beltGeom(L, MODEL_SIZE.belt_loader[1])
   const run = L * 0.9
-  const dx = Math.cos(g.pitch) * run
-  const dy = Math.sin(g.pitch) * run
-  const c = Math.cos(rz)
-  const s = Math.sin(rz)
+  const dx = detCos(g.pitch) * run
+  const dy = detSin(g.pitch) * run
+  const c = detCos(rz)
+  const s = detSin(rz)
   return { x: g.lowX + dx * c - dy * s, y: g.lowY + dx * s + dy * c, z: W * 0.15 }
 }
 
@@ -383,14 +384,14 @@ function deckForHeight(height: number): number {
   const g = beltGeom(L, H)
   const run = L * 0.9
   const rise = Math.min(run * 0.9, Math.max(0.35, height - g.lowY))
-  return Math.asin(rise / run) - g.pitch
+  return detAsin(rise / run) - g.pitch
 }
 
 function wingBandAt(spec: ModelSpec, zDrawn: number): { low: number; high: number } {
   const z = Math.abs(zDrawn) / SCALE
   const centerY = spec.gear + spec.ry
   const wingY = spec.wingHigh ? centerY + spec.ry * 0.7 : centerY - spec.ry * 0.28
-  const under = wingY + Math.tan((spec.dihedral * Math.PI) / 180) * z - spec.thickness * 0.5
+  const under = wingY + detTan((spec.dihedral * Math.PI) / 180) * z - spec.thickness * 0.5
   const over = under + spec.thickness
   return { low: under * SCALE, high: over * SCALE }
 }
@@ -407,8 +408,8 @@ function nacelleHit(spec: ModelSpec, x: number, y: number, z: number): boolean {
   const wingX = spec.lengthM * (0.5 - spec.wingAt)
   const centerY = spec.gear + spec.ry
   const wingY = spec.wingHigh ? centerY + spec.ry * 0.7 : centerY - spec.ry * 0.28
-  const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
-  const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
+  const tanSweep = detTan((spec.sweep * Math.PI) / 180)
+  const tanDih = detTan((spec.dihedral * Math.PI) / 180)
   for (const frac of fracs) {
     const ez = semi * frac
     const le = wingX + spec.rootChord / 2 - tanSweep * ez
@@ -418,7 +419,7 @@ function nacelleHit(spec: ModelSpec, x: number, y: number, z: number): boolean {
     const x1 = cx + eng.length * 0.75
     for (const sign of [1, -1]) {
       const clamped = Math.min(x1, Math.max(x0, rx))
-      const horiz = Math.hypot(rx - clamped, rz - sign * ez)
+      const horiz = detHypot(rx - clamped, rz - sign * ez)
       if (horiz < eng.radius + 0.7 && Math.abs(ry - cy) < eng.radius + 0.55) return true
     }
   }
@@ -435,7 +436,7 @@ function boomHits(pose: LocalPose, spec: ModelSpec, tip: { x: number; y: number;
     const ly = g.lowY + (tip.y - g.lowY) * t
     for (const zOff of [-0.48, 0, 0.48]) {
       const p = toCraft(pose, lx, tip.z + zOff)
-      const along = Math.hypot(p.x - door.x, p.z - door.z)
+      const along = detHypot(p.x - door.x, p.z - door.z)
       if (along > 0.9 && inFuselage(p.x, p.z, spec, 0.2)) return true
       if (nacelleHit(spec, p.x, ly, p.z)) return true
       if (along > 1.15 && inWing(p.x, p.z, spec, 0.15)) {
@@ -564,7 +565,7 @@ function auditOne(
   const body = bodyHits(pose, spec, truck)
   const boom = model === 'belt_loader' ? boomHits(pose, spec, { x: tip.x + spot.slide, y: tip.y, z: tip.z }, socket) : false
   const hoseHit = hose ? hoseHits(pose, spec, truck, socket) : false
-  const tipApart = model === 'belt_loader' ? Math.hypot(raised.x - socket.x, raised.z - socket.z, tip.y - socket.y) : 0
+  const tipApart = model === 'belt_loader' ? detHypot(raised.x - socket.x, raised.z - socket.z, tip.y - socket.y) : 0
   return {
     size: spot.size,
     clear: !body && !hoseHit && !boom,
@@ -573,8 +574,8 @@ function auditOne(
     yaw: spot.yaw,
     localX: spot.localX,
     localZ: spot.localZ,
-    socketDist: Math.hypot(spot.localX - socket.x, spot.localZ - socket.z),
-    gaps: others.map((o) => Math.hypot(spot.localX - o.localX, spot.localZ - o.localZ)),
+    socketDist: detHypot(spot.localX - socket.x, spot.localZ - socket.z),
+    gaps: others.map((o) => detHypot(spot.localX - o.localX, spot.localZ - o.localZ)),
     tipApart,
     deck: spot.deck,
   }

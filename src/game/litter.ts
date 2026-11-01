@@ -9,6 +9,7 @@ import type { PaxTag } from './guests.ts'
 import { itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
 import { LITTER_TUNING, TRASH_CAN } from './litterData.ts'
 import { OUTLETS } from './terminalKitData.ts'
+import { detHypot } from './detMath.ts'
 
 /** One piece of rubbish on the floor. Offsets place the decal inside its cell (−0.5…0.5). */
 export interface LitterSpot {
@@ -270,7 +271,7 @@ export function stepJanitor(
   const tz = j.task.r + 0.5
   const dx = tx - j.x
   const dz = tz - j.z
-  const dist = Math.hypot(dx, dz)
+  const dist = detHypot(dx, dz)
   const step = (LITTER_TUNING.janitorSpeedMps * dt) / Math.max(0.1, cellMeters)
   if (dist > 0.05) {
     if (step >= dist) {

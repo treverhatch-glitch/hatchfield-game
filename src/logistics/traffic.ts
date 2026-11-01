@@ -19,6 +19,7 @@
  */
 import type { RoadGraph } from './roads'
 import type { VehicleType } from './types'
+import { detAtan2, detCos, detHypot, detSin } from '../game/detMath'
 
 export interface TrafficConfig {
   /** Sim minutes per traffic step while anything is driving. */
@@ -146,7 +147,7 @@ function segSeg2(ax: number, ay: number, bx: number, by: number, cx: number, cy:
 
 /** Clear distance between two capsules (negative = overlap). */
 export function clearance(a: Body, b: Body): number {
-  const ca = Math.cos(a.heading), sa = Math.sin(a.heading), cb = Math.cos(b.heading), sb = Math.sin(b.heading)
+  const ca = detCos(a.heading), sa = detSin(a.heading), cb = detCos(b.heading), sb = detSin(b.heading)
   const d2 = segSeg2(
     a.x - ca * a.half, a.y - sa * a.half, a.x + ca * a.half, a.y + sa * a.half,
     b.x - cb * b.half, b.y - sb * b.half, b.x + cb * b.half, b.y + sb * b.half,
@@ -176,7 +177,7 @@ export class ApronTraffic {
       const a = roads.at(e.a)
       const b = roads.at(e.b)
       if (!a || !b || e.length === undefined) continue
-      const h = Math.hypot(a.x - b.x, a.y - b.y)
+      const h = detHypot(a.x - b.x, a.y - b.y)
       if (h > 1e-6) {
         mpu = e.length / h
         break
@@ -207,11 +208,11 @@ export class ApronTraffic {
       taken.push({ ...other, x: s.x, y: s.y, heading: s.heading })
     }
     // Also anyone physically there right now (a truck still pulling out of its old slot).
-    for (const b of this.bodies.values()) if (b.id !== v.id && Math.hypot(b.x - c.x, b.y - c.y) < 150) taken.push(b)
+    for (const b of this.bodies.values()) if (b.id !== v.id && detHypot(b.x - c.x, b.y - c.y) < 150) taken.push(b)
     // Rings of candidates around the node in the approach frame (u along the approach heading,
     // w across it). Slots short of / beside the node come first so later arrivals do not have
     // to drive through vehicles already parked beyond them.
-    const cu = Math.cos(heading), su = Math.sin(heading)
+    const cu = detCos(heading), su = detSin(heading)
     const [L, W] = FOOTPRINT[v.type]
     const stepX = 15
     const stepY = Math.max(4.5, W + this.cfg.gapM + 1.4)
@@ -226,7 +227,7 @@ export class ApronTraffic {
       }
       // Deterministic order: not past the node first, then nearest, then by angle.
       const key = (p: [number, number]) => (p[0] > 0 ? 1e6 : 0) + p[0] * p[0] + p[1] * p[1]
-      cands.sort((p, q) => key(p) - key(q) || Math.atan2(p[1], p[0]) - Math.atan2(q[1], q[0]))
+      cands.sort((p, q) => key(p) - key(q) || detAtan2(p[1], p[0]) - detAtan2(q[1], q[0]))
       for (const [du, dw] of cands) {
         const body: Body = { id: v.id, x: c.x + du * cu - dw * su, y: c.y + du * su + dw * cu, heading, ...me }
         if (taken.every((t) => clearance(body, t) >= 0)) {
@@ -252,7 +253,7 @@ export class ApronTraffic {
       const p = raw[i]
       const dx = p.x - prev.x
       const dy = p.y - prev.y
-      const l = Math.hypot(dx, dy)
+      const l = detHypot(dx, dy)
       if (l < 1e-6) continue
       // keep right: right of travel direction in a y-down plan is (−dy, dx)/l
       const nx = -dy / l
@@ -262,11 +263,11 @@ export class ApronTraffic {
     this.slots.delete(v.id)
     const last = off[off.length - 1]
     const end = raw.length ? raw[raw.length - 1] : this.nodeM(dest)
-    const approach = Math.hypot(end.x - last.x, end.y - last.y) > 1e-6 ? Math.atan2(end.y - last.y, end.x - last.x) : here.heading
+    const approach = detHypot(end.x - last.x, end.y - last.y) > 1e-6 ? detAtan2(end.y - last.y, end.x - last.x) : here.heading
     const slot = this.reserveSlot(v, dest, approach)
     off.push({ x: slot.x, y: slot.y })
     const cum = [0]
-    for (let i = 1; i < off.length; i++) cum.push(cum[i - 1] + Math.hypot(off[i].x - off[i - 1].x, off[i].y - off[i - 1].y))
+    for (let i = 1; i < off.length; i++) cum.push(cum[i - 1] + detHypot(off[i].x - off[i - 1].x, off[i].y - off[i - 1].y))
     const len = cum[cum.length - 1]
     this.tracks.set(v.id, { pts: off, cum, dist: 0, len, speed: Math.max(1, speedMpm), start: now, waited: 0, dest })
     return len / Math.max(1, speedMpm)
@@ -301,7 +302,7 @@ export class ApronTraffic {
     const k = seg > 1e-9 ? Math.min(1, Math.max(0, (d - t.cum[i - 1]) / seg)) : 1
     out.x = a.x + (b.x - a.x) * k
     out.y = a.y + (b.y - a.y) * k
-    if (seg > 1e-9) out.heading = Math.atan2(b.y - a.y, b.x - a.x)
+    if (seg > 1e-9) out.heading = detAtan2(b.y - a.y, b.x - a.x)
     return out
   }
 

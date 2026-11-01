@@ -14,6 +14,7 @@ import {
   type RoomKind,
   type RoomPlan,
 } from '../render/world/rooms.ts'
+import { detAtan2, detHypot } from './detMath.ts'
 
 const STAFF: ReadonlySet<RoomKind> = new Set(['office', 'lab'])
 
@@ -93,7 +94,7 @@ export function legRoute(plan: RoomPlan, guest: RouteGuest, next: HallNode | str
 export function polylineLength(route: readonly { x: number; z: number }[]): number {
   if (!route) return 0
   let n = 0
-  for (let i = 1; i < route.length; i++) n += Math.hypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z)
+  for (let i = 1; i < route.length; i++) n += detHypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z)
   return n
 }
 
@@ -104,7 +105,7 @@ export function pointAlong(route: readonly { x: number; z: number }[], t: number
   if (route.length < 2) return { x: p0.x, z: p0.z, yaw: 0 }
   const cum = [0]
   for (let i = 1; i < route.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z))
+    cum.push(cum[i - 1] + detHypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z))
   }
   const total = cum[cum.length - 1] || 1
   const d = Math.min(1, Math.max(0, t)) * total
@@ -117,7 +118,7 @@ export function pointAlong(route: readonly { x: number; z: number }[], t: number
   return {
     x: p.x + (q.x - p.x) * f,
     z: p.z + (q.z - p.z) * f,
-    yaw: Math.atan2(q.x - p.x, q.z - p.z),
+    yaw: detAtan2(q.x - p.x, q.z - p.z),
   }
 }
 
@@ -134,7 +135,7 @@ export function routeRoomKinds(plan: RoomPlan, route: readonly { x: number; z: n
   for (let i = 1; i < route.length; i++) {
     const p = route[i - 1]
     const q = route[i]
-    const len = Math.hypot(q.x - p.x, q.z - p.z)
+    const len = detHypot(q.x - p.x, q.z - p.z)
     const n = Math.max(1, Math.ceil(len / step))
     for (let k = 0; k <= n; k++) push(p.x + ((q.x - p.x) * k) / n, p.z + ((q.z - p.z) * k) / n)
   }

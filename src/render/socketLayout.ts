@@ -8,6 +8,7 @@
 import { WORLD_PER_METER, type ModelSpec } from './aircraft/specs'
 import { bridgeStops, doorBoxes } from './aircraft/stands'
 import { beltGeom, CABLE_M, catenaryPoints, cateringHinge, fuelTankLayout, GPU_RISE, lineAnchor, MODEL_SIZE, SERVICE_RISE, type VehicleModel } from './vehicleModels'
+import { detCos, detHypot, detSin } from '../game/detMath'
 
 export type SocketTable = Readonly<Record<string, readonly [number, number, number]>>
 
@@ -25,7 +26,7 @@ export function apronCartSockets(model: 'belt_loader' | 'catering_hilift'): Sock
     const z = W * 0.15
     return {
       belt_low: [g.lowX, g.lowY + 0.2, z],
-      belt_tip: [g.lowX + Math.cos(g.pitch) * run, g.lowY + Math.sin(g.pitch) * run, z],
+      belt_tip: [g.lowX + detCos(g.pitch) * run, g.lowY + detSin(g.pitch) * run, z],
     }
   }
   const h = cateringHinge(MODEL_SIZE[model][0])
@@ -55,7 +56,7 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
     const sx = -L / 2 + sl / 2 + 0.1
     const rise = H - 0.8 - (r + 0.6)
     const run = sl * 0.95
-    const hyp = Math.hypot(run, rise)
+    const hyp = detHypot(run, rise)
     const sy = (r + 0.6 + H - 0.8) / 2
     sockets.stairs_foot = [sx + (sl / 2) * (run / hyp), sy - (sl / 2) * (rise / hyp), 0]
   }

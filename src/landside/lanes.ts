@@ -10,6 +10,7 @@
 import { LANDSIDE } from './config.ts'
 import { onMapBorder } from './network.ts'
 import type { Cell, Network } from './types.ts'
+import { detAtan2, detCos, detHypot, detSin } from '../game/detMath.ts'
 
 interface Vec2 {
   x: number
@@ -80,14 +81,14 @@ function add(a: Vec2, b: Vec2, k = 1): Vec2 {
 }
 
 function unit(v: Vec2): Vec2 {
-  const len = Math.hypot(v.x, v.y)
+  const len = detHypot(v.x, v.y)
   return len > 1e-9 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 }
 }
 
 /** Rotate by `angle`. +90° turns south into west: the right-hand side of travel, rows growing south. */
 function rot(v: Vec2, angle: number): Vec2 {
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
+  const c = detCos(angle)
+  const s = detSin(angle)
   return { x: v.x * c - v.y * s, y: v.x * s + v.y * c }
 }
 
@@ -137,7 +138,7 @@ export function buildLanes(net: Network): LaneGeometry | null {
   let length = 0
   const pushLine = (to: Vec2) => {
     const d = sub(to, cur)
-    const len = Math.hypot(d.x, d.y)
+    const len = detHypot(d.x, d.y)
     if (len > 1e-9) pieces.push({ kind: 'line', from: cur, dir: unit(d), len })
     length += len
     cur = to
@@ -220,7 +221,7 @@ export function buildLanes(net: Network): LaneGeometry | null {
     for (let i = 1; i < count; i++) {
       const dx = px[i] + nx[i] * off - (px[i - 1] + nx[i - 1] * off)
       const dy = py[i] + ny[i] * off - (py[i - 1] + ny[i - 1] * off)
-      out[i] = out[i - 1] + Math.hypot(dx, dy)
+      out[i] = out[i - 1] + detHypot(dx, dy)
     }
     return out
   })
@@ -300,7 +301,7 @@ export function pointAt(geo: LaneGeometry, x: number, lat: number): Vec2 {
 }
 
 function wrapHeading(a: number): number {
-  return Math.atan2(Math.sin(a), Math.cos(a))
+  return detAtan2(detSin(a), detCos(a))
 }
 
 /** Heading of travel at sample `x` in a lane `lat` metres off the centre, radians (atan2 of rows over columns). */
@@ -310,10 +311,10 @@ export function headingAt(geo: LaneGeometry, x: number, lat: number): number {
   const t = cx - i
   const a = pointAt(geo, i, lat)
   const b = pointAt(geo, i + 1, lat)
-  const h0 = Math.atan2(b.y - a.y, b.x - a.x)
+  const h0 = detAtan2(b.y - a.y, b.x - a.x)
   if (t < 1e-6 || i + 1 >= geo.count - 1) return h0
   const c = pointAt(geo, i + 2, lat)
-  const h1 = Math.atan2(c.y - b.y, c.x - b.x)
+  const h1 = detAtan2(c.y - b.y, c.x - b.x)
   return h0 + wrapHeading(h1 - h0) * t
 }
 

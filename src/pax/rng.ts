@@ -1,4 +1,5 @@
 import { finite } from './num.ts'
+import { detCos, detLog } from '../game/detMath.ts'
 
 /**
  * Mulberry32. Same seed, same stream. State is a plain uint32 so a save can
@@ -36,6 +37,6 @@ export function createPaxRng(seed: number): PaxRng {
 export function sampleStandardNormal(rng: PaxRng): number {
   const u1 = Math.max(finite(rng.next(), 0), 1e-12)
   const u2 = finite(rng.next(), 0)
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  const z = Math.sqrt(-2 * detLog(u1)) * detCos(2 * Math.PI * u2)
   return Number.isFinite(z) ? z : 0
 }

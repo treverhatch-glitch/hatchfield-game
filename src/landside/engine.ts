@@ -4,6 +4,7 @@ import { buildNetwork, cellId } from './network.ts'
 import type { CurbNotice, CurbOrder } from './trips.ts'
 import type { LandsideField, LandsideView, ModeSplit, Network, SegmentRead } from './types.ts'
 import { LandsideFleet } from './vehicles.ts'
+import { detExp } from '../game/detMath.ts'
 
 interface Sample {
   arrivalsPerMin: number
@@ -166,7 +167,7 @@ export function measure(field: LandsideField, net: Network = buildNetwork(field)
 
 function smooth(current: number, target: number, dt: number): number {
   const tau = LANDSIDE.smoothSec
-  const k = 1 - Math.exp(-Math.max(0, dt) / tau)
+  const k = 1 - detExp(-Math.max(0, dt) / tau)
   return current + (target - current) * k
 }
 

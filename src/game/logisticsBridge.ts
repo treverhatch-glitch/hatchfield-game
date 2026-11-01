@@ -3,6 +3,7 @@ import type { DelayCause, LogisticsConfig, StandAccess as RampAccess, VehicleTyp
 import { DEPOT_GRANT } from '../scale/data.ts'
 import { farmDocks, neighbors, tilesOf, walkableFor } from './path.ts'
 import type { StandAccess, Tile } from './types.ts'
+import { detHypot } from './detMath.ts'
 
 /**
  * Sim-seconds an empty farm may hold a departure.
@@ -115,7 +116,7 @@ export function buildLogisticsConfig(
       edges.push({
         a: n.id,
         b: bid,
-        length: Math.hypot(nb.c - c, nb.r - r) * METRES_PER_CELL,
+        length: detHypot(nb.c - c, nb.r - r) * METRES_PER_CELL,
       })
     }
   }

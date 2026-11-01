@@ -53,6 +53,7 @@ import {
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
 import type { BuildLayout, Equip, Tile } from '../terminalbuild/types.ts'
 import { HALL_ARRIVAL_TUNING } from './hallNavData.ts'
+import { detAtan2, detHypot, sq } from './detMath.ts'
 
 /** Floor of a prefab claim hall, and its solid belts (carousel, bag hall kit). */
 export interface ClaimHall {
@@ -324,7 +325,7 @@ export class HallArrivals {
     let bestD = Infinity
     for (let c = 0; c < g.mask.length; c++) {
       if (!(g.mask[c] & layer)) continue
-      const d = (cellX(g, c) - x) ** 2 + (cellZ(g, c) - z) ** 2
+      const d = sq(cellX(g, c) - x) + sq(cellZ(g, c) - z)
       if (d < bestD) {
         bestD = d
         best = c
@@ -679,7 +680,7 @@ export class HallArrivals {
     a.z = cellZ(g, c0) + (cellZ(g, c1) - cellZ(g, c0)) * t
     a.cell = f.line[Math.min(f.line.length - 1, Math.round(a.lineS / g.cellM))]
     const ahead = f.line[Math.max(0, i - (t > EPS ? 0 : 1))]
-    if (ahead !== c0 || t > EPS) a.yaw = Math.atan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
+    if (ahead !== c0 || t > EPS) a.yaw = detAtan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
     if (place === 0 && a.lineS <= EPS && !o.serving) {
       a.phase = 'service'
       a.serviceLeft = f.serviceSec
@@ -804,12 +805,12 @@ export class HallArrivals {
       const tz = cellZ(g, goal) + (lined ? 0 : a.oz)
       const dx = tx - a.x
       const dz = tz - a.z
-      const seg = Math.hypot(dx, dz)
+      const seg = detHypot(dx, dz)
       const step = Math.min(budget, seg)
       if (seg > EPS) {
         a.x += (dx * step) / seg
         a.z += (dz * step) / seg
-        a.yaw = Math.atan2(dx, dz)
+        a.yaw = detAtan2(dx, dz)
       }
       budget -= step
       if (step < seg - EPS) return false
@@ -880,7 +881,7 @@ export class HallArrivals {
     let best: string | null = null
     let bestD = maxM * maxM
     for (const a of this.agents) {
-      const d = (a.x - x) ** 2 + (a.z - z) ** 2
+      const d = sq(a.x - x) + sq(a.z - z)
       if (d > bestD) continue
       bestD = d
       best = a.id

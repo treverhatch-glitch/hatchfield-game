@@ -14,6 +14,7 @@ import {
   type CrewStepId,
 } from './crewConfig.ts'
 import { clampAim, isCaterStandPhase, sampleCateringStand, sampleService, type CrewMemberPose } from './crewActions.ts'
+import { detAtan2, detCos, detHypot, detSin } from '../game/detMath.ts'
 
 export interface CrewClock {
   id: string
@@ -88,7 +89,7 @@ export function pathHeading(path: { c: number; r: number }[]): number {
   const dx = b.c - a.c
   const dy = b.r - a.r
   if (dx * dx + dy * dy < 1e-8) return 0
-  return Math.atan2(dy, dx)
+  return detAtan2(dy, dx)
 }
 
 /** Wing coupling in vehicle-local meters, a short walk off the truck. */
@@ -96,10 +97,10 @@ export function wingAimLocal(aircraft: AircraftAim, vehicle: { x: number; y: num
   const along = aircraft.lengthM * (0.5 - aircraft.wingAt)
   const half = Math.min(9, Math.max(3.6, aircraft.spanM * 0.18))
   const h = aircraft.heading
-  const fx = Math.cos(h)
-  const fy = Math.sin(h)
-  const lx = -Math.sin(h)
-  const ly = Math.cos(h)
+  const fx = detCos(h)
+  const fy = detSin(h)
+  const lx = -detSin(h)
+  const ly = detCos(h)
   const vx = (vehicle.x - aircraft.x) * metersPerUnit
   const vy = (vehicle.y - aircraft.y) * metersPerUnit
   const side = vx * lx + vy * ly < 0 ? -half : half
@@ -117,10 +118,10 @@ function toLocal(
   const dx = (c - vehicle.x) * metersPerUnit
   const dy = (r - vehicle.y) * metersPerUnit
   const h = vehicle.heading
-  const fx = Math.cos(h)
-  const fy = Math.sin(h)
-  const lx = -Math.sin(h)
-  const ly = Math.cos(h)
+  const fx = detCos(h)
+  const fy = detSin(h)
+  const lx = -detSin(h)
+  const ly = detCos(h)
   return { x: dx * fx + dy * fy, z: dx * lx + dy * ly }
 }
 
@@ -130,10 +131,10 @@ export function placeLocal(
   metersPerUnit: number,
 ): { c: number; r: number; alt: number } {
   const h = origin.heading
-  const fx = Math.cos(h)
-  const fy = Math.sin(h)
-  const lx = -Math.sin(h)
-  const ly = Math.cos(h)
+  const fx = detCos(h)
+  const fy = detSin(h)
+  const lx = -detSin(h)
+  const ly = detCos(h)
   return {
     c: origin.x + (local.x * fx + local.z * lx) / metersPerUnit,
     r: origin.y + (local.x * fy + local.z * ly) / metersPerUnit,
@@ -170,16 +171,16 @@ function segmentProp(
   const dx = (b.c - a.c) * metersPerUnit
   const dy = (b.r - a.r) * metersPerUnit
   const dz = b.alt - a.alt
-  const flat = Math.hypot(dx, dy)
+  const flat = detHypot(dx, dy)
   return {
     id,
     kind,
     c: (a.c + b.c) / 2,
     r: (a.r + b.r) / 2,
     alt: (a.alt + b.alt) / 2,
-    heading: flat > 1e-6 ? Math.atan2(b.r - a.r, b.c - a.c) : clock.heading,
-    pitch: Math.atan2(dz, flat),
-    length: Math.hypot(dx, dy, dz),
+    heading: flat > 1e-6 ? detAtan2(b.r - a.r, b.c - a.c) : clock.heading,
+    pitch: detAtan2(dz, flat),
+    length: detHypot(dx, dy, dz),
     fill,
   }
 }
@@ -223,7 +224,7 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
     out.people.push(personOf(clock, member, metersPerUnit, clock.service))
     if (clock.service === 'cleaning' && member.pose === 'carry') {
       // Bin bag held in front at hip height.
-      const hands = { x: member.x + Math.cos(member.heading) * 0.42, y: 0.72, z: member.z + Math.sin(member.heading) * 0.42 }
+      const hands = { x: member.x + detCos(member.heading) * 0.42, y: 0.72, z: member.z + detSin(member.heading) * 0.42 }
       out.props.push({
         id: `${clock.id}:${member.role}:binbag`,
         kind: 'bag',
@@ -245,7 +246,7 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
       y: lerp(reel.y, plugY, sample.link),
       z: lerp(reel.z, coupling.z, sample.link),
     }
-    const run = Math.hypot(tip.x - reel.x, tip.z - reel.z)
+    const run = detHypot(tip.x - reel.x, tip.z - reel.z)
     const sag = Math.min(run * 0.35, fuel ? LINE_LOOK.hoseSag : LINE_LOOK.cableSag)
     sagLine(out.props, `${clock.id}:${fuel ? 'hose' : 'cable'}`, fuel ? 'hose' : 'cable', clock, reel, tip, sag, metersPerUnit, sample.link)
     out.props.push({
@@ -285,7 +286,7 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
         if (local < 0.5) bag = { x: cart.x, y: 0.85, z: cart.z + (i - 1) * 0.35 }
         else if (local < 1) {
           const k = (local - 0.5) / 0.5
-          bag = { x: cart.x, y: 0.85 + Math.sin(k * Math.PI) * 0.45 + k * 0.05, z: cart.z + (i - 1) * 0.35 * (1 - k) }
+          bag = { x: cart.x, y: 0.85 + detSin(k * Math.PI) * 0.45 + k * 0.05, z: cart.z + (i - 1) * 0.35 * (1 - k) }
         } else {
           const k = Math.min(1, local - 1) / 0.5
           bag = { x: lerp(cart.x, hold.x, Math.min(1, k)), y: lerp(0.9, 2.0, Math.min(1, k)), z: lerp(cart.z, hold.z, Math.min(1, k)) }

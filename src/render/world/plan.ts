@@ -6,6 +6,7 @@ import { DIR_VEC, type Dir, type TerminalInfo } from './layout'
 import { rng } from '../../game/mulberry.ts'
 import { planRooms, type RoomPlan } from './rooms'
 import { CELL, cellX, cellZ } from './view'
+import { detAtan2 } from '../../game/detMath.ts'
 
 /** `backoffice` cells split into staff offices (landside half) and the R&D lab. */
 export type Zone = 'checkin' | 'security' | 'shops' | 'gate' | 'backoffice'
@@ -112,7 +113,7 @@ export function planTerminal(
   const az = A.dr
   const bx = -az
   const bz = ax
-  const yawAir = Math.atan2(ax, az)
+  const yawAir = detAtan2(ax, az)
   const proj = (c: number, r: number) => c * A.dc + r * A.dr
   const projB = (c: number, r: number) => c * bx + r * bz
   let minP = Infinity

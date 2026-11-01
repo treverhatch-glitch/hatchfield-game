@@ -1,5 +1,6 @@
 import { CART_TUNING, type CartTuning } from './config.ts'
 import type { CartSocket } from './sockets.ts'
+import { detAtan2, detHypot } from '../game/detMath.ts'
 
 /**
  * Point-to-point bag carts and catering trucks.
@@ -458,7 +459,7 @@ export class CartYard {
       const goal = trip.from
       const dx = goal.x - vehicle.x
       const dy = goal.y - vehicle.y
-      if (Math.hypot(dx, dy) > 0.05) vehicle.heading = Math.atan2(dy, dx)
+      if (detHypot(dx, dy) > 0.05) vehicle.heading = detAtan2(dy, dx)
     }
     for (const id of stranded) this.dropUndone(id)
   }
@@ -546,7 +547,7 @@ export class CartYard {
         const goal = vehicle.aim === 'from' ? trip.from : trip.to
         const dx = goal.x - vehicle.x
         const dy = goal.y - vehicle.y
-        const dist = Math.hypot(dx, dy)
+        const dist = detHypot(dx, dy)
         const speed = Math.max(0.1, this.config.speedMps)
         if (dist <= 0.05) {
           vehicle.x = goal.x
@@ -559,7 +560,7 @@ export class CartYard {
         const moved = speed * step
         vehicle.x += (dx / dist) * moved
         vehicle.y += (dy / dist) * moved
-        vehicle.heading = Math.atan2(dy, dx)
+        vehicle.heading = detAtan2(dy, dx)
         vehicle.u = Math.min(1, moved / dist)
         left -= step
         if (step + 1e-6 < need) return
@@ -572,14 +573,14 @@ export class CartYard {
         const slot = this.queuePoint(vehicle)
         const dx = slot.x - vehicle.x
         const dy = slot.y - vehicle.y
-        const dist = Math.hypot(dx, dy)
+        const dist = detHypot(dx, dy)
         const speed = Math.max(0.1, this.config.speedMps)
         if (dist > 0.05) {
           const need = dist / speed
           const step = Math.min(left, need)
           vehicle.x += (dx / dist) * speed * step
           vehicle.y += (dy / dist) * speed * step
-          vehicle.heading = Math.atan2(dy, dx)
+          vehicle.heading = detAtan2(dy, dx)
           left -= step
           if (step + 1e-6 < need) return
         }
@@ -702,7 +703,7 @@ export class CartYard {
     const back = trip ? (vehicle.aim === 'from' ? trip.to : trip.from) : goal
     const dx = goal.x - back.x
     const dy = goal.y - back.y
-    const len = Math.hypot(dx, dy) || 1
+    const len = detHypot(dx, dy) || 1
     const gap = Math.max(1, this.config.queueGapM) * Math.max(1, vehicle.queueIndex)
     return { x: goal.x - (dx / len) * gap, y: goal.y - (dy / len) * gap }
   }

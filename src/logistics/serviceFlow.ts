@@ -10,6 +10,7 @@
  * the phases. The same inputs always give the same queue and the same grade.
  */
 
+import { detCos, detSin } from '../game/detMath'
 export const DOCK_PHASES = ['idle', 'route', 'approach', 'align', 'service', 'depart'] as const
 export type DockPhase = (typeof DOCK_PHASES)[number]
 
@@ -365,8 +366,8 @@ export function gradeTurnaround(input: GradeInput): GradeResult {
 
 function approachPoint(anchor: AnchorSpec, queueIndex: number): { x: number; y: number } {
   const back = DOCK_TIMING.approachGapM + Math.max(0, queueIndex) * DOCK_TIMING.queueGapM
-  const hx = Math.cos(anchor.heading)
-  const hy = Math.sin(anchor.heading)
+  const hx = detCos(anchor.heading)
+  const hy = detSin(anchor.heading)
   return { x: anchor.x - hx * back, y: anchor.y - hy * back }
 }
 
@@ -401,8 +402,8 @@ export function poseFor(
 ): { localX: number; localY: number; heading: number; rollM: number } {
   const t = u <= 0 ? 0 : u >= 1 ? 1 : u
   // Extra bays park beside the first so a belt loader and a cart train can both touch the hold.
-  const px = -Math.sin(anchor.heading)
-  const py = Math.cos(anchor.heading)
+  const px = -detSin(anchor.heading)
+  const py = detCos(anchor.heading)
   const side = (slot > 0 ? slot : 0) * 6
   const stop = { x: anchor.x + px * side, y: anchor.y + py * side }
   const from = approachPoint({ ...anchor, x: stop.x, y: stop.y }, queueIndex)

@@ -27,7 +27,7 @@ export function backlashRoll(holderId: string, tier: string, day: number): numbe
   let hash = 2166136261
   const text = `${holderId}:${tier}:${day}`
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619)
-  return (hash >>> 0) / 2 ** 32
+  return (hash >>> 0) / 4294967296
 }
 
 export function angerSentence(names: readonly string[], score: number): string {

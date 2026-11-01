@@ -1,4 +1,5 @@
 import type { RoadEdge, RoadNode } from './types'
+import { detHypot } from '../game/detMath'
 
 /** Tiny service-road graph with cached Dijkstra distances (metres). */
 export class RoadGraph {
@@ -19,7 +20,7 @@ export class RoadGraph {
       const a = placed.get(e.a)
       const b = placed.get(e.b)
       if (!a || !b) throw new Error(`Edge references unknown node: ${e.a}-${e.b}`)
-      const len = e.length ?? Math.hypot(a.x - b.x, a.y - b.y)
+      const len = e.length ?? detHypot(a.x - b.x, a.y - b.y)
       this.adj.get(e.a)!.push({ to: e.b, len })
       this.adj.get(e.b)!.push({ to: e.a, len })
     }

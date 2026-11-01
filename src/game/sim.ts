@@ -1032,6 +1032,7 @@ import type {
   Vec,
   Weather,
 } from './types'
+import { detAtan2, detCos, detHypot, detPow, detSin } from './detMath.ts'
 
 function emptyTiles(): Tile[][] {
   return Array.from({ length: SIZE }, () =>
@@ -4816,7 +4817,7 @@ export class Game {
     for (const pose of this.servicePoses()) {
       const x = pose.drawX ?? pose.x
       const y = pose.drawY ?? pose.y
-      const d = Math.hypot(x - v.c, y - v.r)
+      const d = detHypot(x - v.c, y - v.r)
       if (d <= 0.45 && (!best || d < best.d)) best = { id: pose.id, d }
     }
     return best?.id ?? null
@@ -12635,8 +12636,8 @@ export class Game {
     const dock = pose.dock
     if (!dock) return pose
     const h = dock.owner === 'stand' ? this.headingForStand(dock.standId) : 0
-    const c = Math.cos(h)
-    const s = Math.sin(h)
+    const c = detCos(h)
+    const s = detSin(h)
     const dx = (dock.localX * c - dock.localY * s) / METERS_PER_CELL
     const dy = (dock.localX * s + dock.localY * c) / METERS_PER_CELL
     // Hose, lift and belt deploy only at an aircraft. A farm or kitchen load keeps its own phase.
@@ -12691,7 +12692,7 @@ export class Game {
     if (role === 'bags' && t.mission !== 'load' && t.mission !== 'unload') return null
     const flight = t.flightId ? this.flights.find((f) => f.id === t.flightId) : undefined
     if (!flight?.stand || flight.phase === 'gone') return null
-    if (Math.hypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
+    if (detHypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
     const stand = flight.stand
     const onStand = (v: { c: number; r: number } | undefined) => !!v && v.c === stand.c && v.r === stand.r
     let w = 0
@@ -12709,7 +12710,7 @@ export class Game {
     const b = t.path[Math.min(t.seg + 1, Math.max(0, t.path.length - 1))]
     const dx = (b?.c ?? t.x) - (a?.c ?? t.x)
     const dy = (b?.r ?? t.y) - (a?.r ?? t.y)
-    const along = Math.hypot(dx, dy) > 0.02 ? Math.atan2(dy, dx) : pathHeading(t.path)
+    const along = detHypot(dx, dy) > 0.02 ? detAtan2(dy, dx) : pathHeading(t.path)
     return {
       x: t.x + (spot.x - t.x) * w,
       y: t.y + (spot.y - t.y) * w,
@@ -12726,7 +12727,7 @@ export class Game {
     if (t.kind !== 'bags' || (t.mission !== 'load' && t.mission !== 'unload')) return null
     const flight = t.flightId ? this.flights.find((f) => f.id === t.flightId) : undefined
     if (!flight?.stand || flight.phase === 'gone') return null
-    if (Math.hypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
+    if (detHypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
     const stand = flight.stand
     const onStand = (v: { c: number; r: number } | undefined) => !!v && v.c === stand.c && v.r === stand.r
     let w = 0
@@ -12744,7 +12745,7 @@ export class Game {
     const b = t.path[Math.min(t.seg + 1, Math.max(0, t.path.length - 1))]
     const dx = (b?.c ?? t.x) - (a?.c ?? t.x)
     const dy = (b?.r ?? t.y) - (a?.r ?? t.y)
-    const along = Math.hypot(dx, dy) > 0.02 ? Math.atan2(dy, dx) : pathHeading(t.path)
+    const along = detHypot(dx, dy) > 0.02 ? detAtan2(dy, dx) : pathHeading(t.path)
     return {
       x: t.x + (spot.x - t.x) * w,
       y: t.y + (spot.y - t.y) * w,
@@ -12820,7 +12821,7 @@ export class Game {
       if (!f.stand || f.craft === 'helo') continue
       let t: number
       if (f.phase === 'taxi_in') {
-        const d = Math.hypot(f.x - f.stand.c, f.y - f.stand.r)
+        const d = detHypot(f.x - f.stand.c, f.y - f.stand.r)
         if (d > STAND_TIMELINE.guideCells) continue
         t = STAND_TIMELINE.taxi * (1 - d / STAND_TIMELINE.guideCells)
       } else if (f.phase === 'deboard') t = STAND_TIMELINE.taxi + f.phaseTime
@@ -12922,8 +12923,8 @@ export class Game {
     const shove = this.pushbackRollMetres(best) / METERS_PER_CELL
     return {
       airframeId: best.airframeId || 'b738',
-      x: best.x - Math.cos(best.heading) * shove,
-      y: best.y - Math.sin(best.heading) * shove,
+      x: best.x - detCos(best.heading) * shove,
+      y: best.y - detSin(best.heading) * shove,
       heading: best.heading,
     }
   }
@@ -12964,7 +12965,7 @@ export class Game {
     let bestD = 1.4
     for (const flight of this.flights) {
       if (!flight.stand || flight.phase === 'gone' || flight.phase === 'hold') continue
-      const d = Math.hypot(flight.x - x, flight.y - y)
+      const d = detHypot(flight.x - x, flight.y - y)
       if (d < bestD) {
         bestD = d
         best = flight
@@ -13018,7 +13019,7 @@ export class Game {
       const owned = flight.groundTurn ? this.ground?.sim.turnaroundAt(flight.groundTurn)?.services : undefined
       const has = (service: CrewClock['service'], x: number, y: number) =>
         ((service === 'gpu' || service === 'pushback') && owned?.[service] !== undefined) ||
-        existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
+        existing.some((job) => job.service === service && detHypot(job.x - x, job.y - y) < 2.5)
       const pace = this.rampPace(flight.airframeId, false, flight.airline)
       const door = this.paxDoor(flight)
       const origin = { x: flight.x, y: flight.y, heading: flight.heading }
@@ -14700,7 +14701,7 @@ export class Game {
       const parked = this.flights.find((f) => f.stand && f.stand.c === stand.c && f.stand.r === stand.r && f.phase !== 'gone')
       const spec = getAircraftSpec(parked?.airframeId || 'b738')
       const onStand =
-        parked != null && Math.hypot(parked.x - stand.c, parked.y - stand.r) < 0.8
+        parked != null && detHypot(parked.x - stand.c, parked.y - stand.r) < 0.8
       const origin = onStand
         ? { x: parked.x * metre, y: parked.y * metre, heading: parked.heading ?? 0 }
         : { x: stand.c * metre, y: stand.r * metre, heading: 0 }
@@ -14743,10 +14744,10 @@ export class Game {
     const tip = belt.belt_tip
     if (!door || !tip) return resolveSocket(belt, 'belt_low', origin)
     const heading = origin.heading ?? 0
-    const fx = Math.cos(heading)
-    const fy = Math.sin(heading)
-    const rx = -Math.sin(heading)
-    const ry = Math.cos(heading)
+    const fx = detCos(heading)
+    const fy = detSin(heading)
+    const rx = -detSin(heading)
+    const ry = detCos(heading)
     return resolveSocket(belt, 'belt_low', {
       x: door.x - (tip[0] * fx + tip[2] * rx),
       y: door.y - (tip[0] * fy + tip[2] * ry),
@@ -19793,8 +19794,8 @@ export class Game {
       if (!fit) continue
       const tx = fit.origin.c + simRandom() * 2
       const ty = fit.origin.r + simRandom() * 2
-      p.x = lerp(p.x, tx, 1 - Math.pow(0.15, dt))
-      p.y = lerp(p.y, ty, 1 - Math.pow(0.15, dt))
+      p.x = lerp(p.x, tx, 1 - detPow(0.15, dt))
+      p.y = lerp(p.y, ty, 1 - detPow(0.15, dt))
     }
   }
 
@@ -20005,8 +20006,8 @@ export class Game {
       const jitter = p.id.charCodeAt(4) % 5
       const tx = ox + (jitter * 0.08)
       const ty = oy + ((jitter % 3) * 0.08)
-      p.x = lerp(p.x, tx, 1 - Math.pow(0.1, dt))
-      p.y = lerp(p.y, ty, 1 - Math.pow(0.1, dt))
+      p.x = lerp(p.x, tx, 1 - detPow(0.1, dt))
+      p.y = lerp(p.y, ty, 1 - detPow(0.1, dt))
     }
 
     const staff = this.people.filter((p) => p.job === 'researcher')
@@ -20796,7 +20797,7 @@ export class Game {
     this.ageLinks()
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
-    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
+    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * detPow(0.45, 6)))
     this.landsideFeeWindow = 0
     if (bill <= 0) {
       if (upkeep > 0 || fees > 0 || holding > 0) {
@@ -20923,9 +20924,9 @@ export class Game {
       let along = 0
       let besideNow = false
       for (const cell of path) {
-        if (Math.hypot(cell.c - jet.x, cell.r - jet.y) < 1.15) besideNow = true
+        if (detHypot(cell.c - jet.x, cell.r - jet.y) < 1.15) besideNow = true
         for (const step of rest) {
-          if (Math.hypot(step.c - cell.c, step.r - cell.r) <= 1) {
+          if (detHypot(step.c - cell.c, step.r - cell.r) <= 1) {
             along += 1
             break
           }
@@ -22082,7 +22083,7 @@ export class Game {
     let dist = maxDist
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
-      const d = Math.hypot(f.x - v.c, f.y - v.r)
+      const d = detHypot(f.x - v.c, f.y - v.r)
       if (d < dist) {
         dist = d
         best = f
@@ -22844,7 +22845,7 @@ export class Game {
   private metresToNearestRunway(v: Vec): number {
     let best = Infinity
     for (const run of tilesOf(this.tiles, 'runway')) {
-      best = Math.min(best, Math.hypot(run.c - v.c, run.r - v.r) * METERS_PER_CELL)
+      best = Math.min(best, detHypot(run.c - v.c, run.r - v.r) * METERS_PER_CELL)
     }
     return best
   }
@@ -25038,7 +25039,7 @@ export class Game {
       x: pad.c + 5.5,
       y: pad.r - 4.5,
       z: 11,
-      heading: Math.atan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
+      heading: detAtan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
       path: [pad],
       seg: 0,
       t: 0,
@@ -25104,7 +25105,7 @@ export class Game {
       x: pad.c + 5.5,
       y: pad.r - 4.5,
       z: 11,
-      heading: Math.atan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
+      heading: detAtan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
       path: [pad],
       seg: 0,
       t: 0,
@@ -25137,14 +25138,14 @@ export class Game {
       // Straight-in hover to the pad.
       const dx = pad.c - f.x
       const dy = pad.r - f.y
-      const dist = Math.hypot(dx, dy)
-      f.heading = Math.atan2(dy, dx)
+      const dist = detHypot(dx, dy)
+      f.heading = detAtan2(dy, dx)
       const speed = 1.9
       if (dist > 0.12) {
         f.x += (dx / dist) * Math.min(dist, speed * step)
         f.y += (dy / dist) * Math.min(dist, speed * step)
       }
-      f.z = lerp(f.z, dist < 0.8 ? 0.35 : 2.2, 1 - Math.pow(0.08, step))
+      f.z = lerp(f.z, dist < 0.8 ? 0.35 : 2.2, 1 - detPow(0.08, step))
       if (dist < 0.2 && f.z < 0.55) {
         f.phase = 'servicing'
         f.phaseTime = 0
@@ -25189,8 +25190,8 @@ export class Game {
     }
     if (f.phase === 'takeoff') {
       f.z += step * 2.8
-      f.x += Math.cos(f.heading) * step * 2.1
-      f.y += Math.sin(f.heading) * step * 2.1
+      f.x += detCos(f.heading) * step * 2.1
+      f.y += detSin(f.heading) * step * 2.1
       if (f.phaseTime > 5 || f.z > 12) {
         this.releaseUnflownFees(f)
         f.phase = 'gone'
@@ -25779,17 +25780,17 @@ export class Game {
           f.phase === 'mx_return' ||
           f.phase === 'landing')
       ) {
-        if (Math.hypot(f.x - x, f.y - y) < R) n++
+        if (detHypot(f.x - x, f.y - y) < R) n++
       }
     }
     for (const t of this.trucks) {
       if (t.id === selfId) continue
-      if (Math.hypot(t.x - x, t.y - y) < R) n++
+      if (detHypot(t.x - x, t.y - y) < R) n++
     }
     if (departing) {
       for (const p of this.people) {
         if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
-        if (Math.hypot(p.x - x, p.y - y) < R) {
+        if (detHypot(p.x - x, p.y - y) < R) {
           n += 1
           break
         }
@@ -25798,7 +25799,7 @@ export class Game {
       for (const p of this.people) {
         if (p.id === selfId) continue
         if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
-        if (Math.hypot(p.x - x, p.y - y) < R) n++
+        if (detHypot(p.x - x, p.y - y) < R) n++
       }
     }
     return n
@@ -26124,7 +26125,7 @@ export class Game {
     const b2 = ent.path[Math.min(ent.seg + 1, ent.path.length - 1)]
     ent.x = lerp(a2.c, b2.c, clamp(ent.t, 0, 1))
     ent.y = lerp(a2.r, b2.r, clamp(ent.t, 0, 1))
-    ent.heading = Math.atan2(b2.r - a2.r, b2.c - a2.c)
+    ent.heading = detAtan2(b2.r - a2.r, b2.c - a2.c)
     return false
   }
 
@@ -27059,8 +27060,8 @@ export class Game {
   /** Pushback stays on the stand or a jet neighbour. A grass offset is not a taxi route. */
   private pushbackPath(stand: Vec, heading: number): Vec[] {
     const back = {
-      c: stand.c - Math.cos(heading || 0) * 0.8,
-      r: stand.r - Math.sin(heading || 0) * 0.8,
+      c: stand.c - detCos(heading || 0) * 0.8,
+      r: stand.r - detSin(heading || 0) * 0.8,
     }
     if (jetRouteOnGraph(this.tiles, [stand, back])) return [stand, back]
     const next = neighbors(stand.c, stand.r).find(
@@ -27976,7 +27977,7 @@ export class Game {
       x: approach.x,
       y: approach.y,
       z: approach.z,
-      heading: helo ? Math.atan2(stand.r - approach.y, stand.c - approach.x) : 0,
+      heading: helo ? detAtan2(stand.r - approach.y, stand.c - approach.x) : 0,
       path: approach.path,
       seg: 0,
       t: 0,
@@ -28291,8 +28292,8 @@ export class Game {
       if (this.applyMroHold(f)) continue
       if (f.phase === 'hold') {
         f.holdAngle += step * 0.35
-        f.x = SIZE / 2 + Math.cos(f.holdAngle) * 9
-        f.y = -2.5 + Math.sin(f.holdAngle) * 1.6
+        f.x = SIZE / 2 + detCos(f.holdAngle) * 9
+        f.y = -2.5 + detSin(f.holdAngle) * 1.6
         f.z = 9
         f.heading = f.holdAngle + Math.PI / 2
       } else if (f.phase === 'approach') {
@@ -28300,9 +28301,9 @@ export class Game {
         const threshold =
           f.path.find((p) => inBounds(Math.round(p.c), Math.round(p.r))) ??
           f.path[f.path.length - 1]
-        const dist = threshold ? Math.hypot(f.x - threshold.c, f.y - threshold.r) : 0
+        const dist = threshold ? detHypot(f.x - threshold.c, f.y - threshold.r) : 0
         const glide = clamp(0.35 + dist * 0.7, 0.35, 22)
-        f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
+        f.z = lerp(f.z, glide, 1 - detPow(0.18, step))
         const runwaysAhead = this.atcRunwaysAhead(f)
         if (runwaysAhead.length) {
           // A cleared approach owns the runway for the whole inbound, not just the last few seconds.
@@ -28324,10 +28325,10 @@ export class Game {
         }
       } else if (f.phase === 'landing') {
         this.retargetClearExit(f)
-        f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
+        f.z = lerp(f.z, 0.15, 1 - detPow(0.05, step))
         if (this.checkCrash(f, 'landing')) continue
         const arrived = this.atcFollow(f, 1.35, step)
-        const onStand = f.stand && Math.hypot(f.x - f.stand.c, f.y - f.stand.r) < 0.35
+        const onStand = f.stand && detHypot(f.x - f.stand.c, f.y - f.stand.r) < 0.35
         if (onStand || arrived) {
           f.phase = 'taxi_in'
           f.phaseTime = 0
@@ -28643,8 +28644,8 @@ export class Game {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
         if (f.z > 1 || f.phaseTime > 3) this.atc.airborne(f.id)
         f.z += step * 0.9
-        f.x += Math.cos(f.heading) * step * 2.6
-        f.y += Math.sin(f.heading) * step * 2.6
+        f.x += detCos(f.heading) * step * 2.6
+        f.y += detSin(f.heading) * step * 2.6
         if ((hasLeftMap(f.x, f.y, SIZE) && f.z > 6) || f.phaseTime > 26) {
           this.releaseUnflownFees(f)
           f.phase = 'gone'

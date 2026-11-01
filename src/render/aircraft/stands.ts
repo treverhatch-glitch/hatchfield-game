@@ -13,6 +13,7 @@ import {
 
 export type { IcaoCode } from './realworld'
 import type { IcaoCode } from './realworld'
+import { detCos, detHypot, detSin } from '../../game/detMath'
 
 /** Fixed-wing code letters, smallest wingspan first. H is a helipad, not a letter. */
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const
@@ -107,12 +108,12 @@ export function wingDiscsClash(
 ): boolean {
   const aR = wingRadius(spanM)
   for (const o of others) {
-    const d = Math.hypot((o.c - stand.c) * CELL, (o.r - stand.r) * CELL)
+    const d = detHypot((o.c - stand.c) * CELL, (o.r - stand.r) * CELL)
     if (d < aR + wingRadius(o.spanM) + WING_GAP) return true
   }
   const blockR = CELL * 0.5
   for (const b of blocks) {
-    const d = Math.hypot((b.c - stand.c) * CELL, (b.r - stand.r) * CELL)
+    const d = detHypot((b.c - stand.c) * CELL, (b.r - stand.r) * CELL)
     if (d < aR + blockR + WING_GAP) return true
   }
   return false
@@ -480,8 +481,8 @@ export function bridgeMirror(
   terminal: { c: number; r: number },
 ): 1 | -1 {
   const yaw = -heading
-  const portC = Math.sin(yaw)
-  const portR = Math.cos(yaw)
+  const portC = detSin(yaw)
+  const portR = detCos(yaw)
   const dot = portC * (terminal.c - stand.c) + portR * (terminal.r - stand.r)
   return dot >= 0 ? 1 : -1
 }

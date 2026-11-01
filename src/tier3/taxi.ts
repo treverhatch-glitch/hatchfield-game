@@ -1,5 +1,6 @@
 import { MRO_TAXI_MINUTES, type BaySize } from './config.ts'
 import type { MroPhase } from './types.ts'
+import { detAtan2, detHypot } from '../game/detMath.ts'
 
 export interface TaxiPoint {
   c: number
@@ -45,7 +46,7 @@ export function mroRoute(
 }
 
 function segmentLength(a: TaxiPoint, b: TaxiPoint): number {
-  return Math.hypot(b.c - a.c, b.r - a.r) || 1e-6
+  return detHypot(b.c - a.c, b.r - a.r) || 1e-6
 }
 
 /** Point and heading at fraction t along a polyline. t is clamped to the path. */
@@ -55,7 +56,7 @@ export function pointAlong(path: readonly TaxiPoint[], t: number): { x: number; 
   if (path.length === 1 || clamped <= 0) {
     const p = path[0]
     const next = path[1] ?? p
-    return { x: p.c, y: p.r, heading: Math.atan2(next.r - p.r, next.c - p.c) }
+    return { x: p.c, y: p.r, heading: detAtan2(next.r - p.r, next.c - p.c) }
   }
   const lengths: number[] = []
   let total = 0
@@ -73,7 +74,7 @@ export function pointAlong(path: readonly TaxiPoint[], t: number): { x: number; 
       return {
         x: a.c + (b.c - a.c) * f,
         y: a.r + (b.r - a.r) * f,
-        heading: Math.atan2(b.r - a.r, b.c - a.c),
+        heading: detAtan2(b.r - a.r, b.c - a.c),
       }
     }
     remain -= lengths[i]
@@ -202,5 +203,5 @@ export function machinePose(machine: TaxiMachine): TaxiPose {
 
 /** How far two poses are, in cells. Used to prove a step stayed on the path. */
 export function poseDelta(a: TaxiPose, b: TaxiPose): number {
-  return Math.hypot(a.x - b.x, a.y - b.y)
+  return detHypot(a.x - b.x, a.y - b.y)
 }
