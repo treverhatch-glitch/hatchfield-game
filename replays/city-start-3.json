@@ -4,7 +4,7 @@
  "seed": 3,
  "days": 3,
  "stepSec": 3,
- "rulesCommit": "b97a884a",
+ "rulesCommit": "0dcd443b",
  "checkpoints": [
   {
    "day": 0,
