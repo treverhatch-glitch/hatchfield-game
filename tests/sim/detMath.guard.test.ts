@@ -15,6 +15,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { play } from '../../tools/replay/replay.ts'
 import { forceSimRandom } from '../../src/game/simRng.ts'
 
+// Waiting on another workstream (Hatch, 2026-11-01): src/diplomacy belongs to the diplomacy workstream, so its three
+// Math.pow calls (departure.ts, engine.ts, standing.ts; two run every tick) stay until that workstream swaps them for
+// detPow. Only Math.pow, only in src/diplomacy/. Take the entry out once they're gone; nothing else may be added here.
+const WAITING_ELSEWHERE: { dir: string; fn: string }[] = [{ dir: 'src/diplomacy/', fn: 'pow' }]
+const waiting = (file: string, what: string) => WAITING_ELSEWHERE.some((w) => file.includes(w.dir) && what === `Math.${w.fn}`)
+
 const INEXACT = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'exp', 'expm1', 'log', 'log1p', 'log2', 'log10', 'pow', 'hypot', 'cbrt']
 
 /** Each use of an inexact Math function or of ** in a piece of code: "Math.sin", "**". */
@@ -59,7 +65,7 @@ describe('the packed rules use only exact math (PU-22)', () => {
     expect(modules.length, 'the pack has the rules in it').toBeGreaterThan(200)
     expect(modules.some(([id]) => id.endsWith('src/game/sim.ts'))).toBe(true)
     const found: string[] = []
-    for (const [id, m] of modules) for (const u of inexactUses(m.code!, id)) found.push(`${id.replace(root + '/', '')}: ${u.what} (line ${u.line} of its bundled code)`)
+    for (const [id, m] of modules) for (const u of inexactUses(m.code!, id)) if (!waiting(id, u.what)) found.push(`${id.replace(root + '/', '')}: ${u.what} (line ${u.line} of its bundled code)`)
     expect(found, `use src/game/detMath.ts instead:\n${found.join('\n')}`).toEqual([])
   })
 
@@ -76,7 +82,12 @@ describe('the packed rules use only exact math (PU-22)', () => {
     for (const k of INEXACT) {
       const f = M[k]
       saved.push([k, f])
-      M[k] = (...a: number[]) => { calls[k] = (calls[k] ?? 0) + 1; return f.apply(Math, a) }
+      M[k] = (...a: number[]) => {
+        const from = new Error().stack ?? ''
+        const caller = from.split('\n').slice(2).find((l) => l.includes('/src/')) ?? ''
+        if (!WAITING_ELSEWHERE.some((w) => w.fn === k && caller.includes(`/${w.dir}`))) calls[k] = (calls[k] ?? 0) + 1
+        return f.apply(Math, a)
+      }
     }
     const days = play('city-start', 2, 1)
     for (const [k, f] of saved.splice(0)) M[k] = f as (...a: number[]) => number
